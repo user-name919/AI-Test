@@ -225,6 +225,11 @@ const server = createServer(async (request, response) => {
         return match ? analysis.result.requirements[Number(match[1])]?.testCases[Number(match[2])] : undefined
       }).filter((item): item is NonNullable<typeof item> => Boolean(item))
       if (!testCases.length) return json(response, 400, { error: '没有找到可生成的测试用例' })
+      try {
+        buildAgentTestGoal(analysis, caseKeys, targetUrl)
+      } catch (error) {
+        return json(response, 409, { error: error instanceof Error ? error.message : '测试用例仍未满足执行前置条件' })
+      }
       const plan = await generateAutomationPlan(targetUrl, testCases, collectResolvedReviewContext(analysis, caseKeys))
       const savedPlan = { id: randomUUID(), analysisId, caseKeys, plan, createdAt: new Date().toISOString() }
       saveAutomationPlan(savedPlan)
@@ -243,6 +248,13 @@ const server = createServer(async (request, response) => {
       const wrappedPlan = automationPlanSchema.parse(savedPlan?.plan ?? body.plan ?? body)
       const planAnalysis = savedPlan ? getAnalysisById(savedPlan.analysisId) : null
       const cases = savedPlan && planAnalysis ? executionCases(planAnalysis, savedPlan.caseKeys) : undefined
+      if (savedPlan && planAnalysis) {
+        try {
+          buildAgentTestGoal(planAnalysis, savedPlan.caseKeys, wrappedPlan.targetUrl)
+        } catch (error) {
+          return json(response, 409, { error: error instanceof Error ? error.message : '自动化计划仍未满足执行前置条件' })
+        }
+      }
       const stream = streamPlanExecution ? openNdjsonResponse(response) : null
       try {
         const result = await runAutomationPlan(wrappedPlan, environment?.storageStatePath, {

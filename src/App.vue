@@ -155,10 +155,13 @@ const filteredExecutions = computed(() => executionFilter.value === 'all' ? exec
 const selectedExecution = computed(() => executionHistory.value.find(item => item.id === selectedExecutionId.value) ?? filteredExecutions.value[0] ?? null)
 const executionPassRate = computed(() => executionHistory.value.length ? Math.round(executionHistory.value.filter(item => item.status === 'passed').length / executionHistory.value.length * 100) : 0)
 const selectedCaseKeys = computed(() => Object.keys(selectedCases.value).filter(key => selectedCases.value[key]))
-const blockedSelectedCaseKeys = computed(() => selectedCaseKeys.value.filter(key => {
+function blockedCaseKeys(caseKeys: string[]) {
+  return caseKeys.filter(key => {
   const match = key.match(/^(\d+)-TC-(\d+)$/)
   return match ? Boolean(requirements.value[Number(match[1])]?.testCases[Number(match[2])]?.blockedByQuestion && !requirementQuestionsResolved(Number(match[1]))) : true
-}))
+  })
+}
+const blockedSelectedCaseKeys = computed(() => blockedCaseKeys(selectedCaseKeys.value))
 const selectedProject = computed(() => projects.value.find(project => project.id === projectId.value) ?? null)
 const targetOrigin = computed(() => { try { return new URL(targetUrl.value).origin } catch { return '' } })
 const matchingProjects = computed(() => projects.value.filter(project => project.connected && (!project.targetOrigins.length || project.targetOrigins.includes(targetOrigin.value))))
@@ -191,6 +194,7 @@ const agentRunDisabledReason = computed(() => {
 const planDisabledReason = computed(() => {
   if (executionRunning.value) return '当前已有任务执行中，请等待完成'
   if (!selectedCaseKeys.value.length) return '请先选择至少一条测试用例'
+  if (blockedSelectedCaseKeys.value.length) return `有 ${blockedSelectedCaseKeys.value.length} 条用例依赖待确认问题`
   if (!targetUrl.value) return '请先填写测试环境地址'
   return ''
 })
@@ -590,6 +594,7 @@ async function persistEnvironment() {
 
 async function generatePlanOnly() {
   if (!savedAnalysis.value || !selectedCount.value || !targetUrl.value) return toast('请先选择用例并填写测试环境地址')
+  if (blockedSelectedCaseKeys.value.length) return toast(`有 ${blockedSelectedCaseKeys.value.length} 条用例仍依赖待确认问题，暂不能生成固定计划`)
   executionRunning.value = true
   showNotice('公司模型正在生成受控 Playwright 计划…', 'loading', 0)
   try {
@@ -609,6 +614,8 @@ async function generatePlanOnly() {
 
 async function runGeneratedPlan() {
   if (!latestAutomationPlan.value) return
+  const blockedPlanCases = blockedCaseKeys(latestAutomationPlan.value.caseKeys)
+  if (blockedPlanCases.length) return toast(`计划包含 ${blockedPlanCases.length} 条仍待确认的用例，请重新确认人工口径后再生成`)
   executionRunning.value = true
   showNotice('正在启动 Chromium 执行已确认计划…', 'loading', 0)
   try {
