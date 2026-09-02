@@ -7,6 +7,7 @@ import test from 'node:test'
 import type { AgentDecisionProvider } from './test-agent'
 import type { ProjectKnowledgeProvider } from './project-knowledge/types'
 import { runAgentTest } from './agent-test-runner'
+import type { LiveExecutionEvent } from '../shared/contracts'
 
 test('runs a browser Agent with project context, DOM re-observation and required assertions', async testContext => {
   const artifactRoot = await mkdtemp(join(tmpdir(), 'quality-ai-agent-runner-'))
@@ -34,6 +35,7 @@ test('runs a browser Agent with project context, DOM re-observation and required
   }
   let turn = 0
   let firstSnapshotId = ''
+  const events: LiveExecutionEvent[] = []
   const decisionProvider: AgentDecisionProvider = {
     async decide({ snapshot, projectContexts }) {
       turn += 1
@@ -55,7 +57,7 @@ test('runs a browser Agent with project context, DOM re-observation and required
   const result = await runAgentTest({
     name: '保存学生', targetUrl, objective: '填写姓名并保存',
     requiredAssertions: [{ id: 'saved', description: '页面显示保存成功' }],
-  }, undefined, { projectProvider, decisionProvider, artifactRoot })
+  }, undefined, { projectProvider, decisionProvider, artifactRoot, onEvent: event => events.push(event) })
 
   assert.equal(result.status, 'passed')
   assert.equal(result.mode, 'agent')
@@ -66,5 +68,10 @@ test('runs a browser Agent with project context, DOM re-observation and required
   assert.equal(result.agent?.trajectory[0].observation?.title, '学生管理')
   assert.ok(result.agent?.trajectory[0].observation?.elements.some(element => element.name === '学生姓名'))
   assert.ok(result.tracePath)
+  assert.ok(events.some(event => event.type === 'execution_started' && event.name === '保存学生'))
+  assert.ok(events.some(event => event.type === 'browser_frame' && event.dataUrl.startsWith('data:image/jpeg;base64,')))
+  assert.ok(events.some(event => event.type === 'activity'
+    && event.activity.title === '点击“保存”'
+    && event.activity.technicalAction?.startsWith('click e')))
   await stat(result.tracePath)
 })

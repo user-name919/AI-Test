@@ -7,17 +7,26 @@ import { analyzePrd } from './model'
 import { getAnalysisById, getAutomationPlanById, getEnvironmentById, getExecutionById, getLatestAnalysis, getLatestAutomationPlan, getLatestEnvironment, getLatestExecution, listAnalyses, listExecutions, saveAnalysis, saveAutomationPlan, saveEnvironment, saveExecution, saveReview, setEnvironmentStorageState } from './database'
 import { runAutomationPlan } from './playwright-runner'
 import { generateAutomationPlan } from './model'
-import { agentRunRequestSchema, automationPlanSchema, storageStateSchema } from '../shared/contracts'
+import { agentRunRequestSchema, automationPlanSchema, storageStateSchema, type LiveExecutionEvent, type SavedAnalysis } from '../shared/contracts'
 import { getProjectProvider, getProjectProviderRegistry } from './project-knowledge/registry'
 import type { SourceScope } from './project-knowledge/types'
 import { inspectTargetPage } from './page-observer-runner'
 import { buildAgentTestGoal } from './agent-goal'
 import { runAgentTest } from './agent-test-runner'
 import { parseSourceDocuments } from './source-documents'
+import { openNdjsonResponse } from './ndjson-response'
 
 const port = Number(process.env.API_PORT ?? 8787)
 const maxBodySize = 30 * 1024 * 1024
 const sourceScopes = new Set<SourceScope>(['route', 'page', 'component', 'api'])
+
+function executionCases(analysis: SavedAnalysis, caseKeys: string[]) {
+  return caseKeys.flatMap(key => {
+    const match = key.match(/^(\d+)-TC-(\d+)$/)
+    const testCase = match ? analysis.result.requirements[Number(match[1])]?.testCases[Number(match[2])] : undefined
+    return testCase ? [{ key, title: testCase.title }] : []
+  })
+}
 
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, {
@@ -220,7 +229,8 @@ const server = createServer(async (request, response) => {
       return json(response, 201, { automationPlan: savedPlan })
     }
 
-    if (request.method === 'POST' && request.url === '/api/automation/run') {
+    const streamPlanExecution = request.url === '/api/automation/run/stream'
+    if (request.method === 'POST' && (request.url === '/api/automation/run' || streamPlanExecution)) {
       const body = await readJson(request)
       const environmentId = typeof body.environmentId === 'string' ? body.environmentId : undefined
       const automationPlanId = typeof body.automationPlanId === 'string' ? body.automationPlanId : undefined
@@ -229,19 +239,39 @@ const server = createServer(async (request, response) => {
       const savedPlan = automationPlanId ? getAutomationPlanById(automationPlanId) : null
       if (automationPlanId && !savedPlan) return json(response, 404, { error: '自动化计划不存在' })
       const wrappedPlan = automationPlanSchema.parse(savedPlan?.plan ?? body.plan ?? body)
-      const result = await runAutomationPlan(wrappedPlan, environment?.storageStatePath)
-      saveExecution(result, {
-        analysisId: savedPlan?.analysisId,
-        automationPlanId: savedPlan?.id,
-        environmentId,
-        caseKeys: savedPlan?.caseKeys,
-        plan: wrappedPlan,
-      })
-      const execution = getExecutionById(result.id)
-      return json(response, result.status === 'passed' ? 201 : 422, { execution })
+      const planAnalysis = savedPlan ? getAnalysisById(savedPlan.analysisId) : null
+      const cases = savedPlan && planAnalysis ? executionCases(planAnalysis, savedPlan.caseKeys) : undefined
+      const stream = streamPlanExecution ? openNdjsonResponse(response) : null
+      try {
+        const result = await runAutomationPlan(wrappedPlan, environment?.storageStatePath, {
+          cases,
+          onEvent: stream ? (event: LiveExecutionEvent) => stream.send(event) : undefined,
+        })
+        saveExecution(result, {
+          analysisId: savedPlan?.analysisId,
+          automationPlanId: savedPlan?.id,
+          environmentId,
+          caseKeys: savedPlan?.caseKeys,
+          plan: wrappedPlan,
+        })
+        const execution = getExecutionById(result.id)
+        if (stream) {
+          if (execution) stream.send({ type: 'execution_completed', execution } satisfies LiveExecutionEvent)
+          else stream.send({ type: 'execution_error', executionId: result.id, error: '执行结果保存失败' } satisfies LiveExecutionEvent)
+          stream.close()
+          return
+        }
+        return json(response, result.status === 'passed' ? 201 : 422, { execution })
+      } catch (error) {
+        if (!stream) throw error
+        stream.send({ type: 'execution_error', error: error instanceof Error ? error.message : String(error) } satisfies LiveExecutionEvent)
+        stream.close()
+        return
+      }
     }
 
-    if (request.method === 'POST' && request.url === '/api/automation/agent/run') {
+    const streamAgentExecution = request.url === '/api/automation/agent/run/stream'
+    if (request.method === 'POST' && (request.url === '/api/automation/agent/run' || streamAgentExecution)) {
       const parsed = agentRunRequestSchema.safeParse(await readJson(request))
       if (!parsed.success) return json(response, 400, { error: 'Agent 执行参数不合法', issues: parsed.error.issues })
       const input = parsed.data
@@ -267,15 +297,33 @@ const server = createServer(async (request, response) => {
       } catch (error) {
         return json(response, 409, { error: error instanceof Error ? error.message : '测试目标构造失败' })
       }
-      const result = await runAgentTest(goal, environment?.storageStatePath, { projectProvider })
-      saveExecution(result, {
-        analysisId: input.analysisId,
-        environmentId: input.environmentId,
-        projectId: input.projectId,
-        caseKeys: input.caseKeys,
-      })
-      const execution = getExecutionById(result.id)
-      return json(response, result.status === 'passed' ? 201 : 422, { execution })
+      const stream = streamAgentExecution ? openNdjsonResponse(response) : null
+      try {
+        const result = await runAgentTest(goal, environment?.storageStatePath, {
+          projectProvider,
+          cases: executionCases(analysis, input.caseKeys),
+          onEvent: stream ? (event: LiveExecutionEvent) => stream.send(event) : undefined,
+        })
+        saveExecution(result, {
+          analysisId: input.analysisId,
+          environmentId: input.environmentId,
+          projectId: input.projectId,
+          caseKeys: input.caseKeys,
+        })
+        const execution = getExecutionById(result.id)
+        if (stream) {
+          if (execution) stream.send({ type: 'execution_completed', execution } satisfies LiveExecutionEvent)
+          else stream.send({ type: 'execution_error', executionId: result.id, error: '执行结果保存失败' } satisfies LiveExecutionEvent)
+          stream.close()
+          return
+        }
+        return json(response, result.status === 'passed' ? 201 : 422, { execution })
+      } catch (error) {
+        if (!stream) throw error
+        stream.send({ type: 'execution_error', error: error instanceof Error ? error.message : String(error) } satisfies LiveExecutionEvent)
+        stream.close()
+        return
+      }
     }
 
     if (request.method === 'POST' && request.url === '/api/analyze') {

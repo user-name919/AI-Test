@@ -9,6 +9,8 @@ import type { ProjectKnowledgeProvider } from './project-knowledge/types'
 import type { PageObserver } from './page-observer'
 import type { SingleActionExecutor } from './single-action-executor'
 import { TestPolicy, type AgentRuntimeState } from './test-policy'
+import type { LiveExecutionActivity } from '../shared/contracts'
+import { describeAgentDecision } from '../shared/live-execution'
 
 export interface AgentTrajectoryItem {
   iteration: number
@@ -49,6 +51,8 @@ export interface TestAgentResult {
 interface TestAgentOptions {
   policy?: TestPolicy
   projectProvider?: ProjectKnowledgeProvider
+  onActivity?: (activity: LiveExecutionActivity) => void
+  capturePage?: () => Promise<void>
 }
 
 function isAssertionAction(action: AgentDecision & { type: 'action' }) {
@@ -94,6 +98,15 @@ export class TestAgent {
     const maxIterations = this.policy.maxSteps + 5
 
     for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+      this.options.onActivity?.({
+        id: `${snapshot.snapshotId}:${iteration}:deciding`,
+        phase: 'deciding',
+        title: '正在分析当前页面',
+        purpose: `已观察到 ${snapshot.stats.discoveredElements} 个交互元素，正在决定下一步操作`,
+        iteration,
+        snapshotId: snapshot.snapshotId,
+        status: 'running',
+      })
       let decision: AgentDecision
       try {
         decision = agentDecisionSchema.parse(await this.decisionProvider.decide({
@@ -110,6 +123,8 @@ export class TestAgent {
       } catch (error) {
         return this.result('failed', error instanceof Error ? error.message : String(error), state, trajectory, screenshots)
       }
+      const activity = describeAgentDecision(decision, snapshot, iteration)
+      this.options.onActivity?.(activity)
 
       if (decision.type === 'finish') {
         trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot) })
@@ -131,6 +146,7 @@ export class TestAgent {
           return this.result('blocked', `项目源码上下文获取失败：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
         }
         state.projectContextRequests += 1
+        this.options.onActivity?.({ ...activity, status: 'passed', message: '源码上下文读取完成' })
         projectContexts.push(projectContext)
         trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot), projectContext })
         try {
@@ -142,6 +158,13 @@ export class TestAgent {
       }
 
       const result = await this.executor.execute(decision.snapshotId, decision.action)
+      this.options.onActivity?.({
+        ...activity,
+        status: result.ok ? 'passed' : 'failed',
+        durationMs: result.durationMs,
+        message: result.message,
+      })
+      await this.options.capturePage?.()
       state.executedSteps += 1
       const fingerprint = JSON.stringify(decision.action)
       state.recentActionFingerprints = [...state.recentActionFingerprints, fingerprint].slice(-6)

@@ -172,6 +172,33 @@ export interface ExecutionRecord extends ExecutionResult {
   rerunOf?: string
 }
 
+export interface LiveExecutionActivity {
+  id: string
+  phase: 'observing' | 'deciding' | 'reading_source' | 'executing' | 'completed' | 'blocked'
+  title: string
+  purpose: string
+  technicalAction?: string
+  iteration?: number
+  snapshotId?: string
+  status: 'running' | 'passed' | 'failed' | 'info'
+  durationMs?: number
+  message?: string
+}
+
+export type LiveExecutionEvent =
+  | {
+    type: 'execution_started'
+    executionId: string
+    mode: 'plan' | 'agent'
+    name: string
+    targetUrl: string
+    cases?: Array<{ key: string; title: string }>
+  }
+  | { type: 'activity'; executionId: string; activity: LiveExecutionActivity }
+  | { type: 'browser_frame'; executionId: string; dataUrl: string; capturedAt: string }
+  | { type: 'execution_completed'; execution: ExecutionRecord }
+  | { type: 'execution_error'; executionId?: string; error: string }
+
 export const semanticElementSchema = z.object({
   ref: z.string().regex(/^e\d+$/),
   tag: z.string().min(1),

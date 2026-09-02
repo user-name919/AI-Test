@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { AgentDecision, AnalysisSummary, ExecutionRecord, PrdAnalysis, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
+import type { AgentDecision, AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
+import { consumeNdjsonChunk, createLiveExecutionState, reduceLiveExecutionState } from '../shared/live-execution'
 
 type Tab = 'overview' | 'states' | 'questions' | 'cases'
 type WorkspaceView = 'version' | 'requirements' | 'cases' | 'executions' | 'memory'
@@ -93,6 +94,7 @@ const executionFilter = ref<'all' | 'passed' | 'failed' | 'blocked'>('all')
 const caseAssetFilter = ref<'all' | 'ready' | 'blocked'>('all')
 const projects = ref<ProjectOption[]>([])
 const projectId = ref('')
+const liveExecution = ref(createLiveExecutionState())
 
 const workspaceGuides: Record<WorkspaceView, WorkspaceGuide> = {
   version: {
@@ -227,6 +229,27 @@ function formatVersionTime(value: string) { return new Intl.DateTimeFormat('zh-C
 function targetHost(value: string) { try { return new URL(value).host } catch { return value } }
 function executionStatusText(status: ExecutionRecord['status']) { return status === 'passed' ? '执行通过' : status === 'blocked' ? '执行受阻' : '执行失败' }
 function executionStatusIcon(status: ExecutionRecord['status']) { return status === 'passed' ? '✓' : status === 'blocked' ? '!' : '×' }
+function liveStatusText() {
+  if (liveExecution.value.status === 'running') return '实时执行中'
+  if (liveExecution.value.status === 'passed') return '执行通过'
+  if (liveExecution.value.status === 'blocked') return '执行受阻'
+  if (liveExecution.value.status === 'failed') return '执行失败'
+  return '正在连接浏览器'
+}
+function displayCaseKey(key: string) {
+  const match = key.match(/^(\d+)-TC-(\d+)$/)
+  return match ? `REQ-${String(Number(match[1]) + 1).padStart(3, '0')} / TC-${String(Number(match[2]) + 1).padStart(3, '0')}` : key
+}
+function closeLiveExecution() { liveExecution.value = { ...liveExecution.value, visible: false } }
+function markLiveExecutionFailed(error: unknown) {
+  const message = error instanceof Error ? error.message : '未知错误'
+  liveExecution.value = reduceLiveExecutionState(liveExecution.value, {
+    type: 'execution_error',
+    executionId: liveExecution.value.executionId || undefined,
+    error: message,
+  })
+  return message
+}
 function decisionTitle(decision: AgentDecision) {
   if (decision.type === 'action') return `执行 ${decision.action.action}`
   if (decision.type === 'need_project_context') return `读取源码 · ${decision.request.operation}`
@@ -262,6 +285,41 @@ function projectContextSummary(value: unknown) {
   if ('routeFile' in value) return `路由文件：${String(value.routeFile)}${'componentFile' in value && value.componentFile ? ` · 页面：${String(value.componentFile)}` : ''}`
   if ('files' in value && Array.isArray(value.files)) return `读取 ${value.files.length} 个局部文件 · ${value.files.map(file => typeof file === 'object' && file && 'path' in file ? String(file.path) : '').filter(Boolean).join('、')}`
   return '已返回项目上下文'
+}
+
+async function streamExecution(url: string, body: unknown, fallbackName: string, fallbackTargetUrl: string) {
+  liveExecution.value = {
+    ...createLiveExecutionState(),
+    visible: true,
+    status: 'running',
+    name: fallbackName,
+    targetUrl: fallbackTargetUrl,
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null
+    throw new Error(payload?.error ?? `执行请求失败（${response.status}）`)
+  }
+  if (!response.body) throw new Error('浏览器不支持读取实时执行流')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let remainder = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    const chunk = decoder.decode(value, { stream: !done })
+    const consumed = consumeNdjsonChunk<LiveExecutionEvent>(remainder, done ? `${chunk}\n` : chunk)
+    remainder = consumed.remainder
+    for (const event of consumed.values) liveExecution.value = reduceLiveExecutionState(liveExecution.value, event)
+    if (done) break
+  }
+
+  if (!liveExecution.value.execution) throw new Error(liveExecution.value.error || '实时执行流意外中断')
+  return liveExecution.value.execution
 }
 function selectMatchingProject() {
   if (matchingProjects.value.some(project => project.id === projectId.value)) return
@@ -385,10 +443,7 @@ async function verifyPlaywright() {
   executionRunning.value = true
   showNotice('正在启动 Chromium 执行真实浏览器测试…', 'loading', 0)
   try {
-    const response = await fetch('/api/automation/run', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+    const execution = await streamExecution('/api/automation/run/stream', {
         name: '知测 AI 本地冒烟测试',
         targetUrl: window.location.origin,
         steps: [
@@ -397,15 +452,12 @@ async function verifyPlaywright() {
           { action: 'expectText', text: analysis.value.productName },
           { action: 'screenshot', name: '工作台首页' },
         ],
-      }),
-    })
-    const payload = await response.json() as { execution?: ExecutionRecord; error?: string }
-    if (!payload.execution) throw new Error(payload.error ?? '执行失败')
-    latestExecution.value = payload.execution
-    await refreshExecutions(payload.execution.id)
-    toast(`Playwright 执行${payload.execution.status === 'passed' ? '通过' : '失败'}，共 ${payload.execution.steps.length} 个步骤`)
+      }, '知测 AI 本地冒烟测试', window.location.origin)
+    latestExecution.value = execution
+    await refreshExecutions(execution.id)
+    toast(`Playwright 执行${execution.status === 'passed' ? '通过' : '失败'}，共 ${execution.steps.length} 个步骤`)
   } catch (error) {
-    toast(`Playwright 执行失败：${error instanceof Error ? error.message : '未知错误'}`)
+    toast(`Playwright 执行失败：${markLiveExecutionFailed(error)}`)
   } finally {
     executionRunning.value = false
   }
@@ -446,13 +498,15 @@ async function runGeneratedPlan() {
   executionRunning.value = true
   showNotice('正在启动 Chromium 执行已确认计划…', 'loading', 0)
   try {
-    const runResponse = await fetch('/api/automation/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan: latestAutomationPlan.value.plan, automationPlanId: latestAutomationPlan.value.id, environmentId: environment.value?.id }) })
-    const runPayload = await runResponse.json() as { execution?: ExecutionRecord; error?: string }
-    if (!runPayload.execution) throw new Error(runPayload.error ?? '执行失败')
-    latestExecution.value = runPayload.execution
-    await refreshExecutions(runPayload.execution.id)
-    toast(`AI 计划执行${runPayload.execution.status === 'passed' ? '通过' : '失败'}：${runPayload.execution.steps.length} 步`)
-  } catch (error) { toast(`执行失败：${error instanceof Error ? error.message : '未知错误'}`) }
+    const execution = await streamExecution('/api/automation/run/stream', {
+      plan: latestAutomationPlan.value.plan,
+      automationPlanId: latestAutomationPlan.value.id,
+      environmentId: environment.value?.id,
+    }, latestAutomationPlan.value.plan.name, latestAutomationPlan.value.plan.targetUrl)
+    latestExecution.value = execution
+    await refreshExecutions(execution.id)
+    toast(`AI 计划执行${execution.status === 'passed' ? '通过' : '失败'}：${execution.steps.length} 步`)
+  } catch (error) { toast(`执行失败：${markLiveExecutionFailed(error)}`) }
   finally { executionRunning.value = false }
 }
 
@@ -466,24 +520,19 @@ async function runDynamicAgent() {
   showNotice('Agent 正在观察真实页面并逐步执行，遇到歧义时会按需读取局部源码…', 'loading', 0)
   try {
     const savedEnvironment = await persistEnvironment()
-    const response = await fetch('/api/automation/agent/run', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+    const execution = await streamExecution('/api/automation/agent/run/stream', {
         analysisId: savedAnalysis.value.id,
         caseKeys: selectedCaseKeys.value,
         targetUrl: targetUrl.value,
         environmentId: savedEnvironment.id,
         projectId: projectId.value,
-      }),
-    })
-    const payload = await response.json() as { execution?: ExecutionRecord; error?: string }
-    if (!payload.execution) throw new Error(payload.error ?? 'Agent 执行失败')
-    latestExecution.value = payload.execution
-    await refreshExecutions(payload.execution.id)
+      }, selectedCaseKeys.value.length === 1 ? caseAssets.value.find(item => item.key === selectedCaseKeys.value[0])?.item.title ?? 'Agent 动态执行' : `${analysis.value.versionName} · ${selectedCaseKeys.value.length} 条用例`, targetUrl.value)
+    latestExecution.value = execution
+    await refreshExecutions(execution.id)
     workspaceView.value = 'executions'
-    toast(`Agent ${executionStatusText(payload.execution.status)} · ${payload.execution.agent?.trajectory.length ?? 0} 轮决策`)
+    toast(`Agent ${executionStatusText(execution.status)} · ${execution.agent?.trajectory.length ?? 0} 轮决策`)
   } catch (error) {
-    toast(`Agent 执行失败：${error instanceof Error ? error.message : '未知错误'}`)
+    toast(`Agent 执行失败：${markLiveExecutionFailed(error)}`)
   } finally {
     executionRunning.value = false
   }
@@ -668,6 +717,36 @@ onMounted(loadSavedAnalysis)
         </template>
       </div>
     </main>
+    <Transition name="live-panel">
+      <aside v-if="liveExecution.visible" class="live-execution-panel" aria-label="Playwright 实时执行画面">
+        <header>
+          <div><span :class="liveExecution.status"><i></i>{{ liveStatusText() }}</span><h2>{{ liveExecution.name || '正在启动 Playwright' }}</h2><p>{{ targetHost(liveExecution.targetUrl) }}</p></div>
+          <button aria-label="关闭实时执行面板" @click="closeLiveExecution">×</button>
+        </header>
+        <section class="live-browser-view">
+          <img v-if="liveExecution.frameDataUrl" :src="liveExecution.frameDataUrl" alt="Playwright 当前浏览器画面" />
+          <div v-else class="live-browser-empty"><i></i><strong>正在连接真实浏览器</strong><span>首帧生成后会自动显示在这里</span></div>
+          <span v-if="liveExecution.status==='running'" class="live-badge"><i></i> LIVE</span>
+        </section>
+        <section v-if="liveExecution.cases.length" class="live-cases">
+          <small>本次验证</small>
+          <div v-for="testCase in liveExecution.cases.slice(0,3)" :key="testCase.key"><strong>{{ testCase.title }}</strong><span>{{ displayCaseKey(testCase.key) }}</span></div>
+          <p v-if="liveExecution.cases.length>3">另有 {{ liveExecution.cases.length-3 }} 条用例</p>
+        </section>
+        <section class="live-activity">
+          <small>当前操作</small>
+          <h3>{{ liveExecution.activity?.title ?? (liveExecution.status==='running' ? '正在启动浏览器并恢复登录态' : liveStatusText()) }}</h3>
+          <p>{{ liveExecution.activity?.purpose ?? liveExecution.error ?? '等待 Playwright 返回页面状态' }}</p>
+          <dl v-if="liveExecution.activity?.technicalAction">
+            <dt>技术动作</dt><dd><code>{{ liveExecution.activity.technicalAction }}</code></dd>
+            <dt v-if="liveExecution.activity.snapshotId">DOM 快照</dt><dd v-if="liveExecution.activity.snapshotId"><code>{{ liveExecution.activity.snapshotId.slice(0,8) }}</code></dd>
+          </dl>
+          <div v-if="liveExecution.activity?.message" :class="['live-result',liveExecution.activity.status]"><b>{{ liveExecution.activity.status==='passed'?'✓':liveExecution.activity.status==='failed'?'!':'…' }}</b><span>{{ liveExecution.activity.message }}</span><em v-if="liveExecution.activity.durationMs!==undefined">{{ liveExecution.activity.durationMs }}ms</em></div>
+          <div v-if="liveExecution.error" class="live-stream-error"><b>失败说明</b><span>{{ liveExecution.error }}</span></div>
+        </section>
+        <footer><span>{{ liveExecution.mode==='agent' ? '动态 Agent' : '固定计划' }}</span><button v-if="liveExecution.execution" @click="openExecution(liveExecution.execution.id);closeLiveExecution()">查看完整报告</button><em v-else>画面来自 Playwright 当前 Page</em></footer>
+      </aside>
+    </Transition>
     <Transition name="drawer">
       <div v-if="helpOpen" class="guide-overlay" @click.self="helpOpen=false">
         <aside class="guide-drawer" role="dialog" aria-modal="true" :aria-label="currentGuide.title">
