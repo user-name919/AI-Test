@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1380" viewBox="0 0 1920 1380" role="img" aria-labelledby="title desc">
+  <title id="title">知测 AI 动态 Agent 执行闭环图</title>
+  <desc id="desc">展示动态 Agent 如何从已确认用例出发，观察真实 DOM，进行单步决策，按需读取受限源码，经过动作协议和策略校验，再由 Playwright 执行并回到真实 DOM 验证。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7f5ff"/>
+      <stop offset="100%" stop-color="#eef6fb"/>
+    </linearGradient>
+    <linearGradient id="agent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#eee9ff"/>
+      <stop offset="100%" stop-color="#e3dcfb"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="9" stdDeviation="12" flood-color="#4e4678" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0,0 L10,5.5 L0,11 z" fill="#73718a"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0,0 L10,5.5 L0,11 z" fill="#685bd0"/>
+    </marker>
+    <style>
+      .title { font-family: PingFang SC, Microsoft YaHei, Arial, sans-serif; fill: #1e2240; }
+      .caption { font-family: PingFang SC, Microsoft YaHei, Arial, sans-serif; fill: #687086; }
+      .group { fill: #ffffff; stroke: #c9c5df; stroke-width: 2; }
+      .group-agent { fill: url(#agent); stroke: #a499df; stroke-width: 2.5; }
+      .card { fill: #ffffff; stroke: #c9d1e0; stroke-width: 1.5; }
+      .card-teal { fill: #d7efed; stroke: #8cc6c0; stroke-width: 1.5; }
+      .card-purple { fill: #dcd5ff; stroke: #a99ce2; stroke-width: 1.5; }
+      .card-alert { fill: #fff3dd; stroke: #e5b96b; stroke-width: 1.5; }
+      .wire { fill: none; stroke: #73718a; stroke-width: 2.8; marker-end: url(#arrow); }
+      .wire-purple { fill: none; stroke: #685bd0; stroke-width: 3; marker-end: url(#arrowPurple); }
+      .wire-dash { fill: none; stroke: #8a87a2; stroke-width: 2.6; stroke-dasharray: 8 8; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1380" fill="url(#background)"/>
+  <text class="title" x="960" y="66" text-anchor="middle" font-size="38" font-weight="700">动态 Agent：不是一次生成脚本，而是受约束的“观察—判断—执行—验证”闭环</text>
+  <text class="caption" x="960" y="105" text-anchor="middle" font-size="20">为复杂 B 端页面设计：DOM 是运行时事实，源码仅提供线索，模型的每一步都必须经过平台校验</text>
+
+  <!-- Preconditions -->
+  <rect x="84" y="139" width="1752" height="96" rx="23" fill="#ece9fb" stroke="#c8c1e5" stroke-width="1.6"/>
+  <text class="title" x="126" y="178" font-size="19" font-weight="700">执行前置条件</text>
+  <rect class="card" x="332" y="157" width="285" height="58" rx="13"/>
+  <text class="title" x="474" y="191" text-anchor="middle" font-size="18" font-weight="700">已确认用例 + 人工执行契约</text>
+  <rect class="card" x="651" y="157" width="285" height="58" rx="13"/>
+  <text class="title" x="793" y="191" text-anchor="middle" font-size="18" font-weight="700">目标 URL + Origin + storageState</text>
+  <rect class="card" x="970" y="157" width="285" height="58" rx="13"/>
+  <text class="title" x="1112" y="191" text-anchor="middle" font-size="18" font-weight="700">已连接的项目源码 Provider</text>
+  <rect class="card-alert" x="1289" y="157" width="501" height="58" rx="13"/>
+  <text class="title" x="1539" y="181" text-anchor="middle" font-size="18" font-weight="700">未确认问题或执行契约仍有关键不确定项</text>
+  <text class="caption" x="1539" y="203" text-anchor="middle" font-size="14">直接阻塞，不让 Agent 通过猜测绕过</text>
+
+  <!-- Observation -->
+  <rect class="group" x="84" y="282" width="390" height="610" rx="28" filter="url(#shadow)"/>
+  <text class="title" x="279" y="332" text-anchor="middle" font-size="26" font-weight="700">1. 观察真实页面</text>
+  <text class="caption" x="279" y="362" text-anchor="middle" font-size="16">PageObserver 只提取测试需要的语义信息</text>
+  <rect class="card-teal" x="116" y="398" width="326" height="96" rx="15"/>
+  <text class="title" x="279" y="434" text-anchor="middle" font-size="21" font-weight="700">真实 Chromium 页面</text>
+  <text class="caption" x="279" y="462" text-anchor="middle" font-size="15">已复用登录态、真实权限与测试数据</text>
+  <rect class="card" x="116" y="525" width="326" height="235" rx="15"/>
+  <text class="title" x="145" y="562" font-size="20" font-weight="700">语义 DOM 快照</text>
+  <text class="caption" x="145" y="594" font-size="16">URL / 标题 / loading 状态</text>
+  <rect x="145" y="615" width="268" height="34" rx="8" fill="#eef8f7"/>
+  <text class="title" x="160" y="638" font-size="15" font-weight="700">e1  工作台 · button</text>
+  <rect x="145" y="660" width="268" height="34" rx="8" fill="#eef8f7"/>
+  <text class="title" x="160" y="683" font-size="15" font-weight="700">e10 批量操作 · menuitem</text>
+  <rect x="145" y="705" width="268" height="34" rx="8" fill="#eef8f7"/>
+  <text class="title" x="160" y="728" font-size="15" font-weight="700">e27 选择考试 · combobox</text>
+  <text class="caption" x="279" y="798" text-anchor="middle" font-size="15">同时记录对话框、表格、页面消息</text>
+  <text class="caption" x="279" y="832" text-anchor="middle" font-size="16" font-weight="700">elementRef 只在当前快照有效</text>
+
+  <!-- Agent decision -->
+  <rect class="group-agent" x="518" y="282" width="560" height="610" rx="28" filter="url(#shadow)"/>
+  <text class="title" x="798" y="332" text-anchor="middle" font-size="26" font-weight="700">2. 只做一次受控判断</text>
+  <text class="caption" x="798" y="362" text-anchor="middle" font-size="16">ResponsesDecisionProvider 使用紧凑上下文，不输出任意脚本</text>
+  <rect class="card" x="554" y="400" width="488" height="88" rx="15"/>
+  <text class="title" x="798" y="435" text-anchor="middle" font-size="21" font-weight="700">模型输入</text>
+  <text class="caption" x="798" y="463" text-anchor="middle" font-size="15">测试目标 · 当前快照 · 已完成断言 · 上轮结果 · 有限源码线索</text>
+
+  <path d="M798 525 L908 590 L798 655 L688 590 Z" fill="#ffffff" stroke="#a99ce2" stroke-width="2"/>
+  <text class="title" x="798" y="584" text-anchor="middle" font-size="20" font-weight="700">AgentDecision</text>
+  <text class="caption" x="798" y="610" text-anchor="middle" font-size="15">下一步只能属于四类之一</text>
+
+  <rect class="card-teal" x="554" y="692" width="226" height="78" rx="14"/>
+  <text class="title" x="667" y="723" text-anchor="middle" font-size="18" font-weight="700">action</text>
+  <text class="caption" x="667" y="748" text-anchor="middle" font-size="14">执行一个动作</text>
+  <rect class="card" x="816" y="692" width="226" height="78" rx="14"/>
+  <text class="title" x="929" y="723" text-anchor="middle" font-size="18" font-weight="700">need_project_context</text>
+  <text class="caption" x="929" y="748" text-anchor="middle" font-size="14">请求有限源码辅助</text>
+  <rect class="card-alert" x="554" y="786" width="226" height="66" rx="14"/>
+  <text class="title" x="667" y="814" text-anchor="middle" font-size="17" font-weight="700">finish</text>
+  <text class="caption" x="667" y="837" text-anchor="middle" font-size="13">申请结束，仍要检查断言</text>
+  <rect class="card-alert" x="816" y="786" width="226" height="66" rx="14"/>
+  <text class="title" x="929" y="814" text-anchor="middle" font-size="17" font-weight="700">blocked</text>
+  <text class="caption" x="929" y="837" text-anchor="middle" font-size="13">无法继续则明确受阻</text>
+
+  <!-- Execution -->
+  <rect class="group" x="1122" y="282" width="714" height="610" rx="28" filter="url(#shadow)"/>
+  <text class="title" x="1479" y="332" text-anchor="middle" font-size="26" font-weight="700">3. 校验后才驱动浏览器</text>
+  <text class="caption" x="1479" y="362" text-anchor="middle" font-size="16">动作越过任何一道边界都会被拒绝或记录为失败</text>
+
+  <rect class="card-purple" x="1157" y="400" width="198" height="108" rx="15"/>
+  <text class="title" x="1256" y="438" text-anchor="middle" font-size="20" font-weight="700">AgentAction Schema</text>
+  <text class="caption" x="1256" y="468" text-anchor="middle" font-size="14">动作名、字段、范围</text>
+  <text class="caption" x="1256" y="490" text-anchor="middle" font-size="14">Zod 严格校验</text>
+  <rect class="card-purple" x="1380" y="400" width="198" height="108" rx="15"/>
+  <text class="title" x="1479" y="438" text-anchor="middle" font-size="20" font-weight="700">TestPolicy</text>
+  <text class="caption" x="1479" y="468" text-anchor="middle" font-size="14">同源、预算、断言 ID</text>
+  <text class="caption" x="1479" y="490" text-anchor="middle" font-size="14">重复动作、快照有效性</text>
+  <rect class="card-purple" x="1603" y="400" width="198" height="108" rx="15"/>
+  <text class="title" x="1702" y="438" text-anchor="middle" font-size="20" font-weight="700">ElementRegistry</text>
+  <text class="caption" x="1702" y="468" text-anchor="middle" font-size="14">把 e27 解析为当前</text>
+  <text class="caption" x="1702" y="490" text-anchor="middle" font-size="14">快照中的真实元素</text>
+
+  <rect class="card-teal" x="1220" y="571" width="280" height="112" rx="15"/>
+  <text class="title" x="1360" y="611" text-anchor="middle" font-size="21" font-weight="700">SingleActionExecutor</text>
+  <text class="caption" x="1360" y="640" text-anchor="middle" font-size="15">将合法动作映射为受限 Playwright 调用</text>
+  <text class="caption" x="1360" y="664" text-anchor="middle" font-size="14">click · fill · press · scroll · expect* …</text>
+  <rect class="card-teal" x="1534" y="571" width="230" height="112" rx="15"/>
+  <text class="title" x="1649" y="611" text-anchor="middle" font-size="21" font-weight="700">Playwright</text>
+  <text class="caption" x="1649" y="640" text-anchor="middle" font-size="15">真实 Chromium</text>
+  <text class="caption" x="1649" y="664" text-anchor="middle" font-size="14">Locator / 断言 / 截图</text>
+
+  <rect x="1170" y="740" width="594" height="95" rx="16" fill="#f8f8fd" stroke="#d1d4df" stroke-width="1.5"/>
+  <text class="title" x="1198" y="774" font-size="18" font-weight="700">不开放的能力</text>
+  <text class="caption" x="1198" y="805" font-size="16">任意 JavaScript · 自由 CSS/XPath · 未观察元素的盲点 · 无限制键盘与文件系统副作用</text>
+
+  <!-- Action branch connections -->
+  <path class="wire-purple" d="M780 731 H1153"/>
+  <path class="wire" d="M1356 454 H1376"/>
+  <path class="wire" d="M1579 454 H1599"/>
+  <path class="wire" d="M1702 510 V553 H1500"/>
+  <path class="wire" d="M1479 510 V553 H1500"/>
+  <path class="wire" d="M1256 510 V553 H1220"/>
+  <path class="wire" d="M1501 627 H1530"/>
+  <path class="wire-purple" d="M1649 686 V912 H470 V496"/>
+  <text class="caption" x="956" y="900" text-anchor="middle" font-size="16" font-weight="700" fill="#5b4fd0">动作结束后必须重新观察；不能拿旧 elementRef 连续盲点</text>
+
+  <!-- Provider and source path -->
+  <rect class="group" x="84" y="962" width="850" height="272" rx="28" filter="url(#shadow)"/>
+  <text class="title" x="509" y="1012" text-anchor="middle" font-size="25" font-weight="700">4. DOM 信息不足时：受限 Provider 源码辅助</text>
+  <text class="caption" x="509" y="1042" text-anchor="middle" font-size="16">不是把整个项目交给模型，而是给出解决当前判断所需的有限线索</text>
+  <rect class="card" x="120" y="1080" width="218" height="96" rx="15"/>
+  <text class="title" x="229" y="1118" text-anchor="middle" font-size="19" font-weight="700">resolve_route</text>
+  <text class="caption" x="229" y="1147" text-anchor="middle" font-size="14">根据 URL 找路由与页面</text>
+  <rect class="card" x="400" y="1080" width="218" height="96" rx="15"/>
+  <text class="title" x="509" y="1118" text-anchor="middle" font-size="19" font-weight="700">search_source</text>
+  <text class="caption" x="509" y="1147" text-anchor="middle" font-size="14">在白名单范围搜索线索</text>
+  <rect class="card" x="680" y="1080" width="218" height="96" rx="15"/>
+  <text class="title" x="789" y="1118" text-anchor="middle" font-size="19" font-weight="700">inspect_files</text>
+  <text class="caption" x="789" y="1147" text-anchor="middle" font-size="14">少量局部文件、有限预算</text>
+  <path class="wire-dash" d="M929 731 V1020 H910"/>
+  <path class="wire-dash" d="M509 1074 V934 H279 V895"/>
+  <text class="caption" x="509" y="1207" text-anchor="middle" font-size="15" font-weight="700">源码只提供“回到页面验证”的线索，不能直接作为通过结论</text>
+
+  <!-- Completion and evidence -->
+  <rect class="group-agent" x="980" y="962" width="856" height="272" rx="28" filter="url(#shadow)"/>
+  <text class="title" x="1408" y="1012" text-anchor="middle" font-size="25" font-weight="700">5. 断言门禁、实时过程与可复盘证据</text>
+  <rect class="card-teal" x="1017" y="1055" width="248" height="103" rx="15"/>
+  <text class="title" x="1141" y="1092" text-anchor="middle" font-size="19" font-weight="700">requiredAssertions</text>
+  <text class="caption" x="1141" y="1120" text-anchor="middle" font-size="14">所有必需断言成功才允许通过</text>
+  <text class="caption" x="1141" y="1142" text-anchor="middle" font-size="14">动作成功 ≠ 用例通过</text>
+  <rect class="card" x="1284" y="1055" width="248" height="103" rx="15"/>
+  <text class="title" x="1408" y="1092" text-anchor="middle" font-size="19" font-weight="700">实时执行画面流</text>
+  <text class="caption" x="1408" y="1120" text-anchor="middle" font-size="14">画面帧 · 中文操作 · 技术动作</text>
+  <text class="caption" x="1408" y="1142" text-anchor="middle" font-size="14">让“TC-003”变得可理解</text>
+  <rect class="card" x="1551" y="1055" width="248" height="103" rx="15"/>
+  <text class="title" x="1675" y="1092" text-anchor="middle" font-size="19" font-weight="700">执行证据与质量记忆</text>
+  <text class="caption" x="1675" y="1120" text-anchor="middle" font-size="14">截图 · Trace · 决策轨迹 · SQLite</text>
+  <text class="caption" x="1675" y="1142" text-anchor="middle" font-size="14">失败、受阻与源码线索可回看</text>
+  <path class="wire" d="M1141 1051 V947 H1390 V895"/>
+  <path class="wire" d="M1533 1106 H1547"/>
+  <path class="wire" d="M1269 1106 H1280"/>
+  <rect x="1017" y="1181" width="782" height="31" rx="9" fill="#f7f5ff"/>
+  <text class="caption" x="1408" y="1203" text-anchor="middle" font-size="15" font-weight="700">通过：所有断言完成　｜　受阻：DOM 不足、关键不确定项、预算或安全边界触发</text>
+
+  <!-- detail legend -->
+  <rect x="84" y="1271" width="1752" height="62" rx="18" fill="#ffffff" stroke="#d0c9ec" stroke-width="1.5"/>
+  <circle cx="132" cy="1302" r="9" fill="#67aaa4"/>
+  <text class="title" x="157" y="1309" font-size="17" font-weight="700">当前可执行能力</text>
+  <circle cx="486" cy="1302" r="9" fill="#7367f0"/>
+  <text class="title" x="511" y="1309" font-size="17" font-weight="700">模型决策与契约边界</text>
+  <circle cx="880" cy="1302" r="9" fill="#e2b466"/>
+  <text class="title" x="905" y="1309" font-size="17" font-weight="700">阻塞或人工确认点</text>
+  <text class="caption" x="1490" y="1309" text-anchor="middle" font-size="17" font-weight="700">核心设计：模型能探索，但不能绕过人、页面事实和执行安全边界</text>
+</svg>

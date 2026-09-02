@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="900" viewBox="0 0 1920 900" role="img" aria-labelledby="title desc">
+  <title id="title">知测 AI 的业务闭环图</title>
+  <desc id="desc">展示开发人员从导入需求材料、人工确认口径、准备环境、真实浏览器执行、证据复盘到质量记忆的闭环过程。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7f5ff"/>
+      <stop offset="100%" stop-color="#eef6fb"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="9" stdDeviation="12" flood-color="#4e4678" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto">
+      <path d="M0,0 L11,6 L0,12 z" fill="#77758d"/>
+    </marker>
+    <style>
+      .title { font-family: PingFang SC, Microsoft YaHei, Arial, sans-serif; fill: #1e2240; }
+      .caption { font-family: PingFang SC, Microsoft YaHei, Arial, sans-serif; fill: #687086; }
+      .stage { fill: #ffffff; stroke: #c9c5df; stroke-width: 2; }
+      .stage-focus { fill: #ede8ff; stroke: #9f94dc; stroke-width: 2.5; }
+      .pill { fill: #d7efed; stroke: #8cc6c0; stroke-width: 1.3; }
+      .wire { fill: none; stroke: #77758d; stroke-width: 3; marker-end: url(#arrow); }
+      .return { fill: none; stroke: #786de0; stroke-width: 3; stroke-dasharray: 9 8; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1920" height="900" fill="url(#background)"/>
+  <text class="title" x="960" y="72" text-anchor="middle" font-size="38" font-weight="700">知测 AI · 从需求变化到可复用质量资产的闭环</text>
+  <text class="caption" x="960" y="112" text-anchor="middle" font-size="20">以开发者实际工作路径组织：先澄清业务，再验证真实页面，最后沉淀为下一次更快的回归能力</text>
+
+  <rect x="86" y="164" width="1748" height="492" rx="32" fill="#eceafa" stroke="#d0c9ec" stroke-width="2"/>
+  <text class="caption" x="130" y="204" font-size="18" font-weight="700">一次真实需求的最小路径</text>
+
+  <!-- Stage 1 -->
+  <rect class="stage" x="128" y="258" width="242" height="286" rx="25" filter="url(#shadow)"/>
+  <circle cx="170" cy="302" r="22" fill="#7367f0"/><text x="170" y="310" text-anchor="middle" font-size="21" font-family="Arial" fill="#fff" font-weight="700">1</text>
+  <text class="title" x="248" y="307" text-anchor="middle" font-size="24" font-weight="700">导入材料</text>
+  <rect class="pill" x="153" y="342" width="192" height="46" rx="11"/>
+  <text class="title" x="249" y="371" text-anchor="middle" font-size="17" font-weight="700">PRD / 技术方案</text>
+  <rect class="pill" x="153" y="403" width="192" height="46" rx="11"/>
+  <text class="title" x="249" y="432" text-anchor="middle" font-size="17" font-weight="700">接口说明 / 补充材料</text>
+  <text class="caption" x="249" y="484" text-anchor="middle" font-size="16">先形成一个版本的共同上下文</text>
+
+  <!-- Stage 2 -->
+  <rect class="stage" x="420" y="258" width="242" height="286" rx="25" filter="url(#shadow)"/>
+  <circle cx="462" cy="302" r="22" fill="#7367f0"/><text x="462" y="310" text-anchor="middle" font-size="21" font-family="Arial" fill="#fff" font-weight="700">2</text>
+  <text class="title" x="541" y="307" text-anchor="middle" font-size="24" font-weight="700">结构化理解</text>
+  <rect class="pill" x="445" y="342" width="192" height="46" rx="11"/>
+  <text class="title" x="541" y="371" text-anchor="middle" font-size="17" font-weight="700">规则 / 状态 / 风险</text>
+  <rect class="pill" x="445" y="403" width="192" height="46" rx="11"/>
+  <text class="title" x="541" y="432" text-anchor="middle" font-size="17" font-weight="700">问题 / 测试用例</text>
+  <text class="caption" x="541" y="484" text-anchor="middle" font-size="16">把文档转为可评审测试资产</text>
+
+  <!-- Stage 3 -->
+  <rect class="stage-focus" x="712" y="236" width="300" height="330" rx="27" filter="url(#shadow)"/>
+  <circle cx="754" cy="280" r="22" fill="#5b4fd0"/><text x="754" y="288" text-anchor="middle" font-size="21" font-family="Arial" fill="#fff" font-weight="700">3</text>
+  <text class="title" x="862" y="284" text-anchor="middle" font-size="25" font-weight="700">人工 Review</text>
+  <rect class="pill" x="742" y="321" width="240" height="48" rx="11"/>
+  <text class="title" x="862" y="351" text-anchor="middle" font-size="17" font-weight="700">保留 AI 建议作对照</text>
+  <rect x="742" y="384" width="240" height="48" rx="11" fill="#fff" stroke="#9f94dc" stroke-width="1.4"/>
+  <text class="title" x="862" y="414" text-anchor="middle" font-size="17" font-weight="700">写下人工最终业务口径</text>
+  <rect class="pill" x="742" y="447" width="240" height="48" rx="11"/>
+  <text class="title" x="862" y="477" text-anchor="middle" font-size="17" font-weight="700">生成并检查执行契约</text>
+  <text class="caption" x="862" y="531" text-anchor="middle" font-size="16">不确定项存在时，不让用例冒险执行</text>
+
+  <!-- Stage 4 -->
+  <rect class="stage" x="1062" y="258" width="242" height="286" rx="25" filter="url(#shadow)"/>
+  <circle cx="1104" cy="302" r="22" fill="#7367f0"/><text x="1104" y="310" text-anchor="middle" font-size="21" font-family="Arial" fill="#fff" font-weight="700">4</text>
+  <text class="title" x="1183" y="307" text-anchor="middle" font-size="24" font-weight="700">准备执行</text>
+  <rect class="pill" x="1087" y="342" width="192" height="46" rx="11"/>
+  <text class="title" x="1183" y="371" text-anchor="middle" font-size="17" font-weight="700">测试地址与 Origin</text>
+  <rect class="pill" x="1087" y="403" width="192" height="46" rx="11"/>
+  <text class="title" x="1183" y="432" text-anchor="middle" font-size="17" font-weight="700">storageState 登录态</text>
+  <text class="caption" x="1183" y="484" text-anchor="middle" font-size="16">进入真实、可测的 B 端页面</text>
+
+  <!-- Stage 5 -->
+  <rect class="stage-focus" x="1354" y="236" width="300" height="330" rx="27" filter="url(#shadow)"/>
+  <circle cx="1396" cy="280" r="22" fill="#5b4fd0"/><text x="1396" y="288" text-anchor="middle" font-size="21" font-family="Arial" fill="#fff" font-weight="700">5</text>
+  <text class="title" x="1504" y="284" text-anchor="middle" font-size="25" font-weight="700">真实浏览器执行</text>
+  <rect class="pill" x="1384" y="321" width="240" height="48" rx="11"/>
+  <text class="title" x="1504" y="351" text-anchor="middle" font-size="17" font-weight="700">固定计划稳定回归</text>
+  <rect class="pill" x="1384" y="384" width="240" height="48" rx="11"/>
+  <text class="title" x="1504" y="414" text-anchor="middle" font-size="17" font-weight="700">动态 Agent 单步探索</text>
+  <rect class="pill" x="1384" y="447" width="240" height="48" rx="11"/>
+  <text class="title" x="1504" y="477" text-anchor="middle" font-size="17" font-weight="700">实时画面与中文操作</text>
+  <text class="caption" x="1504" y="531" text-anchor="middle" font-size="16">页面表现由真实 DOM 证明</text>
+
+  <!-- Stage 6 -->
+  <rect class="stage" x="1675" y="258" width="180" height="286" rx="25" filter="url(#shadow)"/>
+  <circle cx="1713" cy="302" r="22" fill="#7367f0"/><text x="1713" y="310" text-anchor="middle" font-size="21" font-family="Arial" fill="#fff" font-weight="700">6</text>
+  <text class="title" x="1765" y="307" text-anchor="middle" font-size="21" font-weight="700">复盘与沉淀</text>
+  <rect class="pill" x="1691" y="342" width="148" height="46" rx="11"/>
+  <text class="title" x="1765" y="371" text-anchor="middle" font-size="15" font-weight="700">截图 / Trace</text>
+  <rect class="pill" x="1691" y="403" width="148" height="46" rx="11"/>
+  <text class="title" x="1765" y="432" text-anchor="middle" font-size="15" font-weight="700">规则 / 失败 / 线索</text>
+  <text class="caption" x="1765" y="484" text-anchor="middle" font-size="14">形成质量记忆</text>
+
+  <!-- Forward arrows -->
+  <path class="wire" d="M371 401 H416"/>
+  <path class="wire" d="M663 401 H708"/>
+  <path class="wire" d="M1014 401 H1058"/>
+  <path class="wire" d="M1305 401 H1350"/>
+  <path class="wire" d="M1655 401 H1670"/>
+
+  <!-- Return loop -->
+  <path class="return" d="M1765 568 V718 H542 Q412 718 412 607 V559"/>
+  <text class="title" x="1070" y="747" text-anchor="middle" font-size="19" font-weight="700" fill="#5b4fd0">稳定路径可固化为固定回归计划；失败与受阻经验回流到下一轮需求理解和 Review</text>
+
+  <!-- Decision rule -->
+  <rect x="260" y="790" width="1400" height="64" rx="18" fill="#ffffff" stroke="#d0c9ec" stroke-width="1.5"/>
+  <circle cx="306" cy="822" r="10" fill="#7367f0"/>
+  <text class="title" x="336" y="829" font-size="18" font-weight="700">人负责业务裁决</text>
+  <circle cx="680" cy="822" r="10" fill="#67aaa4"/>
+  <text class="title" x="710" y="829" font-size="18" font-weight="700">模型负责结构化理解与有限推理</text>
+  <circle cx="1184" cy="822" r="10" fill="#5d9be0"/>
+  <text class="title" x="1214" y="829" font-size="18" font-weight="700">真实浏览器负责最终运行时验证</text>
+</svg>

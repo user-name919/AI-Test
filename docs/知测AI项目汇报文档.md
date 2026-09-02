@@ -45,49 +45,15 @@
 
 因此，项目的价值闭环可以概括为：
 
-```mermaid
-flowchart LR
-  A["需求变化<br/>PRD / 技术方案 / 接口材料"] --> B["结构化理解<br/>规则、状态、风险、问题、用例"]
-  B --> C["人工 Review<br/>确认最终业务口径"]
-  C --> D["执行准备<br/>环境、登录态、源码辅助"]
-  D --> E["真实浏览器测试<br/>固定计划或动态 Agent"]
-  E --> F["可追溯证据<br/>画面、步骤、截图、Trace"]
-  F --> G["质量记忆<br/>版本、规则、失败经验"]
-  G -. 下一次需求或回归 .-> A
-```
+> 先把需求材料转成可评审资产，再将人工口径收敛为可验证目标；执行后把真实页面证据和失败经验回流为下一轮的质量记忆。完整流程见第 5 节。
 
 ---
 
-## 3. 整体示意图：谁在什么时候使用它
+## 3. 整体与方案设计图：谁在什么时候使用它
 
-```mermaid
-flowchart TB
-  Dev["前端开发 / 测试开发"]
-  PM["产品 / 需求评审人"]
-  Docs["PRD、技术方案、接口文档<br/>PDF / Markdown / TXT"]
-  Target["被测测试环境<br/>真实 B 端页面"]
-  Source["被测项目源码<br/>本机软链，只读白名单"]
+![知测 AI 整体架构图](assets/知测AI-整体架构图.png)
 
-  subgraph Q["知测 AI 工作台"]
-    Version["版本中心<br/>导入与版本沉淀"]
-    Demand["需求中心<br/>规则、状态、风险、问题"]
-    Review["人工 Review 工作台<br/>AI 建议 + 人工最终口径 + 执行契约"]
-    Cases["用例资产<br/>选择用例、生成固定计划"]
-    Agent["动态 Agent<br/>单步观察、决策、执行、重观察"]
-    Execution["执行中心<br/>实时画面、报告、截图、Trace"]
-    Memory["质量记忆<br/>规则、失败、源码线索、历史版本"]
-  end
-
-  Dev --> Docs
-  PM --> Review
-  Docs --> Version --> Demand --> Review --> Cases
-  Cases --> Execution
-  Cases --> Agent
-  Target <--> Agent
-  Source -. 路由 / 局部源码辅助 .-> Agent
-  Agent --> Execution --> Memory
-  Dev --> Q
-```
+> 这张图同时是汇报版的**整体示意图**和**方案设计图**：浅紫色区域是知测 AI 自身承担的能力，左右两侧分别是协作对象/输入和真实运行环境；虚线表示受限的源码辅助与证据回流，而不是对被测项目的直接控制。
 
 这张图表达两个关键点：
 
@@ -96,56 +62,7 @@ flowchart TB
 
 ---
 
-## 4. 方案设计图：当前系统结构
-
-```mermaid
-flowchart TB
-  subgraph UI["前端工作台 · Vue 3 + TypeScript"]
-    U1["版本中心 / 需求中心"]
-    U2["用例资产 / 人工 Review"]
-    U3["执行中心 / 实时画面流 / 质量记忆"]
-  end
-
-  subgraph API["本地 API 服务 · Node.js"]
-    A1["需求材料解析<br/>PDF 文本、Markdown、TXT"]
-    A2["模型适配层<br/>公司 Responses API"]
-    A3["Review 执行契约生成"]
-    A4["项目知识 Provider 注册表"]
-    A5["固定计划执行器"]
-    A6["动态 Agent 编排器"]
-    A7["NDJSON 实时事件流"]
-  end
-
-  subgraph Guard["受控边界"]
-    G1["Zod 契约校验"]
-    G2["TestPolicy<br/>同源、步骤预算、断言、重复动作"]
-    G3["elementRef 临时注册表"]
-    G4["源码白名单<br/>路径、文件数、上下文预算"]
-  end
-
-  subgraph Runtime["真实执行与持久化"]
-    R1["Playwright Chromium<br/>storageState 登录态"]
-    R2["真实 DOM 语义快照<br/>PageObserver"]
-    R3["SQLite 本地数据"]
-    R4["Artifacts<br/>截图、Trace、执行证据"]
-  end
-
-  UI <--> API
-  A1 --> A2
-  A2 --> A3
-  A3 --> A6
-  A4 --> A3
-  A4 --> A6
-  A5 --> G1 --> R1
-  A6 --> G1 --> G2 --> G3 --> R1
-  R1 --> R2 --> A6
-  A7 --> UI
-  A5 --> A7
-  A6 --> A7
-  API --> R3
-  R1 --> R4
-  R4 --> UI
-```
+## 4. 方案设计说明：当前系统如何分工
 
 ### 4.1 结构上的关键设计选择
 
@@ -163,66 +80,34 @@ flowchart TB
 
 ## 5. 流程示意图：一次需求到执行的完整路径
 
-```mermaid
-sequenceDiagram
-  actor Dev as 前端开发 / 测试人员
-  actor PM as 产品 / Review 人
-  participant UI as 知测 AI 工作台
-  participant API as 本地 API
-  participant Model as 公司模型
-  participant Provider as 项目知识 Provider
-  participant PW as Playwright 真实浏览器
-  participant Store as SQLite / 证据目录
-
-  Dev->>UI: 导入 PRD + 技术方案 / 接口材料
-  UI->>API: 上传并解析材料
-  API->>Model: 请求结构化需求分析
-  Model-->>API: 规则、状态、风险、问题、测试用例
-  API->>Store: 保存版本与初始 Review 状态
-  API-->>UI: 展示需求中心与用例资产
-
-  PM->>UI: 修改或确认人工最终口径
-  UI->>API: 保存 Review
-  API->>Provider: 可选：查路由 / 读局部源码
-  API->>Model: 结合人工口径生成执行契约
-  Model-->>API: 触发条件、行为、断言、禁止行为、不确定项
-  API-->>UI: 展示契约草案，等待人工确认
-
-  Dev->>UI: 选择用例、测试环境与执行模式
-  UI->>API: 固定计划或动态 Agent 执行请求
-  API->>PW: 创建带 storageState 的 BrowserContext
-  PW-->>API: 真实页面 DOM、浏览器画面、执行结果
-  API-->>UI: NDJSON 推送中文操作、技术动作和画面帧
-  API->>Store: 保存执行记录、截图、Trace、决策轨迹
-  Store-->>UI: 执行报告与质量记忆
-```
+![知测 AI 一次需求到执行的流程图](assets/知测AI-业务闭环图.png)
 
 ### 5.1 动态 Agent 的内部闭环
 
 动态 Agent 用于“固定脚本还不够稳定、页面路径或组件状态需要探索”的情况。它不是一次生成长脚本，而是每一步只作一个受控决定。
 
-```mermaid
-flowchart TD
-  Start["选择已满足前置条件的用例"] --> Observe["PageObserver 观察真实页面<br/>生成语义 DOM、对话框、表格、消息"]
-  Observe --> Decide["公司模型做单步决策"]
-  Decide --> Kind{"决策类型"}
+![知测 AI 动态 Agent 执行闭环图](assets/知测AI-动态Agent执行闭环图.png)
 
-  Kind -->|动作| Validate["Schema + TestPolicy 校验<br/>快照 ID、elementRef、同源、预算、断言"]
-  Validate --> Execute["SingleActionExecutor<br/>映射为 Playwright 动作"]
-  Execute --> Result{"执行结果"}
-  Result -->|成功或页面变化| Observe
-  Result -->|失败| Reobserve["记录失败并重新观察<br/>必要时允许有限恢复"]
-  Reobserve --> Decide
-
-  Kind -->|需要源码| Source["Provider 按需读取<br/>查路由 / 搜索 / 少量局部文件"]
-  Source --> Observe
-  Kind -->|完成| Check["所有 requiredAssertions 已通过？"]
-  Check -->|是| Done["保存通过结果与证据"]
-  Check -->|否| Block["阻塞：不把猜测当通过"]
-  Result -->|不可恢复失败| Block
-```
+> 动态 Agent 图是本项目的重点：它明确区分“模型推理”“平台策略校验”“Playwright 真实执行”和“可复盘证据”。这也是此前围绕隐藏元素、错误路由、DOM 未渲染、未知动作和断言数量反复优化的核心原因。
 
 这个闭环专门解决此前 B 端页面常见的“模型点到了隐藏的同名元素、旧页面快照已失效、页面只渲染了壳但内容尚未加载”等问题。当前动态动作协议支持导航、点击、输入、选择、勾选、按键、悬浮、滚动、可见/隐藏/可用/选中/值/文本/属性/数量断言、等待和截图等受控操作；模型不能直接执行任意 CSS、XPath 或 JavaScript。
+
+#### 5.2 动态 Agent 为什么需要这套多层防护
+
+动态 Agent 是项目中投入沟通和调试最多的部分，原因不在于“让模型再聪明一点”就能解决，而在于一次点击背后同时存在模型、平台协议、页面状态和 Playwright 四层事实。下表对应此前实际出现过的问题与当前处理方式：
+
+| 真实问题 | 如果只靠模型会怎样 | 当前的处理机制 |
+| --- | --- | --- |
+| 模型输出平台未定义的动作 | 在进入 Playwright 前就出现 `invalid_union`，模型以为能做、平台却无法执行 | `AgentAction` + Zod Schema 明确列出可执行动作及字段；未知动作被拒绝，不被伪装成浏览器失败 |
+| 页面存在隐藏的同名下拉选项 | 自由 `nth()` 定位可能点到不可见元素，最终等到 `locator.click: Timeout` | `PageObserver` 只把当前可见、可交互元素注册为 `elementRef`；`ElementRegistry` 将引用绑定到当前快照的真实节点 |
+| 菜单、异步页面或权限数据尚未渲染 | Agent 在只有“应用外壳”的 DOM 上继续猜控件，连续动作都失效 | 每次页面变化后重新观察；必要时先等待、走实际导航，或请求有限源码辅助 |
+| 只知道 URL，不知道功能页面和组件位置 | 要么读全仓导致上下文超预算，要么模型臆造路径 | Provider 仅提供 `resolve_route`、`search_source`、`inspect_files` 三种按需操作，并限制源码目录、文件数和上下文长度 |
+| 源码显示有某个逻辑，但真实环境表现不同 | 把代码阅读结果直接判作“通过”，会忽略权限、接口数据和运行时差异 | 源码结果只进入下一次判断的上下文；必须再次回到真实 DOM 执行和断言 |
+| 点击、等待都成功，但核心预期还没验证 | 界面可能出现“执行了 6 轮、0 个断言通过”，看起来像误判 | `requiredAssertions` 单独计数；只有带合法 `assertionId` 的 `expect*` 成功才算通过，动作成功不等于用例成功 |
+| 非技术人员看不懂 `click e10`、`waitFor 1000ms` | 无法知道当前到底在测什么，只能等待最终报告 | 实时画面流同时展示中文业务动作、执行目的和原始技术动作；三者互相对应 |
+| 登录态或目标地址不匹配 | 看似是定位失败，实际根本不在正确页面或权限上下文中 | 测试环境保存 `storageState`，执行前校验测试地址、环境和源码项目的 Origin |
+
+因此，动态 Agent 的定位应是：**在不确定的页面状态中进行受控探索和恢复，而不是代替固定回归计划、也不是开放任意代码执行。** 当路径与断言稳定后，应固化为固定计划；当证据不足时，应明确受阻并把问题交还给人。
 
 ---
 

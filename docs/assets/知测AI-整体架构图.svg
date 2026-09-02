@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1120" viewBox="0 0 1920 1120" role="img" aria-labelledby="title desc">
+  <title id="title">知测 AI 整体架构图</title>
+  <desc id="desc">展示需求材料、人工 Review、模型、项目源码 Provider、Playwright、执行证据和质量记忆之间的关系。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7f5ff"/>
+      <stop offset="100%" stop-color="#eef6fb"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#eee9ff"/>
+      <stop offset="100%" stop-color="#e5ddfb"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#4e4678" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0,0 L10,5.5 L0,11 z" fill="#7a7791"/>
+    </marker>
+    <style>
+      .title { font-family: PingFang SC, Microsoft YaHei, Arial, sans-serif; fill: #1e2240; }
+      .caption { font-family: PingFang SC, Microsoft YaHei, Arial, sans-serif; fill: #70758f; }
+      .group { fill: #ffffff; stroke: #cfc8e8; stroke-width: 2; }
+      .group-purple { fill: url(#hero); stroke: #a99ce2; stroke-width: 2.5; }
+      .card { fill: #d7efed; stroke: #8cc6c0; stroke-width: 1.5; }
+      .card-light { fill: #ffffff; stroke: #c9d1e0; stroke-width: 1.5; }
+      .card-purple { fill: #dcd5ff; stroke: #a99ce2; stroke-width: 1.5; }
+      .wire { fill: none; stroke: #7a7791; stroke-width: 2.5; marker-end: url(#arrow); }
+      .wire-dash { fill: none; stroke: #8a87a2; stroke-width: 2.5; stroke-dasharray: 8 8; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1120" fill="url(#background)"/>
+  <text class="title" x="960" y="72" text-anchor="middle" font-size="38" font-weight="700">知测 AI · 面向 B 端前端团队的受控 AI 测试工作台</text>
+  <text class="caption" x="960" y="112" text-anchor="middle" font-size="20">把需求理解、人工业务裁决、真实浏览器验证与质量记忆连接为可追溯闭环</text>
+
+  <!-- People and material sources -->
+  <rect class="group" x="66" y="190" width="286" height="598" rx="28" filter="url(#shadow)"/>
+  <text class="title" x="209" y="240" text-anchor="middle" font-size="25" font-weight="700">协作角色</text>
+  <rect class="card-light" x="94" y="270" width="230" height="92" rx="14"/>
+  <text class="title" x="209" y="307" text-anchor="middle" font-size="21" font-weight="700">前端开发 / 测试开发</text>
+  <text class="caption" x="209" y="337" text-anchor="middle" font-size="16">导入需求、选用例、执行与排障</text>
+  <rect class="card-light" x="94" y="388" width="230" height="92" rx="14"/>
+  <text class="title" x="209" y="425" text-anchor="middle" font-size="21" font-weight="700">产品 / 需求评审人</text>
+  <text class="caption" x="209" y="455" text-anchor="middle" font-size="16">确认最终业务口径</text>
+  <rect class="card-purple" x="94" y="506" width="230" height="112" rx="14"/>
+  <text class="title" x="209" y="545" text-anchor="middle" font-size="21" font-weight="700">需求材料</text>
+  <text class="caption" x="209" y="576" text-anchor="middle" font-size="16">PRD / 技术方案 / 接口文档</text>
+  <text class="caption" x="209" y="600" text-anchor="middle" font-size="15">PDF · Markdown · TXT</text>
+  <rect class="card-purple" x="94" y="644" width="230" height="112" rx="14"/>
+  <text class="title" x="209" y="683" text-anchor="middle" font-size="21" font-weight="700">被测项目源码</text>
+  <text class="caption" x="209" y="714" text-anchor="middle" font-size="16">本机软链接入 · 只读白名单</text>
+  <text class="caption" x="209" y="738" text-anchor="middle" font-size="15">不修改 lvworkbench</text>
+
+  <!-- Core workbench -->
+  <rect class="group-purple" x="440" y="160" width="904" height="720" rx="32" filter="url(#shadow)"/>
+  <text class="title" x="892" y="216" text-anchor="middle" font-size="31" font-weight="700">知测 AI 工作台</text>
+  <text class="caption" x="892" y="249" text-anchor="middle" font-size="18">业务信息由人确认，运行结果由真实浏览器证明</text>
+
+  <rect class="group" x="474" y="280" width="396" height="258" rx="22"/>
+  <text class="title" x="672" y="324" text-anchor="middle" font-size="23" font-weight="700">需求理解与 Review</text>
+  <rect class="card" x="501" y="354" width="162" height="75" rx="12"/>
+  <text class="title" x="582" y="385" text-anchor="middle" font-size="19" font-weight="700">版本中心</text>
+  <text class="caption" x="582" y="411" text-anchor="middle" font-size="14">材料解析与沉淀</text>
+  <rect class="card" x="684" y="354" width="158" height="75" rx="12"/>
+  <text class="title" x="763" y="385" text-anchor="middle" font-size="19" font-weight="700">需求中心</text>
+  <text class="caption" x="763" y="411" text-anchor="middle" font-size="14">规则、状态、风险</text>
+  <rect class="card-purple" x="501" y="445" width="341" height="68" rx="12"/>
+  <text class="title" x="672" y="473" text-anchor="middle" font-size="19" font-weight="700">人工 Review 工作台</text>
+  <text class="caption" x="672" y="497" text-anchor="middle" font-size="14">AI 建议 + 人工最终口径 + 执行契约</text>
+
+  <rect class="group" x="905" y="280" width="406" height="258" rx="22"/>
+  <text class="title" x="1108" y="324" text-anchor="middle" font-size="23" font-weight="700">测试设计与编排</text>
+  <rect class="card" x="936" y="354" width="160" height="75" rx="12"/>
+  <text class="title" x="1016" y="385" text-anchor="middle" font-size="19" font-weight="700">用例资产</text>
+  <text class="caption" x="1016" y="411" text-anchor="middle" font-size="14">主流程、异常、边界</text>
+  <rect class="card" x="1117" y="354" width="162" height="75" rx="12"/>
+  <text class="title" x="1198" y="385" text-anchor="middle" font-size="19" font-weight="700">固定计划</text>
+  <text class="caption" x="1198" y="411" text-anchor="middle" font-size="14">成熟路径的回归</text>
+  <rect class="card-purple" x="936" y="445" width="343" height="68" rx="12"/>
+  <text class="title" x="1108" y="473" text-anchor="middle" font-size="19" font-weight="700">动态 Agent</text>
+  <text class="caption" x="1108" y="497" text-anchor="middle" font-size="14">观察 → 决策 → 执行 → 重观察</text>
+
+  <rect class="group" x="474" y="570" width="837" height="266" rx="22"/>
+  <text class="title" x="892" y="616" text-anchor="middle" font-size="23" font-weight="700">受控执行与可观测性</text>
+  <rect class="card" x="505" y="652" width="174" height="105" rx="12"/>
+  <text class="title" x="592" y="686" text-anchor="middle" font-size="18" font-weight="700">动作协议</text>
+  <text class="caption" x="592" y="714" text-anchor="middle" font-size="14">Schema 校验</text>
+  <text class="caption" x="592" y="738" text-anchor="middle" font-size="14">受限领域动作</text>
+  <rect class="card" x="704" y="652" width="174" height="105" rx="12"/>
+  <text class="title" x="791" y="686" text-anchor="middle" font-size="18" font-weight="700">测试策略</text>
+  <text class="caption" x="791" y="714" text-anchor="middle" font-size="14">同源、预算、断言</text>
+  <text class="caption" x="791" y="738" text-anchor="middle" font-size="14">快照与 elementRef</text>
+  <rect class="card" x="903" y="652" width="174" height="105" rx="12"/>
+  <text class="title" x="990" y="686" text-anchor="middle" font-size="18" font-weight="700">实时画面流</text>
+  <text class="caption" x="990" y="714" text-anchor="middle" font-size="14">中文操作说明</text>
+  <text class="caption" x="990" y="738" text-anchor="middle" font-size="14">NDJSON 事件</text>
+  <rect class="card" x="1102" y="652" width="174" height="105" rx="12"/>
+  <text class="title" x="1189" y="686" text-anchor="middle" font-size="18" font-weight="700">质量记忆</text>
+  <text class="caption" x="1189" y="714" text-anchor="middle" font-size="14">规则、失败与线索</text>
+  <text class="caption" x="1189" y="738" text-anchor="middle" font-size="14">版本与执行历史</text>
+
+  <!-- Runtime -->
+  <rect class="group" x="1432" y="190" width="420" height="598" rx="28" filter="url(#shadow)"/>
+  <text class="title" x="1642" y="240" text-anchor="middle" font-size="25" font-weight="700">真实运行环境</text>
+  <rect class="card-light" x="1461" y="274" width="362" height="103" rx="14"/>
+  <text class="title" x="1642" y="310" text-anchor="middle" font-size="21" font-weight="700">公司模型服务</text>
+  <text class="caption" x="1642" y="340" text-anchor="middle" font-size="16">Responses API · 结构化输出</text>
+  <rect class="card-light" x="1461" y="401" width="362" height="128" rx="14"/>
+  <text class="title" x="1642" y="438" text-anchor="middle" font-size="21" font-weight="700">Playwright Chromium</text>
+  <text class="caption" x="1642" y="468" text-anchor="middle" font-size="16">真实测试环境页面</text>
+  <text class="caption" x="1642" y="493" text-anchor="middle" font-size="15">复用 storageState 登录态</text>
+  <rect class="card-light" x="1461" y="553" width="362" height="104" rx="14"/>
+  <text class="title" x="1642" y="589" text-anchor="middle" font-size="21" font-weight="700">本地持久化</text>
+  <text class="caption" x="1642" y="619" text-anchor="middle" font-size="16">SQLite · 截图 · Trace · 证据文件</text>
+  <rect class="card-purple" x="1461" y="681" width="362" height="76" rx="14"/>
+  <text class="title" x="1642" y="713" text-anchor="middle" font-size="19" font-weight="700">被测 B 端页面</text>
+  <text class="caption" x="1642" y="738" text-anchor="middle" font-size="14">真实 DOM 是最终事实</text>
+
+  <!-- Connections -->
+  <path class="wire" d="M352 316 H438"/>
+  <path class="wire" d="M352 434 H438"/>
+  <path class="wire" d="M352 562 H438"/>
+  <path class="wire-dash" d="M352 700 H438"/>
+  <path class="wire" d="M870 478 H903"/>
+  <path class="wire" d="M1108 538 V565"/>
+  <path class="wire" d="M1346 371 H1430"/>
+  <path class="wire" d="M1346 480 H1430"/>
+  <path class="wire" d="M1346 704 H1430"/>
+  <path class="wire" d="M1430 620 H1320 V781 H1108"/>
+  <path class="wire-dash" d="M1430 718 H1320 V796 H990"/>
+
+  <!-- Footer principles -->
+  <rect x="174" y="944" width="1572" height="102" rx="22" fill="#e9e6f8" stroke="#c7c0e4" stroke-width="1.5"/>
+  <text class="title" x="340" y="986" text-anchor="middle" font-size="20" font-weight="700">核心原则</text>
+  <text class="caption" x="605" y="982" text-anchor="middle" font-size="19">人工口径是业务依据</text>
+  <text class="caption" x="900" y="982" text-anchor="middle" font-size="19">源码只做辅助线索</text>
+  <text class="caption" x="1200" y="982" text-anchor="middle" font-size="19">真实 DOM 提供运行时证据</text>
+  <text class="caption" x="1510" y="982" text-anchor="middle" font-size="19">失败可复盘并沉淀为资产</text>
+  <circle cx="466" cy="978" r="7" fill="#7367f0"/><circle cx="758" cy="978" r="7" fill="#7367f0"/><circle cx="1050" cy="978" r="7" fill="#7367f0"/><circle cx="1363" cy="978" r="7" fill="#7367f0"/>
+</svg>
