@@ -2,6 +2,7 @@ import { automationPlanSchema, prdAnalysisSchema, type AutomationPlan, type PrdA
 import { jsonrepair } from 'jsonrepair'
 import { getModelConfig } from './model-config'
 import { ResponsesModelClient } from './model-client'
+import type { ResolvedReviewContext } from './review-execution-context'
 
 const systemPrompt = `你是一名资深 B 端前端测试架构师。请阅读用户提供的需求材料，并输出严格 JSON。
 目标不是复述文档，而是把需求转成可评审、可测试、未来可映射到 Playwright 的结构。
@@ -72,7 +73,7 @@ export async function analyzePrd(documents: SourceDocument[]): Promise<{ result:
   throw lastError ?? new Error('模型解析失败')
 }
 
-export async function generateAutomationPlan(targetUrl: string, testCases: PrdAnalysis['requirements'][number]['testCases']): Promise<AutomationPlan> {
+export async function generateAutomationPlan(targetUrl: string, testCases: PrdAnalysis['requirements'][number]['testCases'], reviewContexts: ResolvedReviewContext[] = []): Promise<AutomationPlan> {
   const config = getModelConfig()
   const client = new ResponsesModelClient(config)
   const prompt = `你是 Playwright 自动化测试规划器。将测试用例转换为严格 JSON 的受控步骤，不输出 JavaScript。
@@ -85,7 +86,8 @@ export async function generateAutomationPlan(targetUrl: string, testCases: PrdAn
 优先使用 role、label、text，只有材料明确提供稳定选择器时才用 css。不得跳转到目标域名之外。无法从用例确定的登录、账号或数据准备不要杜撰，只从进入目标首页后的可执行步骤开始。最后必须截图。
 JSON 格式：{"name":"计划名称","targetUrl":"${targetUrl}","steps":[]}
 目标地址：${targetUrl}
-测试用例：${JSON.stringify(testCases)}`
+测试用例：${JSON.stringify(testCases)}
+已确认的人工执行口径（优先于 AI 建议，必须回到真实 DOM 验证）：${JSON.stringify(reviewContexts.length ? reviewContexts : '无')}`
   const output = await client.generateText({ messages: [{ role: 'user', content: prompt }], maxOutputTokens: 6000 })
   return automationPlanSchema.parse(JSON.parse(jsonrepair(output.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''))))
 }

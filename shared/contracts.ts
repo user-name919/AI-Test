@@ -43,6 +43,48 @@ export const prdAnalysisSchema = z.object({
 
 export type PrdAnalysis = z.infer<typeof prdAnalysisSchema>
 
+export type RequirementAnalysis = PrdAnalysis['requirements'][number]
+
+export interface ReviewExecutionContract {
+  objective: string
+  triggers: string[]
+  preconditions: string[]
+  behaviors: string[]
+  assertions: string[]
+  forbiddenBehaviors: string[]
+  sourceHints: string[]
+  uncertainties: string[]
+  confidence: 'high' | 'medium' | 'low'
+}
+
+export type QuestionReviewStatus = 'accepted' | 'edited' | 'deferred'
+
+export interface QuestionReview {
+  status: QuestionReviewStatus
+  finalStatement: string
+  executionContract?: ReviewExecutionContract
+  updatedAt: string | null
+}
+
+export const reviewExecutionContractSchema = z.object({
+  objective: z.string().min(1),
+  triggers: z.array(z.string().min(1)),
+  preconditions: z.array(z.string().min(1)),
+  behaviors: z.array(z.string().min(1)).min(1),
+  assertions: z.array(z.string().min(1)).min(1),
+  forbiddenBehaviors: z.array(z.string().min(1)),
+  sourceHints: z.array(z.string().min(1)),
+  uncertainties: z.array(z.string().min(1)),
+  confidence: z.enum(['high', 'medium', 'low']),
+})
+
+export const questionReviewSchema = z.object({
+  status: z.enum(['accepted', 'edited', 'deferred']),
+  finalStatement: z.string().min(1),
+  executionContract: reviewExecutionContractSchema.optional(),
+  updatedAt: z.string().nullable().default(null),
+})
+
 export interface SavedAnalysis {
   id: string
   fileName: string
@@ -71,8 +113,16 @@ export interface AnalysisSummary {
 export interface ReviewState {
   confirmedQuestions: string[]
   selectedCases: string[]
+  questionReviews?: Record<string, QuestionReview>
   updatedAt: string | null
 }
+
+export const reviewStateSchema = z.object({
+  confirmedQuestions: z.array(z.string()).default([]),
+  selectedCases: z.array(z.string()).default([]),
+  questionReviews: z.record(z.string(), questionReviewSchema).default({}),
+  updatedAt: z.string().nullable().default(null),
+})
 
 export const locatorSchema = z.object({
   by: z.enum(['role', 'label', 'text', 'css']),

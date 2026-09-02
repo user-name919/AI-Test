@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { AnalysisSummary, AutomationPlan, ExecutionRecord, ExecutionResult, PrdAnalysis, ReviewState, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
+import { isQuestionReviewResolved, normalizeReviewState } from '../shared/review-state'
 
 const databasePath = resolve('data/quality-ai.sqlite')
 mkdirSync(dirname(databasePath), { recursive: true })
@@ -23,6 +24,7 @@ database.exec(`
     analysis_id TEXT PRIMARY KEY,
     confirmed_questions_json TEXT NOT NULL DEFAULT '[]',
     selected_cases_json TEXT NOT NULL DEFAULT '[]',
+    question_reviews_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL,
     FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE
   );
@@ -50,6 +52,11 @@ database.exec(`
     updated_at TEXT NOT NULL
   );
 `)
+
+const reviewColumns = database.prepare('PRAGMA table_info(analysis_reviews)').all() as Array<{ name: string }>
+if (!reviewColumns.some(column => column.name === 'question_reviews_json')) {
+  database.exec("ALTER TABLE analysis_reviews ADD COLUMN question_reviews_json TEXT NOT NULL DEFAULT '{}'")
+}
 
 const analysisColumns = database.prepare('PRAGMA table_info(analyses)').all() as Array<{ name: string }>
 if (!analysisColumns.some(column => column.name === 'file_names_json')) {
@@ -110,17 +117,18 @@ function mapAnalysisRow(row: Record<string, string> | undefined): SavedAnalysis 
     model: row.model,
     createdAt: row.created_at,
     result: JSON.parse(row.result_json) as PrdAnalysis,
-    review: {
+    review: normalizeReviewState({
       confirmedQuestions: JSON.parse(row.confirmed_questions_json || '[]') as string[],
       selectedCases: JSON.parse(row.selected_cases_json || '[]') as string[],
+      questionReviews: JSON.parse(row.question_reviews_json || '{}') as ReviewState['questionReviews'],
       updatedAt: row.updated_at ?? null,
-    },
+    }),
   }
 }
 
 const analysisSelect = `
   SELECT a.id, a.file_name, a.file_names_json, a.provider, a.model, a.result_json, a.created_at,
-         r.confirmed_questions_json, r.selected_cases_json, r.updated_at
+         r.confirmed_questions_json, r.selected_cases_json, r.question_reviews_json, r.updated_at
   FROM analyses a LEFT JOIN analysis_reviews r ON r.analysis_id = a.id
 `
 
@@ -147,7 +155,7 @@ export function listAnalyses(limit = 30): AnalysisSummary[] {
       productName: analysis.result.productName,
       requirementCount: requirements.length,
       questionCount: requirements.reduce((sum, item) => sum + item.questions.length, 0),
-      confirmedQuestionCount: analysis.review.confirmedQuestions.length,
+      confirmedQuestionCount: requirements.reduce((sum, requirement, requirementIndex) => sum + requirement.questions.filter((_, questionIndex) => isQuestionReviewResolved(analysis.review, `${requirementIndex}-Q-${questionIndex}`)).length, 0),
       testCaseCount: requirements.reduce((sum, item) => sum + item.testCases.length, 0),
       selectedCaseCount: analysis.review.selectedCases.length,
       provider: analysis.provider,
@@ -162,14 +170,15 @@ export function saveReview(analysisId: string, review: Omit<ReviewState, 'update
   if (!exists) throw new Error('解析记录不存在')
   const updatedAt = new Date().toISOString()
   database.prepare(`
-    INSERT INTO analysis_reviews (analysis_id, confirmed_questions_json, selected_cases_json, updated_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO analysis_reviews (analysis_id, confirmed_questions_json, selected_cases_json, question_reviews_json, updated_at)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(analysis_id) DO UPDATE SET
       confirmed_questions_json = excluded.confirmed_questions_json,
       selected_cases_json = excluded.selected_cases_json,
+      question_reviews_json = excluded.question_reviews_json,
       updated_at = excluded.updated_at
-  `).run(analysisId, JSON.stringify(review.confirmedQuestions), JSON.stringify(review.selectedCases), updatedAt)
-  return { ...review, updatedAt }
+  `).run(analysisId, JSON.stringify(review.confirmedQuestions), JSON.stringify(review.selectedCases), JSON.stringify(review.questionReviews ?? {}), updatedAt)
+  return normalizeReviewState({ ...review, questionReviews: review.questionReviews ?? {}, updatedAt })
 }
 
 interface ExecutionContext {

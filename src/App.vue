@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import type { AgentDecision, AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import type { AgentDecision, AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, QuestionReview, ReviewExecutionContract, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
 import { consumeNdjsonChunk, createLiveExecutionState, reduceLiveExecutionState } from '../shared/live-execution'
 
 type Tab = 'overview' | 'states' | 'questions' | 'cases'
@@ -73,6 +73,10 @@ const activeRequirement = ref(0)
 const activeTab = ref<Tab>('overview')
 const confirmed = ref<Record<string, boolean>>({})
 const selectedCases = ref<Record<string, boolean>>({})
+const questionDrafts = ref<Record<string, string>>({})
+const questionReviews = ref<Record<string, QuestionReview>>({})
+const contractDrafts = ref<Record<string, ReviewExecutionContract>>({})
+const reviewContractBusy = ref<Record<string, boolean>>({})
 const notice = ref('')
 const noticeKind = ref<NoticeKind>('info')
 const helpOpen = ref(false)
@@ -142,8 +146,8 @@ const questions = computed(() => requirement.value?.questions ?? [])
 const cases = computed(() => requirement.value?.testCases ?? [])
 const totalQuestions = computed(() => requirements.value.reduce((sum, item) => sum + item.questions.length, 0))
 const totalCases = computed(() => requirements.value.reduce((sum, item) => sum + item.testCases.length, 0))
-const readyCases = computed(() => requirements.value.reduce((sum, item) => sum + item.testCases.filter(test => !test.blockedByQuestion).length, 0))
-const confirmedCount = computed(() => questions.value.filter((_, index) => confirmed.value[questionKey(index)]).length)
+const readyCases = computed(() => requirements.value.reduce((sum, item, requirementIndex) => sum + item.testCases.filter(test => !test.blockedByQuestion || requirementQuestionsResolved(requirementIndex)).length, 0))
+const confirmedCount = computed(() => questions.value.filter((_, index) => questionResolved(questionKey(index))).length)
 const selectedCount = computed(() => cases.value.filter((_, index) => selectedCases.value[caseKey(index)]).length)
 const coverage = computed(() => totalCases.value ? Math.round((readyCases.value / totalCases.value) * 100) : 0)
 const sourceFileNames = computed(() => savedAnalysis.value?.fileNames?.length ? savedAnalysis.value.fileNames : [savedAnalysis.value?.fileName ?? '错题本_0825版本需求.md'])
@@ -153,7 +157,7 @@ const executionPassRate = computed(() => executionHistory.value.length ? Math.ro
 const selectedCaseKeys = computed(() => Object.keys(selectedCases.value).filter(key => selectedCases.value[key]))
 const blockedSelectedCaseKeys = computed(() => selectedCaseKeys.value.filter(key => {
   const match = key.match(/^(\d+)-TC-(\d+)$/)
-  return match ? Boolean(requirements.value[Number(match[1])]?.testCases[Number(match[2])]?.blockedByQuestion) : true
+  return match ? Boolean(requirements.value[Number(match[1])]?.testCases[Number(match[2])]?.blockedByQuestion && !requirementQuestionsResolved(Number(match[1]))) : true
 }))
 const selectedProject = computed(() => projects.value.find(project => project.id === projectId.value) ?? null)
 const targetOrigin = computed(() => { try { return new URL(targetUrl.value).origin } catch { return '' } })
@@ -161,13 +165,14 @@ const matchingProjects = computed(() => projects.value.filter(project => project
 const requirementAssets = computed(() => requirements.value.map((item, index) => ({ item, index, code: requirementCode(index) })))
 const caseAssets = computed(() => requirements.value.flatMap((item, requirementIndex) => item.testCases.map((testCase, caseIndex) => ({
   item: testCase,
+  blocked: caseIsBlocked(requirementIndex, testCase),
   requirementTitle: item.title,
   requirementIndex,
   caseIndex,
   key: `${requirementIndex}-TC-${caseIndex}`,
   code: `${requirementCode(requirementIndex)} / TC-${String(caseIndex + 1).padStart(3, '0')}`,
 }))))
-const filteredCaseAssets = computed(() => caseAssetFilter.value === 'all' ? caseAssets.value : caseAssets.value.filter(asset => caseAssetFilter.value === 'blocked' ? asset.item.blockedByQuestion : !asset.item.blockedByQuestion))
+const filteredCaseAssets = computed(() => caseAssetFilter.value === 'all' ? caseAssets.value : caseAssets.value.filter(asset => caseAssetFilter.value === 'blocked' ? asset.blocked : !asset.blocked))
 const memoryRules = computed(() => requirements.value.flatMap((item, requirementIndex) => item.businessRules.map(rule => ({ ...rule, requirementTitle: item.title, requirementIndex }))))
 const memoryFailures = computed(() => executionHistory.value.filter(item => item.status !== 'passed' && item.error).slice(0, 20))
 const memorySourceUses = computed(() => executionHistory.value.flatMap(execution => execution.agent?.trajectory.flatMap(item => item.decision.type === 'need_project_context' ? [{ execution, item }] : []) ?? []).slice(0, 20))
@@ -194,10 +199,52 @@ function requirementCode(index: number) { return `REQ-${String(index + 1).padSta
 function questionKey(index: number) { return `${activeRequirement.value}-Q-${index}` }
 function caseKey(index: number) { return `${activeRequirement.value}-TC-${index}` }
 function caseCode(index: number) { return `TC-${String(index + 1).padStart(3, '0')}` }
+function questionResolved(key: string) {
+  const review = questionReviews.value[key]
+  if (review) return review.status === 'accepted' || review.status === 'edited'
+  return Boolean(confirmed.value[key])
+}
+function requirementQuestionsResolved(requirementIndex: number) {
+  const requirementValue = requirements.value[requirementIndex]
+  return Boolean(requirementValue?.questions.length && requirementValue.questions.every((_, questionIndex) => questionResolved(`${requirementIndex}-Q-${questionIndex}`)))
+}
+function caseIsBlocked(requirementIndex: number, testCase: PrdAnalysis['requirements'][number]['testCases'][number]) {
+  return testCase.blockedByQuestion && !requirementQuestionsResolved(requirementIndex)
+}
 function chooseRequirement(index: number) { activeRequirement.value = index; activeTab.value = 'overview' }
 function openRequirement(index: number) { chooseRequirement(index); workspaceView.value = 'version' }
 function openCaseAsset(requirementIndex: number) { activeRequirement.value = requirementIndex; activeTab.value = 'cases'; workspaceView.value = 'version' }
 function openExecution(id: string) { selectedExecutionId.value = id; workspaceView.value = 'executions' }
+function questionDraft(index: number) {
+  const key = questionKey(index)
+  return questionDrafts.value[key] ?? questions.value[index]?.suggestion ?? ''
+}
+function updateQuestionDraft(index: number, event: Event) {
+  const key = questionKey(index)
+  questionDrafts.value[key] = (event.target as HTMLTextAreaElement).value
+  delete contractDrafts.value[key]
+}
+function questionReviewLabel(key: string) {
+  const review = questionReviews.value[key]
+  if (review?.status === 'accepted') return '已采纳 AI 建议'
+  if (review?.status === 'edited') return '已保存人工口径'
+  if (review?.status === 'deferred') return '暂不确认'
+  if (contractDrafts.value[key]) return '执行规则待人工确认'
+  return '尚未形成最终口径'
+}
+function closeLiveExecution() { liveExecution.value = { ...liveExecution.value, visible: false } }
+async function openLiveReport() {
+  const execution = liveExecution.value.execution
+  if (!execution) return
+  latestExecution.value = execution
+  if (!executionHistory.value.some(item => item.id === execution.id)) executionHistory.value = [execution, ...executionHistory.value]
+  selectedExecutionId.value = execution.id
+  workspaceView.value = 'executions'
+  closeLiveExecution()
+  await nextTick()
+  document.querySelector('.execution-heading')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+function reopenLiveExecution() { liveExecution.value = { ...liveExecution.value, visible: true } }
 function toggleCaseAsset(key: string) { selectedCases.value[key] = !selectedCases.value[key]; void saveCurrentReview() }
 let noticeTimer: number | undefined
 function showNotice(message: string, kind: NoticeKind = 'info', duration?: number) {
@@ -240,7 +287,6 @@ function displayCaseKey(key: string) {
   const match = key.match(/^(\d+)-TC-(\d+)$/)
   return match ? `REQ-${String(Number(match[1]) + 1).padStart(3, '0')} / TC-${String(Number(match[2]) + 1).padStart(3, '0')}` : key
 }
-function closeLiveExecution() { liveExecution.value = { ...liveExecution.value, visible: false } }
 function markLiveExecutionFailed(error: unknown) {
   const message = error instanceof Error ? error.message : '未知错误'
   liveExecution.value = reduceLiveExecutionState(liveExecution.value, {
@@ -342,10 +388,17 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 function applyReview(analysisValue: SavedAnalysis) {
   confirmed.value = Object.fromEntries((analysisValue.review?.confirmedQuestions ?? []).map(key => [key, true]))
   selectedCases.value = Object.fromEntries((analysisValue.review?.selectedCases ?? []).map(key => [key, true]))
+  questionReviews.value = { ...(analysisValue.review?.questionReviews ?? {}) }
+  const drafts: Record<string, string> = {}
+  analysisValue.result.requirements.forEach((item, requirementIndex) => item.questions.forEach((question, questionIndex) => {
+    drafts[`${requirementIndex}-Q-${questionIndex}`] = questionReviews.value[`${requirementIndex}-Q-${questionIndex}`]?.finalStatement ?? question.suggestion
+  }))
+  questionDrafts.value = drafts
+  contractDrafts.value = {}
 }
 
 async function saveCurrentReview() {
-  if (!savedAnalysis.value || reviewSaving.value) return
+  if (!savedAnalysis.value || reviewSaving.value) return false
   reviewSaving.value = true
   try {
     const response = await fetch(`/api/analyses/${encodeURIComponent(savedAnalysis.value.id)}/review`, {
@@ -354,21 +407,82 @@ async function saveCurrentReview() {
       body: JSON.stringify({
         confirmedQuestions: Object.keys(confirmed.value).filter(key => confirmed.value[key]),
         selectedCases: Object.keys(selectedCases.value).filter(key => selectedCases.value[key]),
+        questionReviews: questionReviews.value,
       }),
     })
     const payload = await response.json() as { review?: SavedAnalysis['review']; error?: string }
     if (!response.ok || !payload.review) throw new Error(payload.error ?? '保存失败')
     savedAnalysis.value.review = payload.review
+    questionReviews.value = { ...(payload.review.questionReviews ?? {}) }
+    return true
   } catch (error) {
     toast(`评审状态保存失败：${error instanceof Error ? error.message : '未知错误'}`)
+    return false
   } finally {
     reviewSaving.value = false
   }
 }
 
+async function saveQuestionReview(index: number, status: 'accepted' | 'edited' | 'deferred') {
+  const key = questionKey(index)
+  const statement = questionDraft(index).trim()
+  if (!statement) return toast('请先填写人工最终口径')
+  const previousReviews = questionReviews.value
+  const previousConfirmed = { ...confirmed.value }
+  const nextReviews = { ...questionReviews.value }
+  const existing = nextReviews[key]
+  const statementChanged = existing?.finalStatement.trim() !== statement
+  const contract = contractDrafts.value[key] ?? (statementChanged ? undefined : existing?.executionContract)
+  if (status !== 'deferred' && contract?.uncertainties.length) return toast('执行规则仍有不确定项，请补充人工口径后再确认')
+  nextReviews[key] = {
+    status,
+    finalStatement: statement,
+    executionContract: contract,
+    updatedAt: existing?.updatedAt ?? null,
+  }
+  questionReviews.value = nextReviews
+  if (status === 'deferred') delete confirmed.value[key]
+  else confirmed.value[key] = true
+  if (!await saveCurrentReview()) {
+    questionReviews.value = previousReviews
+    confirmed.value = previousConfirmed
+    return
+  }
+  toast(status === 'deferred' ? '已暂不确认，相关用例仍保持阻塞' : '人工最终口径已保存，相关用例可进入执行准备')
+}
+async function generateQuestionContract(index: number) {
+  const key = questionKey(index)
+  const finalStatement = questionDraft(index).trim()
+  if (!finalStatement) return toast('请先填写人工最终口径')
+  reviewContractBusy.value[key] = true
+  try {
+    const caseKey = caseAssets.value.find(item => item.requirementIndex === activeRequirement.value && item.item.blockedByQuestion)?.key
+    const response = await fetch(`/api/analyses/${encodeURIComponent(savedAnalysis.value?.id ?? '')}/review/contract`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ questionKey: key, finalStatement, caseKey, projectId: projectId.value || undefined, targetUrl: targetUrl.value || undefined }),
+    })
+    const payload = await response.json() as { contract?: ReviewExecutionContract; sourceContext?: { warnings?: string[] }; error?: string }
+    if (!response.ok || !payload.contract) throw new Error(payload.error ?? '执行规则生成失败')
+    contractDrafts.value[key] = payload.contract
+    const warnings = payload.sourceContext?.warnings ?? []
+    toast(warnings.length ? `执行规则已生成，但源码辅助有提示：${warnings[0]}` : 'AI 已生成执行规则，请检查后保存人工口径')
+  } catch (error) {
+    toast(`执行规则生成失败：${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    reviewContractBusy.value[key] = false
+  }
+}
 function toggleQuestion(index: number) {
-  confirmed.value[questionKey(index)] = !confirmed.value[questionKey(index)]
-  void saveCurrentReview()
+  const key = questionKey(index)
+  const review = questionReviews.value[key]
+  if (confirmed.value[key] || review?.status === 'accepted' || review?.status === 'edited') {
+    void saveQuestionReview(index, 'deferred')
+    return
+  }
+  const suggestion = questions.value[index]?.suggestion ?? ''
+  const statement = questionDraft(index).trim()
+  void saveQuestionReview(index, statement === suggestion.trim() ? 'accepted' : 'edited')
 }
 
 async function loadSavedAnalysis() {
@@ -628,8 +742,7 @@ async function importPrd(event: Event) {
     savedAnalysis.value = payload.analysis
     activeRequirement.value = 0
     activeTab.value = 'overview'
-    confirmed.value = {}
-    selectedCases.value = {}
+    applyReview(payload.analysis)
     await refreshAnalysisHistory()
     toast(`公司模型已联合解析 ${files.length} 份材料，提取 ${payload.analysis.result.requirements.length} 个需求`)
   } catch (error) {
@@ -662,7 +775,7 @@ onMounted(loadSavedAnalysis)
 
         <section class="content-grid">
           <aside class="requirements"><div class="section-title"><span>版本需求</span><b>{{ requirements.length }} 项</b></div>
-            <button v-for="(item,index) in requirements" :key="`${item.title}-${index}`" :class="['req-card',{active:activeRequirement===index}]" @click="chooseRequirement(index)"><small><span>{{ requirementCode(index) }}</span><b :class="{medium:item.risk==='中风险',low:item.risk==='低风险'}">{{ item.risk }}</b></small><strong>{{ item.title }}</strong><p>{{ item.summary }}</p><div><i :style="{width:`${Math.round((item.testCases.filter(test => !test.blockedByQuestion).length / item.testCases.length) * 100)}%`}"></i></div></button>
+            <button v-for="(item,index) in requirements" :key="`${item.title}-${index}`" :class="['req-card',{active:activeRequirement===index}]" @click="chooseRequirement(index)"><small><span>{{ requirementCode(index) }}</span><b :class="{medium:item.risk==='中风险',low:item.risk==='低风险'}">{{ item.risk }}</b></small><strong>{{ item.title }}</strong><p>{{ item.summary }}</p><div><i :style="{width:`${Math.round((item.testCases.filter(test => !test.blockedByQuestion || requirementQuestionsResolved(index)).length / item.testCases.length) * 100)}%`}"></i></div></button>
             <div class="sources"><span>需求材料</span><div v-for="fileName in sourceFileNames" :key="fileName"><i :class="{api:/接口|技术方案|api/i.test(fileName)}">{{ /接口|技术方案|api/i.test(fileName) ? 'API' : 'MD' }}</i><p><strong>{{ fileName }}</strong><small>{{ savedAnalysis ? `${/接口|技术方案|api/i.test(fileName) ? '增强材料' : '产品需求'} · 已联合解析` : '示例材料 · 等待真实导入' }}</small></p><b>{{ savedAnalysis ? '✓' : '○' }}</b></div></div>
           </aside>
 
@@ -717,6 +830,26 @@ onMounted(loadSavedAnalysis)
         </template>
       </div>
     </main>
+    <Transition name="review-panel">
+      <aside v-if="workspaceView==='version' && activeTab==='questions' && questions.length" class="review-workbench" aria-label="人工 Review 工作台">
+        <header>
+          <div><small>人工参与环节</small><h2>Review 执行口径</h2><p>AI 建议仅作参考；最终口径会先由 AI 转成可验证规则，再进入自动化执行。</p></div>
+          <button aria-label="关闭人工 Review 工作台" @click="activeTab='overview'">×</button>
+        </header>
+        <div class="review-workbench-list">
+          <article v-for="(q,index) in questions" :key="`review-${questionKey(index)}`" class="review-card">
+            <div class="review-card-head"><span>问题 {{ index + 1 }}</span><em :class="questionResolved(questionKey(index)) ? 'resolved' : 'pending'">{{ questionReviewLabel(questionKey(index)) }}</em></div>
+            <h3>{{ q.title }}</h3>
+            <p class="review-reason">{{ q.reason }}</p>
+            <div class="ai-suggestion"><b>AI 建议（保留）</b><span>{{ q.suggestion }}</span></div>
+            <label class="human-final"><span>人工最终口径</span><textarea :value="questionDraft(index)" :disabled="!savedAnalysis || reviewSaving" @input="updateQuestionDraft(index, $event)" placeholder="用业务语言写下最终规则，细节不足也可以，AI 会结合 PRD、源码和 DOM 补全"></textarea></label>
+            <div class="review-actions"><button :disabled="!savedAnalysis || reviewContractBusy[questionKey(index)] || reviewSaving" @click="generateQuestionContract(index)">{{ reviewContractBusy[questionKey(index)] ? 'AI 解析中…' : 'AI 转为执行规则' }}</button><button class="primary" :disabled="!savedAnalysis || reviewSaving" @click="saveQuestionReview(index, questionDraft(index).trim() === q.suggestion.trim() ? 'accepted' : 'edited')">确认并保存口径</button><button class="quiet" :disabled="!savedAnalysis || reviewSaving" @click="saveQuestionReview(index, 'deferred')">暂不确认</button></div>
+            <section v-if="contractDrafts[questionKey(index)]" class="contract-preview"><header><b>AI 执行规则草案</b><span>{{ contractDrafts[questionKey(index)].confidence === 'high' ? '高置信度' : contractDrafts[questionKey(index)].confidence === 'medium' ? '中置信度' : '低置信度' }}</span></header><p>{{ contractDrafts[questionKey(index)].objective }}</p><dl><dt>触发条件</dt><dd>{{ contractDrafts[questionKey(index)].triggers.join('；') || '未明确' }}</dd><dt>页面行为</dt><dd>{{ contractDrafts[questionKey(index)].behaviors.join('；') }}</dd><dt>可验证断言</dt><dd>{{ contractDrafts[questionKey(index)].assertions.join('；') }}</dd><dt v-if="contractDrafts[questionKey(index)].uncertainties.length">仍需确认</dt><dd v-if="contractDrafts[questionKey(index)].uncertainties.length" class="contract-warning">{{ contractDrafts[questionKey(index)].uncertainties.join('；') }}</dd></dl><small>检查无误后点击“确认并保存口径”，否则不会解除用例阻塞。</small></section>
+          </article>
+        </div>
+      </aside>
+    </Transition>
+    <button v-if="!liveExecution.visible && liveExecution.executionId" class="live-reopen" @click="reopenLiveExecution"><i></i>{{ liveExecution.execution ? '打开最近执行画面' : '重新打开实时执行' }}</button>
     <Transition name="live-panel">
       <aside v-if="liveExecution.visible" class="live-execution-panel" aria-label="Playwright 实时执行画面">
         <header>
@@ -744,7 +877,7 @@ onMounted(loadSavedAnalysis)
           <div v-if="liveExecution.activity?.message" :class="['live-result',liveExecution.activity.status]"><b>{{ liveExecution.activity.status==='passed'?'✓':liveExecution.activity.status==='failed'?'!':'…' }}</b><span>{{ liveExecution.activity.message }}</span><em v-if="liveExecution.activity.durationMs!==undefined">{{ liveExecution.activity.durationMs }}ms</em></div>
           <div v-if="liveExecution.error" class="live-stream-error"><b>失败说明</b><span>{{ liveExecution.error }}</span></div>
         </section>
-        <footer><span>{{ liveExecution.mode==='agent' ? '动态 Agent' : '固定计划' }}</span><button v-if="liveExecution.execution" @click="openExecution(liveExecution.execution.id);closeLiveExecution()">查看完整报告</button><em v-else>画面来自 Playwright 当前 Page</em></footer>
+        <footer><span>{{ liveExecution.mode==='agent' ? '动态 Agent' : '固定计划' }}</span><button v-if="liveExecution.execution" @click="openLiveReport">查看完整报告</button><em v-else>画面来自 Playwright 当前 Page</em></footer>
       </aside>
     </Transition>
     <Transition name="drawer">

@@ -7,7 +7,7 @@ import { analyzePrd } from './model'
 import { getAnalysisById, getAutomationPlanById, getEnvironmentById, getExecutionById, getLatestAnalysis, getLatestAutomationPlan, getLatestEnvironment, getLatestExecution, listAnalyses, listExecutions, saveAnalysis, saveAutomationPlan, saveEnvironment, saveExecution, saveReview, setEnvironmentStorageState } from './database'
 import { runAutomationPlan } from './playwright-runner'
 import { generateAutomationPlan } from './model'
-import { agentRunRequestSchema, automationPlanSchema, storageStateSchema, type LiveExecutionEvent, type SavedAnalysis } from '../shared/contracts'
+import { agentRunRequestSchema, automationPlanSchema, reviewStateSchema, storageStateSchema, type LiveExecutionEvent, type SavedAnalysis } from '../shared/contracts'
 import { getProjectProvider, getProjectProviderRegistry } from './project-knowledge/registry'
 import type { SourceScope } from './project-knowledge/types'
 import { inspectTargetPage } from './page-observer-runner'
@@ -15,6 +15,8 @@ import { buildAgentTestGoal } from './agent-goal'
 import { runAgentTest } from './agent-test-runner'
 import { parseSourceDocuments } from './source-documents'
 import { openNdjsonResponse } from './ndjson-response'
+import { collectReviewSourceContext, generateReviewExecutionContract } from './review-contract'
+import { collectResolvedReviewContext } from './review-execution-context'
 
 const port = Number(process.env.API_PORT ?? 8787)
 const maxBodySize = 30 * 1024 * 1024
@@ -223,7 +225,7 @@ const server = createServer(async (request, response) => {
         return match ? analysis.result.requirements[Number(match[1])]?.testCases[Number(match[2])] : undefined
       }).filter((item): item is NonNullable<typeof item> => Boolean(item))
       if (!testCases.length) return json(response, 400, { error: '没有找到可生成的测试用例' })
-      const plan = await generateAutomationPlan(targetUrl, testCases)
+      const plan = await generateAutomationPlan(targetUrl, testCases, collectResolvedReviewContext(analysis, caseKeys))
       const savedPlan = { id: randomUUID(), analysisId, caseKeys, plan, createdAt: new Date().toISOString() }
       saveAutomationPlan(savedPlan)
       return json(response, 201, { automationPlan: savedPlan })
@@ -361,7 +363,54 @@ const server = createServer(async (request, response) => {
       const confirmedQuestions = Array.isArray(body.confirmedQuestions) && body.confirmedQuestions.every(item => typeof item === 'string') ? body.confirmedQuestions : null
       const selectedCases = Array.isArray(body.selectedCases) && body.selectedCases.every(item => typeof item === 'string') ? body.selectedCases : null
       if (!confirmedQuestions || !selectedCases) return json(response, 400, { error: '评审状态格式错误' })
-      return json(response, 200, { review: saveReview(decodeURIComponent(reviewMatch[1]), { confirmedQuestions, selectedCases }) })
+      const analysis = getAnalysisById(decodeURIComponent(reviewMatch[1]))
+      if (!analysis) return json(response, 404, { error: '解析记录不存在' })
+      let parsedQuestionReviews = analysis.review.questionReviews ?? {}
+      if (body.questionReviews !== undefined) {
+        const questionReviewsResult = reviewStateSchema.shape.questionReviews.safeParse(body.questionReviews)
+        if (!questionReviewsResult.success) return json(response, 400, { error: '人工 Review 格式错误' })
+        parsedQuestionReviews = questionReviewsResult.data
+      }
+      return json(response, 200, {
+        review: saveReview(decodeURIComponent(reviewMatch[1]), {
+          confirmedQuestions, selectedCases,
+          questionReviews: parsedQuestionReviews,
+        }),
+      })
+    }
+
+    const reviewContractMatch = request.url?.match(/^\/api\/analyses\/([^/]+)\/review\/contract$/)
+    if (request.method === 'POST' && reviewContractMatch) {
+      const body = await readJson(request)
+      const analysis = getAnalysisById(decodeURIComponent(reviewContractMatch[1]))
+      if (!analysis) return json(response, 404, { error: '解析记录不存在' })
+      const questionKey = typeof body.questionKey === 'string' ? body.questionKey : ''
+      const keyMatch = questionKey.match(/^(\d+)-Q-(\d+)$/)
+      if (!keyMatch) return json(response, 400, { error: '问题编号格式错误' })
+      const requirementIndex = Number(keyMatch[1])
+      const questionIndex = Number(keyMatch[2])
+      const requirement = analysis.result.requirements[requirementIndex]
+      const question = requirement?.questions[questionIndex]
+      if (!requirement || !question) return json(response, 400, { error: `待确认问题不存在：${questionKey}` })
+      const finalStatement = typeof body.finalStatement === 'string' ? body.finalStatement.trim() : ''
+      if (!finalStatement) return json(response, 400, { error: '人工最终口径不能为空' })
+      const requestedCaseKey = typeof body.caseKey === 'string' ? body.caseKey : ''
+      const caseMatch = requestedCaseKey.match(/^(\d+)-TC-(\d+)$/)
+      const testCase = caseMatch && Number(caseMatch[1]) === requirementIndex
+        ? requirement.testCases[Number(caseMatch[2])]
+        : requirement.testCases.find(item => item.blockedByQuestion) ?? requirement.testCases[0]
+      if (!testCase) return json(response, 400, { error: '该需求没有可用于解析的测试用例' })
+
+      let sourceContext: Awaited<ReturnType<typeof collectReviewSourceContext>> = { route: null, files: [], warnings: ['未选择源码项目，将仅根据需求和人工口径解析'] }
+      if (typeof body.projectId === 'string' && body.projectId && typeof body.targetUrl === 'string' && body.targetUrl) {
+        try {
+          sourceContext = await collectReviewSourceContext(await getProjectProvider(body.projectId), body.targetUrl, requirement, question)
+        } catch (error) {
+          sourceContext = { route: null, files: [], warnings: [`源码上下文不可用：${error instanceof Error ? error.message : String(error)}`] }
+        }
+      }
+      const contract = await generateReviewExecutionContract({ question, finalStatement, requirement, testCase, sourceContext })
+      return json(response, 200, { contract, sourceContext: { route: sourceContext.route, files: sourceContext.files.map(file => ({ path: file.path, truncated: file.truncated })), warnings: sourceContext.warnings } })
     }
 
     return json(response, 404, { error: '接口不存在' })
