@@ -196,6 +196,87 @@ test('requires data review for a legacy case containing an unproven literal', ()
   assert.deepEqual(resolved.readiness.plan, { executable: false, reason: '用例需要确认测试数据' })
 })
 
+test('requires data review when a confirmed contract uses an unproven concrete value', () => {
+  const analysis = makeAnalysis()
+  const contract = reviewedContract()
+  contract.steps = ['打开考试选择器', '在搜索框输入“模考数学一”']
+  contract.expectedAssertions = ['列表展示“模考数学一”']
+  contract.dataBindings = []
+  analysis.review.caseReviews = {
+    '0-TC-0': { status: 'confirmed', finalContract: contract, updatedAt: null },
+  }
+
+  const resolved = resolveCaseExecutionContract(analysis, '0-TC-0')
+
+  assert.deepEqual(resolved.readiness.agent, { executable: false, reason: '用例需要确认测试数据' })
+  assert.deepEqual(resolved.readiness.plan, { executable: false, reason: '用例需要确认测试数据' })
+})
+
+test('does not mistake quoted generic UI feedback for environment data', () => {
+  const analysis = makeAnalysis()
+  const contract = reviewedContract()
+  contract.steps = ['点击保存']
+  contract.expectedAssertions = ['页面提示“保存成功”']
+  contract.dataBindings = []
+  analysis.review.caseReviews = {
+    '0-TC-0': { status: 'confirmed', finalContract: contract, updatedAt: null },
+  }
+
+  assert.deepEqual(resolveCaseExecutionContract(analysis, '0-TC-0').readiness, {
+    agent: { executable: true },
+    plan: { executable: true },
+  })
+})
+
+test('accepts a runtime DOM binding for a confirmed concrete data operation', () => {
+  const analysis = makeAnalysis()
+  const contract = reviewedContract()
+  contract.steps = ['打开考试选择器', '在搜索框输入“模考数学一”']
+  contract.expectedAssertions = ['列表展示“模考数学一”']
+  analysis.review.caseReviews = {
+    '0-TC-0': { status: 'confirmed', finalContract: contract, updatedAt: null },
+  }
+
+  assert.deepEqual(resolveCaseExecutionContract(analysis, '0-TC-0').readiness, {
+    agent: { executable: true },
+    plan: { executable: false, reason: '运行时数据“考试搜索词”需要预检解析' },
+  })
+})
+
+test('requires data review when fixture evidence does not match a confirmed concrete value', () => {
+  const analysis = makeAnalysis()
+  const contract = reviewedContract()
+  contract.steps = ['打开考试选择器', '在搜索框输入“模考数学一”']
+  contract.expectedAssertions = ['列表展示“模考数学一”']
+  contract.dataBindings = [{
+    ...contract.dataBindings[0]!,
+    mode: 'fixture',
+    fixture: { value: '模考英语一', evidence: '测试数据协议' },
+  }]
+  analysis.review.caseReviews = {
+    '0-TC-0': { status: 'confirmed', finalContract: contract, updatedAt: null },
+  }
+
+  const resolved = resolveCaseExecutionContract(analysis, '0-TC-0')
+
+  assert.deepEqual(resolved.readiness.agent, { executable: false, reason: '用例需要确认测试数据' })
+  assert.deepEqual(resolved.readiness.plan, { executable: false, reason: '用例需要确认测试数据' })
+})
+
+test('changes the fingerprint when case review status changes readiness', () => {
+  const analysis = makeAnalysis()
+  analysis.review.caseReviews = {
+    '0-TC-0': { status: 'confirmed', finalContract: reviewedContract(), updatedAt: null },
+  }
+  const confirmedFingerprint = resolveCaseExecutionContract(analysis, '0-TC-0').contractFingerprint
+
+  analysis.review.caseReviews['0-TC-0']!.status = 'draft'
+  assert.notEqual(resolveCaseExecutionContract(analysis, '0-TC-0').contractFingerprint, confirmedFingerprint)
+
+  analysis.review.caseReviews['0-TC-0']!.status = 'needs_data_review'
+  assert.notEqual(resolveCaseExecutionContract(analysis, '0-TC-0').contractFingerprint, confirmedFingerprint)
+})
+
 test('rejects malformed and unknown case keys', () => {
   assert.throws(() => resolveCaseExecutionContract(makeAnalysis(), 'TC-0'), /测试用例编号格式错误/)
   assert.throws(() => resolveCaseExecutionContract(makeAnalysis(), '0-TC-9'), /测试用例不存在/)

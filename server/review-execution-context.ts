@@ -63,9 +63,28 @@ function legacyContract(testCase: SavedAnalysis['result']['requirements'][number
   }
 }
 
-function containsUnprovenDataLiteral(testCase: SavedAnalysis['result']['requirements'][number]['testCases'][number]) {
-  const dataOperation = /(?:输入|搜索|筛选|填写|选择|设置为|设为|使用)[^“”"'‘’]{0,20}[“"'‘][^“”"'‘’]+[”"'’]/
-  return [...testCase.preconditions, ...testCase.steps].some(text => dataOperation.test(text))
+function containsUnprovenDataLiteral(contract: CaseExecutionContract) {
+  const dataOperation = /(?:输入|搜索|筛选|填写|选择|设置为|设为|使用)[^“”"'‘’]{0,20}[“"'‘]([^“”"'‘’]+)[”"'’]/g
+  const quotedLiteral = /[“"'‘]([^“”"'‘’]+)[”"'’]/g
+  const operationLiterals = new Set(
+    [...contract.preconditions, ...contract.steps]
+      .flatMap(text => [...text.matchAll(dataOperation)].map(match => match[1]?.trim()).filter((value): value is string => Boolean(value))),
+  )
+  const relatedAssertionLiterals = contract.expectedAssertions.flatMap(text =>
+    [...text.matchAll(quotedLiteral)]
+      .map(match => match[1]?.trim())
+      .filter((value): value is string => Boolean(value) && operationLiterals.has(value)),
+  )
+
+  return [...new Set([...operationLiterals, ...relatedAssertionLiterals])].some(literal =>
+    !contract.dataBindings.some(binding => {
+      if (binding.mode === 'runtime_dom') return true
+      if (binding.mode === 'fixture') {
+        return binding.fixture?.value.trim() === literal && Boolean(binding.fixture.evidence.trim())
+      }
+      return binding.manual?.value.trim() === literal && Boolean(binding.manual.rationale.trim())
+    }),
+  )
 }
 
 function stableJson(value: unknown): string {
@@ -97,11 +116,11 @@ export function resolveCaseExecutionContract(
   const resolvedQuestions = collectRequirementReviewContext(analysis, requirementIndex)
 
   const caseReadiness = (mode: 'agent' | 'plan') => {
-    if (!caseReview && containsUnprovenDataLiteral(testCase)) {
-      return { executable: false, reason: '用例需要确认测试数据' }
-    }
     const readiness = isCaseReviewExecutable(analysis.review, caseKey, mode)
     if (!readiness.executable) return readiness
+    if (containsUnprovenDataLiteral(contract)) {
+      return { executable: false, reason: '用例需要确认测试数据' }
+    }
     if (!testCase.blockedByQuestion) return readiness
 
     const allQuestionsResolved = requirement.questions.length > 0
@@ -113,7 +132,18 @@ export function resolveCaseExecutionContract(
     return readiness
   }
 
-  const fingerprintSource = { caseKey, title: testCase.title, contract, resolvedQuestions }
+  const readiness = {
+    agent: caseReadiness('agent'),
+    plan: caseReadiness('plan'),
+  }
+  const fingerprintSource = {
+    caseKey,
+    title: testCase.title,
+    contract,
+    resolvedQuestions,
+    caseReviewStatus: caseReview?.status ?? null,
+    readiness,
+  }
   return {
     caseKey,
     requirementIndex,
@@ -121,10 +151,7 @@ export function resolveCaseExecutionContract(
     title: testCase.title,
     contract,
     resolvedQuestions,
-    readiness: {
-      agent: caseReadiness('agent'),
-      plan: caseReadiness('plan'),
-    },
+    readiness,
     contractFingerprint: createHash('sha256').update(stableJson(fingerprintSource)).digest('hex'),
   }
 }
