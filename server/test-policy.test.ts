@@ -97,9 +97,27 @@ test('requires valueRef to name a resolved runtime binding while retaining fixtu
     type: 'resolve_test_data', snapshotId: '00000000-0000-4000-8000-000000000000', bindingId: 'exam-keyword',
     sourceElementRef: 'e1', value: '数学', reason: '选择部分关键词',
   }, snapshot, state), /过期页面快照/)
+  for (const action of [
+    { action: 'fill' as const, elementRef: 'e1', value: '数学' },
+    { action: 'selectOption' as const, elementRef: 'e1', value: '数学' },
+    { action: 'expectValue' as const, elementRef: 'e1', value: '数学', assertionId: 'filtered' },
+  ]) {
+    assert.throws(() => policy.validate({
+      type: 'action', snapshotId: snapshot.snapshotId, action, reason: '不能绕过 runtime DOM binding',
+    }, snapshot, state), /未确认的 fixture\/manual 数据/)
+  }
   assert.doesNotThrow(() => policy.validate({
     type: 'action', snapshotId: snapshot.snapshotId,
     action: { action: 'fill', elementRef: 'e1', value: '人工指定的考试' }, reason: 'fixture/manual 保持兼容',
+  }, snapshot, state))
+
+  const legacyPolicy = new TestPolicy(agentTestGoalSchema.parse({
+    name: '旧用例', targetUrl: 'http://localhost:5173', objective: '保留旧字面量',
+    requiredAssertions: [{ id: 'legacy', description: '旧用例兼容' }],
+  }))
+  assert.doesNotThrow(() => legacyPolicy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'fill', elementRef: 'e1', value: '数学' }, reason: 'legacy 兼容',
   }, snapshot, state))
 })
 
@@ -122,4 +140,16 @@ test('does not accept visible text as proof for a required highlighter assertion
     type: 'action', snapshotId: snapshot.snapshotId,
     action: { action: 'expectText', text: '数学', assertionId: 'highlighted' }, reason: '列表仍然显示数学',
   }, snapshot, state), /高亮断言需要可观察的元素属性或状态证据/)
+  assert.throws(() => policy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'expectAttribute', elementRef: 'e1', name: 'role', value: 'option', match: 'equals', assertionId: 'highlighted' }, reason: 'option 不是高亮证据',
+  }, snapshot, state), /高亮断言需要 class 或 data-state/)
+  assert.throws(() => policy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'expectAttribute', elementRef: 'e1', name: 'class', value: 'option', match: 'equals', assertionId: 'highlighted' }, reason: '普通 class 不是高亮证据',
+  }, snapshot, state), /高亮断言的属性值必须表达高亮或匹配/)
+  assert.doesNotThrow(() => policy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'expectAttribute', elementRef: 'e1', name: 'data-state', value: 'keyword-match', match: 'equals', assertionId: 'highlighted' }, reason: '组件暴露匹配状态',
+  }, snapshot, state))
 })

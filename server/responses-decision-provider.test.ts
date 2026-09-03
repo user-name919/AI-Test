@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { agentTestGoalSchema, pageSnapshotSchema } from '../shared/contracts'
 import { ResponsesDecisionProvider } from './responses-decision-provider'
+import { RuntimeDataBindingBlockedError } from './test-data-binding'
 
 function decisionInput() {
   return {
@@ -107,5 +108,18 @@ test('instructs the model to resolve real DOM data before using valueRef', async
   const body = JSON.parse(String(requests[0]?.init?.body)) as { instructions: string; input: Array<{ content: string }> }
   assert.match(body.instructions, /resolve_test_data/)
   assert.match(body.instructions, /valueRef/)
+  assert.match(body.instructions, /class、data-state/)
+  assert.doesNotMatch(body.instructions, /aria-\*/)
   assert.match(body.input[0]?.content ?? '', /student-keyword/)
+})
+
+test('reports repeated malformed resolve_test_data decisions as a blocked-data domain error', async () => {
+  let calls = 0
+  const provider = new ResponsesDecisionProvider({ ...modelOptions, fetchImpl: async () => {
+    calls += 1
+    return responseWithText('{"type":"resolve_test_data","bindingId":"student-keyword"}')
+  } })
+
+  await assert.rejects(provider.decide(decisionInput()), RuntimeDataBindingBlockedError)
+  assert.equal(calls, 3)
 })

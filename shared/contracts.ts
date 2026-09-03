@@ -179,8 +179,19 @@ const dataBindingBaseSchema = z.object({
 export const testDataBindingSchema = dataBindingBaseSchema.extend({
   mode: z.enum(['runtime_dom', 'fixture', 'manual']),
 }).superRefine((binding, context) => {
-  if (binding.mode === 'runtime_dom' && (binding.fixture || binding.manual)) {
-    context.addIssue({ code: 'custom', message: '运行时 DOM 数据不能预填固定值', path: ['mode'] })
+  if (binding.mode === 'runtime_dom') {
+    if (binding.fixture || binding.manual) {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据不能预填固定值', path: ['mode'] })
+    }
+    if (binding.strategy !== 'visible_option_substring') {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须使用可见 option 子串策略', path: ['strategy'] })
+    }
+    if (!binding.constraints.mustComeFromCurrentDom) {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须来自当前 DOM', path: ['constraints', 'mustComeFromCurrentDom'] })
+    }
+    if (!binding.constraints.mustBePartialOfSource) {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须是来源 option 的子串', path: ['constraints', 'mustBePartialOfSource'] })
+    }
   }
   if (binding.mode === 'fixture' && binding.manual) {
     context.addIssue({ code: 'custom', message: 'fixture 数据不能包含人工值', path: ['manual'] })

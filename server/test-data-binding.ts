@@ -22,7 +22,7 @@ export function resolveRuntimeDataBinding(
 
   const source = snapshot.elements.find(element => element.ref === proposal.sourceElementRef)
   if (!source || !source.visible) throw new RuntimeDataBindingBlockedError('当前 DOM 没有可见的数据来源 option')
-  if (binding.strategy === 'visible_option_substring' && source.role !== 'option') {
+  if (source.role !== 'option') {
     throw new RuntimeDataBindingBlockedError('运行时数据来源必须是当前可见 option')
   }
 

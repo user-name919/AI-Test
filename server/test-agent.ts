@@ -74,6 +74,10 @@ function summarizeSnapshot(snapshot: PageSnapshot): NonNullable<AgentTrajectoryI
   }
 }
 
+function isMalformedResolveTestDataDecision(value: unknown) {
+  return Boolean(value && typeof value === 'object' && 'type' in value && value.type === 'resolve_test_data')
+}
+
 export class TestAgent {
   private readonly policy: TestPolicy
 
@@ -112,15 +116,20 @@ export class TestAgent {
         snapshotId: snapshot.snapshotId,
         status: 'running',
       })
+      let rawDecision: unknown
       let decision: AgentDecision
       try {
-        decision = agentDecisionSchema.parse(await this.decisionProvider.decide({
+        rawDecision = await this.decisionProvider.decide({
           goal: this.goal,
           snapshot,
           trajectory,
           projectContexts,
-        }))
+        })
+        decision = agentDecisionSchema.parse(rawDecision)
       } catch (error) {
+        if (error instanceof RuntimeDataBindingBlockedError || isMalformedResolveTestDataDecision(rawDecision)) {
+          return this.result('blocked', `当前环境不满足测试数据前置条件：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
+        }
         return this.result('failed', `Agent 决策无效：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
       }
       try {
@@ -246,6 +255,8 @@ export class TestAgent {
   }
 
   private sourceRemainsVisible(binding: ResolvedDataBinding, snapshot: PageSnapshot) {
-    return snapshot.elements.some(element => element.visible && (element.text?.trim() || element.name.trim()) === binding.sourceText)
+    return snapshot.elements.some(element =>
+      element.visible && element.role === 'option' && (element.text?.trim() || element.name.trim()) === binding.sourceText,
+    )
   }
 }

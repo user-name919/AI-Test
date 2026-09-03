@@ -3,6 +3,7 @@ import { agentDecisionSchema, type AgentDecision } from '../shared/contracts'
 import type { AgentDecisionInput, AgentDecisionProvider } from './test-agent'
 import { getModelConfig, type ModelConfig } from './model-config'
 import { ResponsesModelClient, type ModelMessage } from './model-client'
+import { RuntimeDataBindingBlockedError } from './test-data-binding'
 
 interface ResponsesDecisionProviderOptions extends Partial<ModelConfig> {
   fetchImpl?: typeof fetch
@@ -23,7 +24,7 @@ const decisionSystemPrompt = `你是 B 端网页自动化测试的单步决策�
 9. goto 只能使用当前部署中可从主应用访问的同源路径；不要丢失目标地址已有的应用前缀。无法确认外部可访问路径时继续操作真实导航或返回 blocked。
 10. 无法安全继续时返回 blocked，不猜测账号、业务数据或不存在的页面状态。
 11. 若 goal.executionContract 的 dataBindings 包含 runtime_dom，具体业务值不是示例数据：先在当前 DOM 找到可见 option，再输出 resolve_test_data。该决策不是 Playwright action，必须带当前 snapshotId、bindingId、sourceElementRef、来源 option 的非空严格子串 value 与原因。解析成功后，fill、selectOption、expectValue 对该绑定只能使用 valueRef，禁止把未经解析的文字作为 value。找不到安全来源时返回 blocked。
-12. 高亮类断言必须使用当前可观察 elementRef 的属性或状态证据（例如 class、data-state、aria-*）；仅看到匹配文本不算高亮通过。当前 DOM 没有可观察证据时返回 blocked，不要编造 CSS 或脚本检查。
+12. 高亮类断言只允许使用当前可观察 elementRef 的 class、data-state 属性；其预期值必须明确表达高亮或匹配（highlight、match、mark、keyword 或中文同义词）。仅看到匹配文本不算高亮通过。当前 DOM 没有这类证据时返回 blocked，不要编造 CSS 或脚本检查。
 
 允许的决策：
 - action：goto、click、fill、selectOption、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
@@ -92,6 +93,10 @@ function decisionValidationError(candidate: unknown, error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isMalformedResolveTestDataDecision(candidate: unknown) {
+  return Boolean(candidate && typeof candidate === 'object' && 'type' in candidate && candidate.type === 'resolve_test_data')
+}
+
 function compactInput(input: AgentDecisionInput) {
   return {
     goal: input.goal,
@@ -127,7 +132,9 @@ export class ResponsesDecisionProvider implements AgentDecisionProvider {
         } catch (error) {
           let candidate: unknown
           try { candidate = JSON.parse(jsonrepair(cleanJsonOutput(output))) } catch { candidate = undefined }
-          lastError = new Error(decisionValidationError(candidate, error))
+          lastError = isMalformedResolveTestDataDecision(candidate)
+            ? new RuntimeDataBindingBlockedError(`resolve_test_data 决策结构无效：${decisionValidationError(candidate, error)}`)
+            : new Error(decisionValidationError(candidate, error))
           if (attempt < 2) {
             messages.push({ role: 'assistant', content: output.slice(0, 8_000) })
             messages.push({ role: 'user', content: `上一个 JSON 未通过 AgentDecision Schema 校验：${lastError.message.slice(0, 2_000)}。action.action 必须从 ${allowedActionNames.join('、')} 中选择；页面未稳定请使用 waitFor，系统会自动重新观察，不要输出 observe 或 reload。请只修复结构和字段，仍然只输出一个 JSON 对象。` })
@@ -138,6 +145,7 @@ export class ResponsesDecisionProvider implements AgentDecisionProvider {
         lastError = error instanceof Error ? error : new Error(String(error))
       }
     }
+    if (lastError instanceof RuntimeDataBindingBlockedError) throw lastError
     throw new Error(`单步决策失败：${lastError?.message ?? '未知错误'}`)
   }
 }

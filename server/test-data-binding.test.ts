@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { PageSnapshot, TestDataBinding } from '../shared/contracts'
+import { testDataBindingSchema, type PageSnapshot, type TestDataBinding } from '../shared/contracts'
 import { RuntimeDataBindingBlockedError, resolveRuntimeDataBinding } from './test-data-binding'
 
 const snapshot: PageSnapshot = {
@@ -67,4 +67,25 @@ test('rejects fabricated and complete option values instead of accepting model l
       sourceElementRef: 'e2', value, reason: '选择关键词',
     }), RuntimeDataBindingBlockedError)
   }
+})
+
+test('requires every runtime DOM binding to declare the strict visible-option protocol', () => {
+  for (const invalidBinding of [
+    { ...binding, strategy: undefined },
+    { ...binding, constraints: { ...binding.constraints, mustComeFromCurrentDom: false } },
+    { ...binding, constraints: { ...binding.constraints, mustBePartialOfSource: false } },
+  ]) {
+    assert.equal(testDataBindingSchema.safeParse(invalidBinding).success, false)
+  }
+})
+
+test('requires a visible option source even when an unchecked runtime binding omits its strategy', () => {
+  const nonOptionSnapshot = structuredClone(snapshot)
+  nonOptionSnapshot.elements[1] = { ...nonOptionSnapshot.elements[1], role: 'button' }
+  const uncheckedBinding: TestDataBinding = { ...binding, strategy: undefined }
+
+  assert.throws(() => resolveRuntimeDataBinding(uncheckedBinding, nonOptionSnapshot, {
+    type: 'resolve_test_data', snapshotId: nonOptionSnapshot.snapshotId, bindingId: binding.id,
+    sourceElementRef: 'e2', value: '数学', reason: '错误地使用同名按钮',
+  }), RuntimeDataBindingBlockedError)
 })

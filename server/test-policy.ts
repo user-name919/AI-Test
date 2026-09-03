@@ -64,6 +64,9 @@ export class TestPolicy {
         throw new Error(`未知或未解析的数据引用：${action.valueRef}`)
       }
     }
+    if (this.isValueReferenceAction(action) && action.value !== undefined && !this.literalValueIsApproved(action.value)) {
+      throw new Error(`运行时数据不能使用未确认的 fixture/manual 数据：${action.value}`)
+    }
     if (action.action === 'goto') {
       const destination = new URL(action.path, this.goal.targetUrl)
       if (destination.origin !== new URL(this.goal.targetUrl).origin) throw new Error('动作不能跳转到测试环境之外')
@@ -87,8 +90,12 @@ export class TestPolicy {
     }
     if ('assertionId' in action) {
       const assertion = this.goal.requiredAssertions.find(item => item.id === action.assertionId)
-      if (assertion && /高亮|highlight/i.test(assertion.description) && action.action !== 'expectAttribute') {
-        throw new Error('高亮断言需要可观察的元素属性或状态证据')
+      if (assertion && /高亮|highlight/i.test(assertion.description)) {
+        if (action.action !== 'expectAttribute') throw new Error('高亮断言需要可观察的元素属性或状态证据')
+        if (action.name !== 'class' && action.name !== 'data-state') throw new Error('高亮断言需要 class 或 data-state 证据')
+        if (!/高亮|highlight|匹配|match|标记|mark|关键词|keyword/i.test(action.value)) {
+          throw new Error('高亮断言的属性值必须表达高亮或匹配')
+        }
       }
     }
     const fingerprint = JSON.stringify(action)
@@ -102,6 +109,16 @@ export class TestPolicy {
 
   private runtimeBinding(bindingId: string) {
     return this.goal.executionContract?.contract.dataBindings.find(binding => binding.id === bindingId && binding.mode === 'runtime_dom')
+  }
+
+  private literalValueIsApproved(value: string) {
+    const bindings = this.goal.executionContract?.contract.dataBindings
+    if (!bindings?.length) return true
+    return bindings.some(binding => {
+      if (binding.mode === 'fixture') return binding.fixture?.value === value && Boolean(binding.fixture.evidence.trim())
+      if (binding.mode === 'manual') return binding.manual?.value === value && Boolean(binding.manual.rationale.trim())
+      return false
+    })
   }
 
   private isValueReferenceAction(action: AgentAction): action is Extract<AgentAction, { action: 'fill' | 'selectOption' | 'expectValue' }> {

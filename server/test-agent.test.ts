@@ -259,3 +259,124 @@ test('marks the product failed when a validated source disappears after filterin
     await browser.close()
   }
 })
+
+test('fails when filtering replaces the source option with a same-text non-option element', async () => {
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setContent(`
+      <label for="search">考试搜索框</label>
+      <input id="search" oninput="document.querySelector('[role=option]').remove(); document.body.insertAdjacentHTML('beforeend', '<button>模考数学一</button>')">
+      <div role="option">模考数学一</div>
+    `)
+    const goal = runtimeDataGoal()
+    let turn = 0
+    const provider: AgentDecisionProvider = {
+      async decide({ snapshot }) {
+        turn += 1
+        const search = snapshot.elements.find(element => element.name === '考试搜索框')?.ref ?? ''
+        const source = snapshot.elements.find(element => element.name === '模考数学一' && element.role === 'option')?.ref ?? ''
+        if (turn === 1) return {
+          type: 'resolve_test_data', snapshotId: snapshot.snapshotId, bindingId: 'exam-keyword', sourceElementRef: source,
+          value: '数学', reason: '选择真实考试名称中的部分关键词',
+        }
+        return {
+          type: 'action', snapshotId: snapshot.snapshotId,
+          action: { action: 'fill', elementRef: search, valueRef: 'exam-keyword' }, reason: '筛选真实来源 option',
+        }
+      },
+    }
+    const observer = new PageObserver()
+    const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, tmpdir())
+    const result = await new TestAgent(goal, observer, executor, provider).run(page)
+
+    assert.equal(result.status, 'failed')
+    assert.match(result.summary, /筛选后仍保留来源 option/)
+    assert.equal(result.executedSteps, 1)
+  } finally {
+    await browser.close()
+  }
+})
+
+test('rejects a runtime literal before calling the executor', async () => {
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setContent('<label for="search">考试搜索框</label><input id="search"><div role="option">模考数学一</div>')
+    const goal = runtimeDataGoal()
+    let executions = 0
+    const executor = {
+      async execute() {
+        executions += 1
+        return { ok: true, code: 'ok', retryable: false, message: '不应执行', durationMs: 1, pageChanged: false }
+      },
+    } as unknown as SingleActionExecutor
+    const provider: AgentDecisionProvider = {
+      async decide({ snapshot }) {
+        return {
+          type: 'action', snapshotId: snapshot.snapshotId,
+          action: { action: 'fill', elementRef: snapshot.elements.find(element => element.name === '考试搜索框')?.ref ?? '', value: '数学' },
+          reason: '绕过真实 DOM binding',
+        }
+      },
+    }
+    const result = await new TestAgent(goal, new PageObserver(), executor, provider).run(page)
+
+    assert.equal(result.status, 'failed')
+    assert.match(result.summary, /未确认的 fixture\/manual 数据/)
+    assert.equal(result.executedSteps, 0)
+    assert.equal(executions, 0)
+  } finally {
+    await browser.close()
+  }
+})
+
+test('blocks a malformed resolve_test_data candidate without calling the executor', async () => {
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setContent('<label for="search">考试搜索框</label><input id="search"><div role="option">模考数学一</div>')
+    const goal = runtimeDataGoal()
+    let executions = 0
+    const executor = {
+      async execute() {
+        executions += 1
+        return { ok: true, code: 'ok', retryable: false, message: '不应执行', durationMs: 1, pageChanged: false }
+      },
+    } as unknown as SingleActionExecutor
+    const provider: AgentDecisionProvider = {
+      async decide() {
+        return { type: 'resolve_test_data', bindingId: 'exam-keyword' } as never
+      },
+    }
+    const result = await new TestAgent(goal, new PageObserver(), executor, provider).run(page)
+
+    assert.equal(result.status, 'blocked')
+    assert.match(result.summary, /测试数据前置条件/)
+    assert.equal(result.executedSteps, 0)
+    assert.equal(executions, 0)
+  } finally {
+    await browser.close()
+  }
+})
+
+test('keeps malformed action candidates classified as failed', async () => {
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setContent('<button>保存</button>')
+    const goal = agentTestGoalSchema.parse({
+      name: '保存', targetUrl: 'http://localhost:5173', objective: '保存',
+      requiredAssertions: [{ id: 'saved', description: '保存成功' }],
+    })
+    const executor = { async execute() { throw new Error('不应执行') } } as unknown as SingleActionExecutor
+    const provider: AgentDecisionProvider = { async decide() { return { type: 'action' } as never } }
+    const result = await new TestAgent(goal, new PageObserver(), executor, provider).run(page)
+
+    assert.equal(result.status, 'failed')
+    assert.match(result.summary, /Agent 决策无效/)
+    assert.equal(result.executedSteps, 0)
+  } finally {
+    await browser.close()
+  }
+})
