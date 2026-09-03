@@ -107,7 +107,7 @@ function rawAgentAction(action: AgentAction) {
   }
   if (action.action === 'scroll') return `scroll ${action.elementRef ?? 'page'} x=${action.deltaX} y=${action.deltaY}`
   if ('elementRef' in action) {
-    if (action.action === 'fill' || action.action === 'selectOption' || action.action === 'expectValue') return `${action.action} ${action.elementRef} ${quoted(action.value)}`
+    if (action.action === 'fill' || action.action === 'selectOption' || action.action === 'expectValue') return `${action.action} ${action.elementRef} ${action.value !== undefined ? quoted(action.value) : `valueRef=${action.valueRef}`}`
     if (action.action === 'press') return `press ${action.elementRef} ${action.key}`
     if (action.action === 'expectChecked') return `expectChecked ${action.elementRef} ${action.checked}`
     if (action.action === 'expectElementText') return `expectElementText ${action.elementRef} ${quoted(action.text)}`
@@ -120,10 +120,11 @@ function rawAgentAction(action: AgentAction) {
 
 function readableAgentAction(action: AgentAction, snapshot: PageSnapshot) {
   const name = targetName(action, snapshot)
+  const value = 'value' in action && action.value !== undefined ? quoted(action.value) : 'valueRef' in action ? `已解析数据“${action.valueRef}”` : ''
   if (action.action === 'goto') return `打开页面 ${quoted(action.path)}`
   if (action.action === 'click') return `点击${quoted(name)}`
-  if (action.action === 'fill') return `在${quoted(name)}中输入${quoted(action.value)}`
-  if (action.action === 'selectOption') return `在${quoted(name)}中选择${quoted(action.value)}`
+  if (action.action === 'fill') return `在${quoted(name)}中输入${value}`
+  if (action.action === 'selectOption') return `在${quoted(name)}中选择${value}`
   if (action.action === 'check') return `选中${quoted(name)}`
   if (action.action === 'uncheck') return `取消选中${quoted(name)}`
   if (action.action === 'press') return `在${quoted(name)}上按下 ${action.key}`
@@ -134,7 +135,7 @@ function readableAgentAction(action: AgentAction, snapshot: PageSnapshot) {
   if (action.action === 'expectEnabled') return `确认${quoted(name)}可以操作`
   if (action.action === 'expectDisabled') return `确认${quoted(name)}不可操作`
   if (action.action === 'expectChecked') return `确认${quoted(name)}${action.checked ? '已选中' : '未选中'}`
-  if (action.action === 'expectValue') return `确认${quoted(name)}的值为${quoted(action.value)}`
+  if (action.action === 'expectValue') return `确认${quoted(name)}的值为${value}`
   if (action.action === 'expectText') return `确认页面出现${quoted(action.text)}`
   if (action.action === 'expectElementText') return `确认${quoted(name)}包含${quoted(action.text)}`
   if (action.action === 'expectAttribute') return `确认${quoted(name)}的 ${action.name} 状态`
@@ -163,6 +164,13 @@ export function describeAgentDecision(decision: AgentDecision, snapshot: PageSna
     title: decision.request.operation === 'resolve_route' ? '根据地址查找页面路由' : decision.request.operation === 'search_source' ? '搜索相关页面源码' : '读取相关页面局部源码',
     purpose: decision.reason,
     technicalAction: decision.request.operation,
+  }
+  if (decision.type === 'resolve_test_data') return {
+    ...base,
+    phase: 'deciding',
+    title: `从${quoted(elementName(snapshot, decision.sourceElementRef))}解析测试数据${quoted(decision.value)}`,
+    purpose: decision.reason,
+    technicalAction: `resolve_test_data ${decision.bindingId} source=${decision.sourceElementRef} value=${quoted(decision.value)}`,
   }
   if (decision.type === 'finish') return { ...base, phase: 'completed', title: '测试目标已完成', purpose: decision.summary, status: 'passed' }
   return { ...base, phase: 'blocked', title: '测试暂时无法继续', purpose: decision.reason, status: 'failed' }

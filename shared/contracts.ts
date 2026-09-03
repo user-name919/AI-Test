@@ -108,11 +108,12 @@ export interface CaseReview {
 
 export interface ResolvedDataBinding {
   bindingId: string
+  sourceElementRef: string
+  sourceText: string
   value: string
-  sourceText?: string
-  rationale: string
-  snapshotId?: string
-  resolvedAt: string
+  snapshotId: string
+  observedAt: string
+  reason: string
 }
 
 export interface ResolvedCaseExecutionContract {
@@ -447,6 +448,11 @@ export const agentTestGoalSchema = z.object({
     id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
     description: z.string().min(1),
   })).min(1).max(20),
+  executionContract: z.object({
+    caseKey: z.string().regex(/^\d+-TC-\d+$/),
+    contract: caseExecutionContractSchema,
+    contractFingerprint: z.string().min(1),
+  }).optional(),
 })
 
 export const agentRunRequestSchema = z.object({
@@ -487,11 +493,29 @@ const assertableAttributeSchema = z.enum([
   'aria-selected', 'class', 'data-state', 'role',
 ])
 
+const valueReferenceFields = {
+  value: z.string().optional(),
+  valueRef: z.string().min(1).optional(),
+}
+
+function requireExactlyOneValueReference(
+  action: { value?: string; valueRef?: string },
+  context: z.RefinementCtx,
+) {
+  if ((action.value === undefined) === (action.valueRef === undefined)) {
+    context.addIssue({
+      code: 'custom',
+      message: 'value 与 valueRef 必须且只能提供一个',
+      path: ['value'],
+    })
+  }
+}
+
 export const agentActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
   z.object({ action: z.literal('click'), ...elementActionBase }),
-  z.object({ action: z.literal('fill'), ...elementActionBase, value: z.string() }),
-  z.object({ action: z.literal('selectOption'), ...elementActionBase, value: z.string() }),
+  z.object({ action: z.literal('fill'), ...elementActionBase, ...valueReferenceFields }).superRefine(requireExactlyOneValueReference),
+  z.object({ action: z.literal('selectOption'), ...elementActionBase, ...valueReferenceFields }).superRefine(requireExactlyOneValueReference),
   z.object({ action: z.literal('check'), ...elementActionBase }),
   z.object({ action: z.literal('uncheck'), ...elementActionBase }),
   z.object({ action: z.literal('press'), ...elementActionBase, key: keyboardKeySchema }),
@@ -507,7 +531,7 @@ export const agentActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('expectEnabled'), ...elementActionBase, assertionId: z.string().min(1) }),
   z.object({ action: z.literal('expectDisabled'), ...elementActionBase, assertionId: z.string().min(1) }),
   z.object({ action: z.literal('expectChecked'), ...elementActionBase, checked: z.boolean(), assertionId: z.string().min(1) }),
-  z.object({ action: z.literal('expectValue'), ...elementActionBase, value: z.string(), assertionId: z.string().min(1) }),
+  z.object({ action: z.literal('expectValue'), ...elementActionBase, ...valueReferenceFields, assertionId: z.string().min(1) }).superRefine(requireExactlyOneValueReference),
   z.object({ action: z.literal('expectText'), text: z.string().min(1), assertionId: z.string().min(1) }),
   z.object({ action: z.literal('expectElementText'), ...elementActionBase, text: z.string().min(1), exact: z.boolean().default(false), assertionId: z.string().min(1) }),
   z.object({
@@ -556,6 +580,14 @@ export const agentDecisionSchema = z.discriminatedUnion('type', [
     request: projectContextRequestSchema,
     reason: z.string().min(1),
   }),
+  z.object({
+    type: z.literal('resolve_test_data'),
+    snapshotId: z.string().uuid(),
+    bindingId: z.string().min(1),
+    sourceElementRef: z.string().regex(/^e\d+$/),
+    value: z.string().min(1),
+    reason: z.string().min(1),
+  }),
   z.object({ type: z.literal('finish'), summary: z.string().min(1) }),
   z.object({ type: z.literal('blocked'), reason: z.string().min(1) }),
 ])
@@ -574,5 +606,7 @@ export type AgentTestGoal = z.infer<typeof agentTestGoalSchema>
 export type AgentRunRequest = z.infer<typeof agentRunRequestSchema>
 export type AgentAction = z.infer<typeof agentActionSchema>
 export type AgentDecision = z.infer<typeof agentDecisionSchema>
+export type ValueReference = { valueRef: string }
+export type ResolveTestDataDecision = Extract<AgentDecision, { type: 'resolve_test_data' }>
 export type ProjectContextRequest = z.infer<typeof projectContextRequestSchema>
 export type ToolResult = z.infer<typeof toolResultSchema>

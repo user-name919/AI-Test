@@ -55,3 +55,71 @@ test('guards new element actions and still detects repeated page scrolls', () =>
     type: 'action', snapshotId: snapshot.snapshotId, action: scroll, reason: '继续滚动',
   }, snapshot, state), /连续重复动作/)
 })
+
+test('requires valueRef to name a resolved runtime binding while retaining fixture and manual literals', () => {
+  const goal = agentTestGoalSchema.parse({
+    name: '筛选考试', targetUrl: 'http://localhost:5173', objective: '筛选考试',
+    requiredAssertions: [{ id: 'filtered', description: '保留匹配考试' }],
+    executionContract: {
+      caseKey: '0-TC-1', contractFingerprint: 'binding-contract',
+      contract: {
+        objective: '筛选考试', preconditions: [], steps: ['输入真实 option 的部分关键词'], expectedAssertions: ['保留匹配考试'],
+        dataBindings: [{
+          id: 'exam-keyword', label: '考试筛选关键词', mode: 'runtime_dom', targetHint: '考试搜索框', businessIntent: '筛选考试',
+          strategy: 'visible_option_substring',
+          constraints: { mustComeFromCurrentDom: true, mustBePartialOfSource: true, mustRemainAfterFiltering: true },
+        }, {
+          id: 'fixed-exam', label: '固定考试', mode: 'fixture', targetHint: '考试搜索框', businessIntent: '固定夹具兼容',
+          constraints: { mustComeFromCurrentDom: false }, fixture: { value: '人工指定的考试', evidence: '测试夹具协议' },
+        }, {
+          id: 'manual-exam', label: '人工考试', mode: 'manual', targetHint: '考试搜索框', businessIntent: '人工数据兼容',
+          constraints: { mustComeFromCurrentDom: false }, manual: { value: '人工指定的考试', rationale: '本次测试确认' },
+        }],
+        forbiddenBehaviors: [], uncertainties: [],
+      },
+    },
+  })
+  const policy = new TestPolicy(goal)
+  const state: AgentRuntimeState = {
+    startedAt: Date.now(), executedSteps: 0, projectContextRequests: 0,
+    passedAssertions: new Set(), recentActionFingerprints: [], resolvedDataBindings: new Map(),
+  }
+  const snapshot = {
+    snapshotId: 'f3980fe3-e6e5-4057-9dfe-4984bba475cc',
+    elements: [{ ref: 'e1', enabled: true }],
+  } as PageSnapshot
+
+  assert.throws(() => policy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'fill', elementRef: 'e1', valueRef: 'unknown' }, reason: '使用不存在的数据绑定',
+  }, snapshot, state), /未知或未解析的数据引用/)
+  assert.throws(() => policy.validate({
+    type: 'resolve_test_data', snapshotId: '00000000-0000-4000-8000-000000000000', bindingId: 'exam-keyword',
+    sourceElementRef: 'e1', value: '数学', reason: '选择部分关键词',
+  }, snapshot, state), /过期页面快照/)
+  assert.doesNotThrow(() => policy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'fill', elementRef: 'e1', value: '人工指定的考试' }, reason: 'fixture/manual 保持兼容',
+  }, snapshot, state))
+})
+
+test('does not accept visible text as proof for a required highlighter assertion', () => {
+  const goal = agentTestGoalSchema.parse({
+    name: '筛选考试', targetUrl: 'http://localhost:5173', objective: '验证高亮',
+    requiredAssertions: [{ id: 'highlighted', description: '匹配关键词已高亮' }],
+  })
+  const policy = new TestPolicy(goal)
+  const state: AgentRuntimeState = {
+    startedAt: Date.now(), executedSteps: 0, projectContextRequests: 0,
+    passedAssertions: new Set(), recentActionFingerprints: [],
+  }
+  const snapshot = {
+    snapshotId: 'f3980fe3-e6e5-4057-9dfe-4984bba475cc',
+    elements: [{ ref: 'e1', enabled: true }],
+  } as PageSnapshot
+
+  assert.throws(() => policy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'expectText', text: '数学', assertionId: 'highlighted' }, reason: '列表仍然显示数学',
+  }, snapshot, state), /高亮断言需要可观察的元素属性或状态证据/)
+})

@@ -22,9 +22,12 @@ const decisionSystemPrompt = `你是 B 端网页自动化测试的单步决策�
 8. 源码上下文返回后系统会重新观察真实页面；优先使用新 DOM 中的导航入口。search_source 或 inspect_files 中发现的子模块路由不等于主应用可直接访问的 URL，未经当前部署验证不得直接 goto。
 9. goto 只能使用当前部署中可从主应用访问的同源路径；不要丢失目标地址已有的应用前缀。无法确认外部可访问路径时继续操作真实导航或返回 blocked。
 10. 无法安全继续时返回 blocked，不猜测账号、业务数据或不存在的页面状态。
+11. 若 goal.executionContract 的 dataBindings 包含 runtime_dom，具体业务值不是示例数据：先在当前 DOM 找到可见 option，再输出 resolve_test_data。该决策不是 Playwright action，必须带当前 snapshotId、bindingId、sourceElementRef、来源 option 的非空严格子串 value 与原因。解析成功后，fill、selectOption、expectValue 对该绑定只能使用 valueRef，禁止把未经解析的文字作为 value。找不到安全来源时返回 blocked。
+12. 高亮类断言必须使用当前可观察 elementRef 的属性或状态证据（例如 class、data-state、aria-*）；仅看到匹配文本不算高亮通过。当前 DOM 没有可观察证据时返回 blocked，不要编造 CSS 或脚本检查。
 
 允许的决策：
 - action：goto、click、fill、selectOption、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
+- resolve_test_data：为 runtime_dom binding 从当前可见 option 解析真实值
 - need_project_context：resolve_route、search_source、inspect_files
 - finish
 - blocked
@@ -33,7 +36,9 @@ action.action 必须严格使用以下结构之一，不得创造 navigate、rel
 {"action":"goto","path":"/相对路径"}
 {"action":"click","elementRef":"e3"}
 {"action":"fill","elementRef":"e3","value":"输入内容"}
+{"action":"fill","elementRef":"e3","valueRef":"已解析的 bindingId"}
 {"action":"selectOption","elementRef":"e3","value":"选项值"}
+{"action":"selectOption","elementRef":"e3","valueRef":"已解析的 bindingId"}
 {"action":"check","elementRef":"e3"}
 {"action":"uncheck","elementRef":"e3"}
 {"action":"press","elementRef":"e3","key":"Enter"}
@@ -48,6 +53,7 @@ action.action 必须严格使用以下结构之一，不得创造 navigate、rel
 {"action":"expectDisabled","elementRef":"e3","assertionId":"必要断言 ID"}
 {"action":"expectChecked","elementRef":"e3","checked":true,"assertionId":"必要断言 ID"}
 {"action":"expectValue","elementRef":"e3","value":"预期值","assertionId":"必要断言 ID"}
+{"action":"expectValue","elementRef":"e3","valueRef":"已解析的 bindingId","assertionId":"必要断言 ID"}
 {"action":"expectText","text":"预期文字","assertionId":"必要断言 ID"}
 {"action":"expectElementText","elementRef":"e3","text":"预期文字","exact":false,"assertionId":"必要断言 ID"}
 {"action":"expectAttribute","elementRef":"e3","name":"aria-expanded","value":"true","match":"equals","assertionId":"必要断言 ID"}
@@ -62,7 +68,9 @@ action.action 必须严格使用以下结构之一，不得创造 navigate、rel
 源码请求示例：
 {"type":"need_project_context","request":{"operation":"search_source","query":"编辑学生","scopes":["page","component"]},"reason":"DOM 中存在多个同名操作，需确认业务组件"}
 完成示例：
-{"type":"finish","summary":"所有必要操作和断言已完成"}`
+{"type":"finish","summary":"所有必要操作和断言已完成"}
+运行时数据解析示例：
+{"type":"resolve_test_data","snapshotId":"当前 UUID","bindingId":"exam-keyword","sourceElementRef":"e8","value":"数学","reason":"从当前可见 option“模考数学一”选择部分关键词"}`
 
 const allowedActionNames = [
   'goto', 'click', 'fill', 'selectOption', 'check', 'uncheck',

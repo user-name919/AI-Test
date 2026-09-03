@@ -78,3 +78,34 @@ test('reports the unsupported action name after bounded repair attempts', async 
 
   await assert.rejects(provider.decide(decisionInput()), /不支持的动作“reload”/)
 })
+
+test('instructs the model to resolve real DOM data before using valueRef', async () => {
+  const requests: Array<{ init?: RequestInit }> = []
+  const provider = new ResponsesDecisionProvider({ ...modelOptions, fetchImpl: async (_input, init) => {
+    requests.push({ init })
+    return responseWithText(JSON.stringify({
+      type: 'resolve_test_data', snapshotId: decisionInput().snapshot.snapshotId, bindingId: 'student-keyword',
+      sourceElementRef: 'e1', value: '张', reason: '从当前学生 option 中选择部分关键词',
+    }))
+  } })
+  const input = decisionInput()
+  input.goal = agentTestGoalSchema.parse({
+    ...input.goal,
+    executionContract: {
+      caseKey: '0-TC-1', contractFingerprint: 'student-search',
+      contract: {
+        objective: '从真实学生 option 解析关键词', preconditions: [], steps: ['解析真实 option'], expectedAssertions: ['筛选结果'],
+        dataBindings: [{
+          id: 'student-keyword', label: '学生筛选关键词', mode: 'runtime_dom', targetHint: '学生姓名', businessIntent: '筛选学生',
+          strategy: 'visible_option_substring', constraints: { mustComeFromCurrentDom: true, mustBePartialOfSource: true },
+        }], forbiddenBehaviors: [], uncertainties: [],
+      },
+    },
+  })
+
+  assert.equal((await provider.decide(input)).type, 'resolve_test_data')
+  const body = JSON.parse(String(requests[0]?.init?.body)) as { instructions: string; input: Array<{ content: string }> }
+  assert.match(body.instructions, /resolve_test_data/)
+  assert.match(body.instructions, /valueRef/)
+  assert.match(body.input[0]?.content ?? '', /student-keyword/)
+})
