@@ -27,6 +27,9 @@ export function isCaseReviewExecutable(
   if (caseReview.status === 'needs_data_review') {
     return { executable: false, reason: '用例需要确认测试数据' }
   }
+  if (caseReview.finalContract.steps.length === 0 || caseReview.finalContract.expectedAssertions.length === 0) {
+    return { executable: false, reason: '用例契约缺少执行步骤或预期断言' }
+  }
 
   for (const binding of caseReview.finalContract.dataBindings) {
     if (binding.mode === 'fixture' && (!binding.fixture?.value?.trim() || !binding.fixture.evidence?.trim())) {

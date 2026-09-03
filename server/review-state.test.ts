@@ -90,6 +90,35 @@ test('requires a confirmed case review before an explicit contract can execute',
   assert.deepEqual(isCaseReviewExecutable(draft, '0-TC-0', 'agent'), { executable: true })
 })
 
+test('rejects confirmed contracts without executable steps or assertions', () => {
+  assert.throws(() => normalizeReviewState({
+    confirmedQuestions: [], selectedCases: [], updatedAt: null,
+    caseReviews: {
+      '0-TC-0': {
+        status: 'confirmed',
+        finalContract: { ...contract(), steps: [], expectedAssertions: [] },
+        updatedAt: null,
+      },
+    },
+  }))
+})
+
+test('does not execute a confirmed contract made incomplete after normalization', () => {
+  const review = normalizeReviewState({
+    confirmedQuestions: [], selectedCases: [], updatedAt: null,
+    caseReviews: {
+      '0-TC-0': { status: 'confirmed', finalContract: contract(), updatedAt: null },
+    },
+  })
+
+  review.caseReviews!['0-TC-0']!.finalContract.steps = []
+  assert.equal(isCaseReviewExecutable(review, '0-TC-0', 'agent').executable, false)
+
+  review.caseReviews!['0-TC-0']!.finalContract.steps = ['打开考试选择器']
+  review.caseReviews!['0-TC-0']!.finalContract.expectedAssertions = []
+  assert.equal(isCaseReviewExecutable(review, '0-TC-0', 'agent').executable, false)
+})
+
 test('requires fixture values and evidence for confirmed contracts', () => {
   const review = normalizeReviewState({
     confirmedQuestions: [], selectedCases: [], updatedAt: null,

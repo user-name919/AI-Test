@@ -192,8 +192,8 @@ export const testDataBindingSchema = dataBindingBaseSchema.extend({
 export const caseExecutionContractSchema = z.object({
   objective: z.string().min(1),
   preconditions: z.array(z.string().min(1)),
-  steps: z.array(z.string().min(1)),
-  expectedAssertions: z.array(z.string().min(1)),
+  steps: z.array(z.string().min(1)).min(1),
+  expectedAssertions: z.array(z.string().min(1)).min(1),
   dataBindings: z.array(testDataBindingSchema),
   forbiddenBehaviors: z.array(z.string().min(1)),
   uncertainties: z.array(z.string().min(1)),
