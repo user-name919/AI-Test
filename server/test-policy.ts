@@ -93,6 +93,9 @@ export class TestPolicy {
       if (assertion && /高亮|highlight/i.test(assertion.description)) {
         if (action.action !== 'expectAttribute') throw new Error('高亮断言需要可观察的元素属性或状态证据')
         if (action.name !== 'class' && action.name !== 'data-state') throw new Error('高亮断言需要 class 或 data-state 证据')
+        if (/not-highlighted|unmatched|not-matched|未高亮|未匹配/i.test(action.value)) {
+          throw new Error('高亮断言的属性值不能表达未高亮或未匹配')
+        }
         if (!/高亮|highlight|匹配|match|标记|mark|关键词|keyword/i.test(action.value)) {
           throw new Error('高亮断言的属性值必须表达高亮或匹配')
         }

@@ -89,3 +89,16 @@ test('requires a visible option source even when an unchecked runtime binding om
     sourceElementRef: 'e2', value: '数学', reason: '错误地使用同名按钮',
   }), RuntimeDataBindingBlockedError)
 })
+
+test('defensively blocks weak runtime binding contracts despite a valid visible option and strict substring', () => {
+  for (const uncheckedBinding of [
+    { ...binding, strategy: undefined },
+    { ...binding, constraints: { ...binding.constraints, mustComeFromCurrentDom: false } },
+    { ...binding, constraints: { ...binding.constraints, mustBePartialOfSource: false } },
+  ] satisfies TestDataBinding[]) {
+    assert.throws(() => resolveRuntimeDataBinding(uncheckedBinding, snapshot, {
+      type: 'resolve_test_data', snapshotId: snapshot.snapshotId, bindingId: binding.id,
+      sourceElementRef: 'e2', value: '数学', reason: '错误地绕过运行时 DOM 协议',
+    }), RuntimeDataBindingBlockedError)
+  }
+})

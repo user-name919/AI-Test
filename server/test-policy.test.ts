@@ -148,8 +148,18 @@ test('does not accept visible text as proof for a required highlighter assertion
     type: 'action', snapshotId: snapshot.snapshotId,
     action: { action: 'expectAttribute', elementRef: 'e1', name: 'class', value: 'option', match: 'equals', assertionId: 'highlighted' }, reason: '普通 class 不是高亮证据',
   }, snapshot, state), /高亮断言的属性值必须表达高亮或匹配/)
+  for (const value of ['not-highlighted', 'unmatched', 'not-matched', '未高亮', '未匹配']) {
+    assert.throws(() => policy.validate({
+      type: 'action', snapshotId: snapshot.snapshotId,
+      action: { action: 'expectAttribute', elementRef: 'e1', name: 'class', value, match: 'equals', assertionId: 'highlighted' }, reason: '否定状态不能证明高亮',
+    }, snapshot, state), /高亮断言的属性值不能表达未高亮或未匹配/)
+  }
   assert.doesNotThrow(() => policy.validate({
     type: 'action', snapshotId: snapshot.snapshotId,
     action: { action: 'expectAttribute', elementRef: 'e1', name: 'data-state', value: 'keyword-match', match: 'equals', assertionId: 'highlighted' }, reason: '组件暴露匹配状态',
+  }, snapshot, state))
+  assert.doesNotThrow(() => policy.validate({
+    type: 'action', snapshotId: snapshot.snapshotId,
+    action: { action: 'expectAttribute', elementRef: 'e1', name: 'class', value: 'highlighted', match: 'equals', assertionId: 'highlighted' }, reason: '组件暴露高亮状态',
   }, snapshot, state))
 })
