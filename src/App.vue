@@ -777,7 +777,7 @@ onMounted(loadSavedAnalysis)
       <header class="topbar"><div v-if="workspaceView==='version'" class="version-switcher"><span>版本中心</span><b>/</b><button :disabled="switchingVersion" @click="versionMenuOpen=!versionMenuOpen"><strong>{{ analysis.versionName }}</strong><i>⌄</i></button><div v-if="versionMenuOpen" class="version-menu"><header><strong>版本记录</strong><span>{{ analysisHistory.length }} 个版本</span></header><button v-for="item in analysisHistory" :key="item.id" :class="{active:item.id===savedAnalysis?.id}" @click="switchVersion(item.id)"><i>{{ item.id===savedAnalysis?.id ? '✓' : '版' }}</i><span><strong>{{ item.productName }} · {{ item.versionName }}</strong><small>{{ formatVersionTime(item.createdAt) }} · {{ item.requirementCount }} 项需求 · {{ item.testCaseCount }} 条用例</small><em><b :style="{width:`${item.questionCount ? Math.round(item.confirmedQuestionCount/item.questionCount*100) : 100}%`}"></b></em></span></button><p v-if="!analysisHistory.length">导入第一份 PRD 后会形成版本记录</p></div></div><div v-else><span>{{ workspaceLabel }}</span><b>/</b><strong>{{ analysis.versionName }}</strong></div><div class="topbar-actions"><button class="guide-trigger" @click="helpOpen=true"><b>?</b> 如何使用</button><label v-if="workspaceView==='version'" :class="['import',{disabled:analyzing}]"><input :disabled="analyzing" multiple type="file" accept=".pdf,.md,.markdown,.txt,application/pdf" @change="importPrd" />{{ analyzing ? 'AI 解析中…' : '＋ 导入需求材料' }}</label></div></header>
       <div class="workspace">
         <template v-if="workspaceView==='version'">
-        <section class="heading"><div><small><i></i>{{ savedAnalysis ? `真实解析 · ${savedAnalysis.provider}` : '示例模式 · 等待导入 PRD' }}</small><h1>{{ analysis.productName }} · {{ analysis.versionName }}</h1><p>{{ analysis.overview }}</p></div><div><button>分享评审</button><button class="primary" @click="activeTab='cases';toast('已切换到当前测试用例')">查看测试建议</button></div></section>
+        <section class="heading"><div><small><i></i>{{ savedAnalysis ? `真实解析 · ${savedAnalysis.provider}` : '示例模式 · 等待导入 PRD' }}</small><h1>{{ analysis.productName }} · {{ analysis.versionName }}</h1><p>{{ analysis.overview }}</p></div><div><button class="primary" @click="activeTab='cases';toast('已切换到当前测试用例')">查看测试建议</button></div></section>
         <section class="metrics"><article><i class="purple">需</i><p><span>前端需求</span><strong>{{ requirements.length }}</strong><small>{{ savedAnalysis ? '公司模型已解析' : '当前为示例数据' }}</small></p></article><article><i class="amber">?</i><p><span>待确认问题</span><strong>{{ totalQuestions }}</strong><small>影响规则与用例</small></p></article><article><i class="blue">例</i><p><span>测试用例</span><strong>{{ totalCases }}</strong><small>{{ readyCases }} 条可执行</small></p></article><article><i class="green">✓</i><p><span>当前可执行率</span><strong>{{ coverage }}%</strong><small>确认后继续提升</small></p></article></section>
 
         <section class="content-grid">
@@ -894,7 +894,7 @@ onMounted(loadSavedAnalysis)
           <p class="guide-summary">{{ currentGuide.summary }}</p>
           <section><h3>推荐操作顺序</h3><ol><li v-for="(step,index) in currentGuide.steps" :key="step"><b>{{ index+1 }}</b><span>{{ step }}</span></li></ol></section>
           <section><h3>使用前请确认</h3><ul><li v-for="condition in currentGuide.conditions" :key="condition">{{ condition }}</li></ul></section>
-          <footer><b>建议</b><span>{{ currentGuide.tip }}</span></footer>
+          <footer><b class="primary" width="20px">建议</b><span>{{ currentGuide.tip }}</span></footer>
         </aside>
       </div>
     </Transition>
