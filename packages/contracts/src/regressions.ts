@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { caseExecutionContractSchema } from './contracts'
 
 const localRef = z.string().min(1).max(300).refine(value => !value.startsWith('-') && !/[\s\0]/.test(value), '请输入本地分支或提交 SHA')
 export const changeComparisonSchema = z.discriminatedUnion('mode', [
@@ -48,4 +49,44 @@ export interface SourceImpact {
   }>
   skippedShas: string[]
   warnings: string[]
+}
+
+export const regressionSuggestionSchema = z.object({
+  risks: z.array(z.object({
+    id: z.string().min(1).max(80), title: z.string().min(1).max(300),
+    reason: z.string().min(1).max(4000), severity: z.enum(['high', 'medium', 'low']),
+    confidence: z.enum(['high', 'medium', 'low']), evidenceIds: z.array(z.string()).min(1).max(30),
+  }).strict()).max(30),
+  cases: z.array(z.object({
+    title: z.string().min(1).max(300), riskIds: z.array(z.string()).min(1).max(30),
+    verification: z.enum(['browser', 'api', 'manual']), verificationReason: z.string().min(1).max(2000),
+    contract: caseExecutionContractSchema,
+  }).strict()).max(50),
+  limitations: z.array(z.string().min(1).max(2000)).max(30),
+}).strict()
+export type RegressionSuggestions = z.infer<typeof regressionSuggestionSchema>
+export interface RegressionEvidence {
+  id: string
+  kind: 'patch_excerpt' | 'import_candidate'
+  baseSha?: string
+  targetSha: string
+  paths: string[]
+  text: string
+  patchOffset?: number
+  line?: number
+}
+export interface RegressionSuggestionBatch {
+  id: string
+  inputHash: string
+  evidence: RegressionEvidence[]
+  suggestions: RegressionSuggestions
+}
+export interface RegressionGeneration {
+  promptVersion: string
+  model: string
+  reviewStatus: 'pending'
+  batches: RegressionSuggestionBatch[]
+  pendingEvidenceIds: string[]
+  omittedEvidenceIds: string[]
+  limitations: string[]
 }
