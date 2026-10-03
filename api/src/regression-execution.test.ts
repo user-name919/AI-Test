@@ -100,6 +100,8 @@ test('回归审核经部署校验后实际执行，冻结子项目源码和报�
   const result = (await (await fetch(`${url}/api/executions/${job.id}`)).json()).execution
   assert.equal(result.status, 'passed')
   assert.equal(result.sourceProject.commit, sha)
+  assert.equal(result.sourceProject.worktree.status, 'clean')
+  assert.ok(result.sourceProject.worktree.observedAt)
   assert.deepEqual(result.deploymentConfirmation, accepted)
   const legacyRerun=await fetch(`${url}/api/executions/${job.id}/rerun`,{method:'POST'})
   assert.equal(legacyRerun.status,409)

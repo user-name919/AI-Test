@@ -5,6 +5,7 @@ import {
   type PageSnapshot,
   type ResolvedDataBinding,
   type ToolResult,
+  type SourceProjectSnapshot,
 } from '@quality-ai/contracts'
 import type { ProjectKnowledgeProvider } from './project-knowledge/types'
 import type { PageObserver } from './page-observer'
@@ -29,6 +30,7 @@ export interface AgentTrajectoryItem {
   }
   result?: ToolResult
   projectContext?: unknown
+  sourceProject?: SourceProjectSnapshot
   resolvedDataBinding?: ResolvedDataBinding
   recovery?: { attempt: number; limit: number; status: 'reobserved' | 'exhausted' | 'observation_failed'; reason: string }
 }
@@ -162,7 +164,10 @@ export class TestAgent {
           return this.result('blocked', '当前测试没有连接项目源码 Provider', state, trajectory, screenshots)
         }
         let projectContext: unknown
+        let sourceProject: SourceProjectSnapshot | undefined
         try {
+          const info = await this.options.projectProvider.getProjectInfo()
+          sourceProject = structuredClone({id:info.id,branch:info.branch,commit:info.commit,worktree:info.worktree})
           projectContext = await this.resolveProjectContext(decision)
         } catch (error) {
           return this.result('blocked', `项目源码上下文获取失败：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
@@ -170,7 +175,7 @@ export class TestAgent {
         state.projectContextRequests += 1
         this.options.onActivity?.({ ...activity, status: 'passed', message: '源码上下文读取完成' })
         projectContexts.push(projectContext)
-        trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot), projectContext })
+        trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot), projectContext, sourceProject })
         try {
           snapshot = await this.observer.observe(page)
         } catch (error) {

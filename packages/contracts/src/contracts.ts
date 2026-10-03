@@ -10,8 +10,11 @@ export interface ProjectInfo {
   targetOrigins:string[]
   branch?:string
   commit?:string
+  worktree?: { status: 'clean' | 'dirty' | 'unknown'; observedAt: string }
   error?:string
 }
+
+export type SourceProjectSnapshot = Pick<ProjectInfo, 'id' | 'branch' | 'commit' | 'worktree'>
 
 export const riskSchema = z.enum(['高风险', '中风险', '低风险'])
 export const prioritySchema = z.enum(['P0', 'P1', 'P2'])
@@ -414,7 +417,7 @@ export interface ExecutionResult {
   error?: string
   caseResults?: CaseExecutionResult[]
   caseSnapshots?: ExecutionCaseSnapshot[]
-  sourceProject?: { id: string; branch?: string; commit?: string }
+  sourceProject?: SourceProjectSnapshot
   agent?: {
     summary: string
     passedAssertions: string[]
@@ -433,6 +436,7 @@ export interface ExecutionResult {
       }
       result?: ToolResult
       projectContext?: unknown
+      sourceProject?: SourceProjectSnapshot
       resolvedDataBinding?: ResolvedDataBinding
       recovery?: { attempt: number; limit: number; status: 'reobserved' | 'exhausted' | 'observation_failed'; reason: string }
     }>

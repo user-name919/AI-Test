@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -39,6 +41,33 @@ test('resolves a symlinked project and exposes its Git-independent connection st
   const info = await provider.getProjectInfo()
   assert.equal(info.connected, true)
   assert.match(info.resolvedRoot ?? '', /target-project$/)
+  assert.equal(info.worktree?.status, 'unknown')
+})
+
+test('Git状态区分干净、未跟踪、暂存与工作区修改，不以相同SHA冒充相同源码且不刷新索引', async t => {
+  const { directory, provider } = await createFixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const root = join(directory, 'target-project')
+  const git = (...args: string[]) => promisify(execFile)('git', ['-c','core.hooksPath=/dev/null','-c','commit.gpgSign=false','-C',root,...args])
+  await git('init')
+  await writeFile(join(root, '.gitignore'), 'ignored.txt\n')
+  await git('add', '.')
+  await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'fixture')
+  const clean = await provider.getProjectInfo()
+  assert.equal(clean.worktree?.status, 'clean')
+  await writeFile(join(root, 'ignored.txt'), 'ignored')
+  assert.equal((await provider.getProjectInfo()).worktree?.status, 'clean')
+  await writeFile(join(root, 'src/new.ts'), 'untracked')
+  const untracked = await provider.getProjectInfo()
+  assert.equal(untracked.worktree?.status, 'dirty')
+  assert.equal(untracked.commit, clean.commit)
+  await git('add', 'src/new.ts')
+  assert.equal((await provider.getProjectInfo()).worktree?.status, 'dirty')
+  await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'fixture addition')
+  await writeFile(join(root, 'src/new.ts'), 'modified')
+  const indexBefore = await readFile(join(root, '.git/index'))
+  assert.equal((await provider.getProjectInfo()).worktree?.status, 'dirty')
+  assert.deepEqual(await readFile(join(root, '.git/index')), indexBefore)
 })
 
 test('resolves a dynamic route and its lazy component without executing target code', async testContext => {

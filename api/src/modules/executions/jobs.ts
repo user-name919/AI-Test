@@ -132,7 +132,7 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
   const now = new Date().toISOString()
   const job: ExecutionJob = {id:randomUUID(),status:'queued',mode:request.mode,targetUrl:request.targetUrl,snapshots:preparation.snapshots,createdAt:now,updatedAt:now,
     environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,automationPlanId:savedPlan?.id??replay?.automationPlanId,rerunOf:replay?.id,
-    sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit} : undefined}
+    sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit,worktree:project.worktree} : undefined}
   writeJob(job)
   queue.push(async () => {
     if (getExecutionJob(job.id)?.status !== 'queued') return
@@ -158,10 +158,13 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
         executionProvider = new LocalProjectKnowledgeProvider({ ...regressionProjectConfig, root: sourceLease.projectPath })
         const snapshotInfo = await executionProvider.getProjectInfo()
         if (!snapshotInfo.connected || snapshotInfo.commit !== deployment.targetSha) throw new Error('回归源码快照与固定目标 SHA 不一致')
+        job.sourceProject = {id:snapshotInfo.id,branch:snapshotInfo.branch,commit:snapshotInfo.commit,worktree:snapshotInfo.worktree}
       } else if (provider && project) {
         const current = await provider.getProjectInfo()
         if (!current.connected || current.commit !== project.commit || current.branch !== project.branch) throw new Error('排队期间源码版本已变化，请重新确认项目版本再执行')
+        job.sourceProject = {id:current.id,branch:current.branch,commit:current.commit,worktree:current.worktree}
       }
+      writeJob(job)
       let plan=confirmedPlan
       if (request.mode === 'plan'&&!plan) {
         const casePlans = []

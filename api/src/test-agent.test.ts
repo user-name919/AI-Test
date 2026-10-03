@@ -28,6 +28,30 @@ function runtimeDataGoal(requiredAssertions = [{ id: 'filtered', description: '�
   })
 }
 
+test('源码读取保存读取前工作区快照，不被后续Provider状态覆盖', async () => {
+  const browser = await chromium.launch({headless:true})
+  try {
+    const page=await browser.newPage();await page.setContent('<p>可验证页面</p>')
+    const goal=agentTestGoalSchema.parse({name:'源码证据',targetUrl:'http://localhost',objective:'源码辅助后回真实DOM',requiredAssertions:[{id:'visible',description:'内容可见'}]})
+    const worktree:{status:'dirty'|'clean';observedAt:string}={status:'dirty',observedAt:'2026-10-04T00:00:00Z'}
+    const observer=new PageObserver()
+    const result=await new TestAgent(goal,observer,new SingleActionExecutor(page,observer.registry,goal.targetUrl,tmpdir()),{async decide({snapshot,trajectory}){
+      if(!trajectory.length)return {type:'need_project_context',reason:'确认页面语义',request:{operation:'search_source',query:'可验证页面'}}
+      if(trajectory.length===1){
+        worktree.status='clean'
+        assert.equal(trajectory[0].sourceProject?.worktree?.status,'dirty')
+        return {type:'action',snapshotId:snapshot.snapshotId,reason:'回DOM验证',action:{action:'expectText',text:'可验证页面',assertionId:'visible'}}
+      }
+      return {type:'finish',summary:'验证完成'}
+    }},{projectProvider:{
+      async getProjectInfo(){return {id:'fixture',name:'fixture',configuredRoot:'.',connected:true,targetOrigins:[],branch:'feature/local',commit:'a'.repeat(40),worktree}},
+      async resolveRoute(){return null},async searchSource(){return []},async inspectFiles(){return {projectId:'fixture',reason:'unused',files:[],totalCharacters:0}},
+    }}).run(page)
+    assert.equal(result.status,'passed')
+    assert.equal(result.trajectory[0].sourceProject?.worktree?.status,'dirty')
+  } finally {await browser.close()}
+})
+
 test('runs an observe-decide-execute loop and requires declared assertions before finish', async testContext => {
   const artifactDirectory = await mkdtemp(join(tmpdir(), 'quality-ai-agent-'))
   testContext.after(() => rm(artifactDirectory, { recursive: true, force: true }))

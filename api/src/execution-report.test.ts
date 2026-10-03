@@ -22,6 +22,14 @@ test('历史报告不从成功步骤推断用例通过率，并转义业务文�
   assert.ok(!report.includes('<script>'))
 })
 
+test('报告保留当时工作区状态，历史缺失不解释为干净',()=>{
+  const report=executionMarkdown({...base,sourceProject:{id:'project',branch:'feature/local',commit:'a'.repeat(40),worktree:{status:'dirty',observedAt:'2026-10-04T00:00:00Z'}}},[])
+  assert.match(report,/存在本地未提交或未跟踪改动，SHA 不能代表全部读取内容/)
+  assert.match(report,/2026-10-04T00:00:00Z/)
+  assert.match(report,/不包括 Git 忽略文件/)
+  assert.match(executionMarkdown({...base,sourceProject:{id:'old'}},[]),/历史未记录，不推断为干净/)
+})
+
 test('未执行报告不生成操作证据、运行数据或成功比例',()=>{
   const record:ExecutionRecord={...base,caseResults:[{caseKey:'0-TC-0',title:'未开始的搜索',contractFingerprint:'original',status:'not_run',startedFromUrl:'',continuation:'not_started',resolvedDataBindings:[],passedAssertions:[],trajectory:[],steps:[],screenshots:[],error:'用户取消'}]}
   const before=JSON.stringify(record)

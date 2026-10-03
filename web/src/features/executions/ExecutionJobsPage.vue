@@ -6,6 +6,7 @@ import type { ExecutionRecord, LiveExecutionEvent } from '@quality-ai/contracts'
 import ContractView from '../case-design/ContractView.vue'
 import ExecutionArtifacts from './ExecutionArtifacts.vue'
 import CaseExecutionEvidence from './CaseExecutionEvidence.vue'
+import SourceWorktreeNote from '../projects/SourceWorktreeNote.vue'
 
 const route=useRoute()
 const jobs=ref<ExecutionJob[]>([])
@@ -97,6 +98,7 @@ onUnmounted(()=>{generation++;clearTimeout(timer)})
       <RouterLink v-for="item in jobs" :key="item.id" class="job-row" :to="`/execution-jobs/${item.id}`"><strong>{{ item.snapshots[0]?.resolved.title??item.id }}</strong><span>{{ names[item.status] }} · {{ item.snapshots.length }} 条 · {{ item.createdAt }}</span></RouterLink>
     </section>
     <template v-else-if="job">
+      <SourceWorktreeNote v-if="job.sourceProject" :worktree="job.sourceProject.worktree" />
       <p v-if="job.rerunOf">本次是独立重跑，原结果不变。<RouterLink :to="`/executions/${job.rerunOf}`">查看原执行报告</RouterLink></p>
       <section class="panel"><h2>{{ job.snapshots[0]?.resolved.title }} · {{ job.snapshots.length }} 条用例</h2><p>{{ names[job.status] }} · {{ job.mode==='agent'?'动态 Agent':'固定计划' }} · 最近更新 {{ job.updatedAt }}</p><p>{{ job.targetUrl }}</p><p>源码：{{ job.sourceProject ? `${job.sourceProject.id} / ${job.sourceProject.branch??'未知分支'} / ${job.sourceProject.commit??'未记录 SHA'}`:'未关联源码' }}</p><p v-if="job.error" class="error">{{ job.error }}</p><button :disabled="cancelling||!['queued','running'].includes(job.status)" @click="cancel">取消执行</button><span v-if="job.status==='cancelling'"> 已请求取消，等待执行器及当前请求收尾。</span></section>
       <section v-if="job.deploymentConfirmation" class="panel" aria-label="回归版本对应">

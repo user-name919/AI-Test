@@ -2,6 +2,7 @@ import type { ExecutionRecord } from '@quality-ai/contracts'
 import type { ExecutionArtifact } from '@quality-ai/contracts/cases'
 
 const labels={passed:'通过',failed:'验证失败',blocked:'受阻',infrastructure_failed:'环境或执行器中断',cancelled:'已取消',not_run:'未执行'}
+const worktreeLabels={clean:'未发现 Git 跟踪或未跟踪改动',dirty:'存在本地未提交或未跟踪改动，SHA 不能代表全部读取内容',unknown:'无法确认工作区状态'}
 const text=(value:unknown)=>String(value??'未记录').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/([\\`*_{}[\]#|])/g,'\\$1').replace(/\r?\n/g,' / ')
 
 export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionArtifact[]):string{
@@ -13,6 +14,10 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
   if(execution.rerunOf)lines.push(`重跑来源：${text(execution.rerunOf)}（独立记录，未覆盖原执行）`,'')
   if(execution.sourceProject)lines.push(`源码参考：${text(execution.sourceProject.id)} / 分支 ${text(execution.sourceProject.branch)} / SHA ${text(execution.sourceProject.commit)}`,'源码版本不是测试环境部署版本证明。','')
   else lines.push('源码参考：本次未记录。','')
+  if(execution.sourceProject){
+    const state=execution.sourceProject.worktree
+    lines.push(`工作区检查：${state?worktreeLabels[state.status]:'历史未记录，不推断为干净'}；时间：${text(state?.observedAt)}`,'此状态不包括 Git 忽略文件，也不是内容冻结或部署版本证明。','')
+  }
   if(execution.deploymentConfirmation){
     const confirmation=execution.deploymentConfirmation
     lines.push('## 回归版本对应','',`回归任务：${text(confirmation.regressionId)}；ChangeSet：${text(confirmation.changeSetId)}；人工审核 v${confirmation.reviewRevision}`,
@@ -57,6 +62,10 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       const purpose=decision.type==='finish'?decision.summary:decision.reason
       lines.push(`- 第 ${turn.iteration} 轮 · ${text(decision.type)}：${text(purpose)}；DOM ${text(turn.snapshotId)}`)
       const frame = turn.observation?.frameContext?.frames.find(frame=>frame.active)
+      if(turn.sourceProject){
+        const source=turn.sourceProject
+        lines.push(`  - 读取前源码：${text(source.id)} / ${text(source.branch)} / ${text(source.commit)}；${source.worktree?worktreeLabels[source.worktree.status]:'工作区历史未记录'}；检查时间 ${text(source.worktree?.observedAt)}`)
+      }
       if(frame)lines.push(`  - 观察框架：${frame.main?'主页面':'嵌入页面'} / ${text(frame.name||'未命名')} / ${text(frame.ref)} / ${text(turn.observation?.url)}`)
       if(decision.type==='action')lines.push(`  - 技术动作：${text(JSON.stringify(decision.action))}`)
       if(turn.result)lines.push(`  - 实际结果：${turn.result.ok?'操作/断言成功':'操作/断言失败'} · ${text(turn.result.message)} · ${turn.result.durationMs} ms`)

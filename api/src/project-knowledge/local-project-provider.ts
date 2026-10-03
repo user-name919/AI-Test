@@ -149,11 +149,12 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       await this.getSourceRoots()
       const git = async (...args: string[]) => {
         try {
-          return (await execFileAsync('git', ['-C', root, ...args], { timeout: 3_000 })).stdout.trim()
+          return (await execFileAsync('git', ['--no-optional-locks', '-C', root, ...args], { timeout: 3_000 })).stdout.trim()
         } catch {
           return undefined
         }
       }
+      const status = await git('status', '--porcelain=v1', '-z', '--untracked-files=normal')
       return {
         id: this.config.id,
         name: this.config.name,
@@ -163,6 +164,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         targetOrigins: this.config.targetOrigins.map(value => new URL(value).origin),
         branch: await git('branch', '--show-current'),
         commit: await git('rev-parse', 'HEAD'),
+        worktree: { status: status === undefined ? 'unknown' : status.length ? 'dirty' : 'clean', observedAt: new Date().toISOString() },
       }
     } catch (error) {
       return {

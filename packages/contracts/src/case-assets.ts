@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { caseReviewSchema, type CaseExecutionContract, type CaseReview, type ResolvedCaseExecutionContract } from './contracts'
+import { caseReviewSchema, type CaseExecutionContract, type CaseReview, type ResolvedCaseExecutionContract, type SourceProjectSnapshot } from './contracts'
 
 export type CaseSource =
   | { type: 'requirement'; analysisId: string; caseKey: string }
@@ -64,7 +64,7 @@ export interface ExecutionJob {
   executionId?: string
   environmentId?: string
   projectId?: string
-  sourceProject?: { id:string; branch?:string; commit?:string }
+  sourceProject?: SourceProjectSnapshot
 }
 
 export interface ExecutionArtifact {

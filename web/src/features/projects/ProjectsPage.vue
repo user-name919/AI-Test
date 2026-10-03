@@ -2,6 +2,7 @@
 import { computed,onMounted,ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { ProjectInfo } from '@quality-ai/contracts'
+import SourceWorktreeNote from './SourceWorktreeNote.vue'
 const route=useRoute()
 const projects=ref<ProjectInfo[]>([]),busy=ref(false),error=ref(''),help=ref(false),checkedAt=ref('')
 const selected=computed(()=>projects.value.find(item=>item.id===route.params.id))
@@ -26,6 +27,7 @@ onMounted(refresh)
     <div class="columns"><section><h2>已配置项目</h2><p v-if="!projects.length&&!busy">未读取到项目。请查看使用指引检查本地配置。</p><RouterLink v-for="item in projects" :key="item.id" class="project" :to="`/projects/${encodeURIComponent(item.id)}`"><strong>{{ item.name }}</strong><span>{{ item.connected?'源码可读':'连接异常' }} · {{ item.branch||'无分支信息' }}</span></RouterLink></section>
     <section v-if="selected"><h2>{{ selected.name }}</h2><p :class="{error:!selected.connected}">{{ selected.connected?'源码目录可读':'连接异常：'+(selected.error??'未提供原因') }}</p><dl><dt>项目 ID</dt><dd>{{ selected.id }}</dd><dt>配置路径 / 软链入口</dt><dd>{{ selected.configuredRoot }}</dd><dt>实际读取目录</dt><dd>{{ selected.resolvedRoot??'未解析成功' }}</dd><dt>当前分支</dt><dd>{{ selected.branch||'无分支信息（可能为 detached HEAD 或非 Git 目录）' }}</dd><dt>当前提交 SHA</dt><dd>{{ selected.commit??'未读取到提交信息' }}</dd><dt>允许测试的 Origin</dt><dd><ul v-if="selected.targetOrigins.length"><li v-for="origin in selected.targetOrigins" :key="origin">{{ origin }}</li></ul><span v-else>未限制 Origin，请在执行时核对目标地址。</span></dd></dl><p>SHA 仅标识已提交版本，不包含本地未提交改动；本页没有证明工作区干净或部署版本一致。</p></section>
     <section v-else><h2>{{ route.params.id?'项目不存在或未能读取':'选择一个项目查看连接详情' }}</h2><p>切换左侧项目只改变查看对象，不会切换 Git 分支或修改源码。</p></section></div>
+    <SourceWorktreeNote v-if="selected" :worktree="selected.worktree" />
   </main>
 </template>
 <style scoped>
