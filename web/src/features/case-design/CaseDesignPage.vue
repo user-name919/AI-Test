@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { CaseDesign, DesignRun, EvidenceRef } from '@quality-ai/contracts/case-design'
 import { designRequest, useCaseDesign } from './useCaseDesign'
 import SourceViewer from './SourceViewer.vue'
+import CaseDesignReview from './CaseDesignReview.vue'
 
 const route = useRoute(); const router = useRouter()
 const { design, runs, selected, active, error, loading, busy, refresh, start, cancel } = useCaseDesign()
@@ -55,7 +56,7 @@ function locate(value:EvidenceRef) { reference.value=value; showSource.value=tru
     <nav class="design-nav" aria-label="设计工作台导航"><RouterLink to="/versions">返回版本中心</RouterLink><RouterLink to="/requirements">需求中心</RouterLink><RouterLink to="/case-designs" @click="loadList">用例设计</RouterLink><RouterLink to="/cases">用例资产</RouterLink><RouterLink to="/executions">执行中心</RouterLink></nav>
     <main>
       <header><div><small>独立设计 · 无需测试环境</small><h1>{{ design?.name || '用例设计' }}</h1></div><button @click="help=!help">使用指引</button></header>
-      <section v-if="help" class="card"><h2>如何使用</h2><p>导入材料 → 提取并检查事实 → 规划场景 → 生成草稿 → 审查质量。各阶段会保存独立产物，关闭页面不会取消生成。点击依据可定位左侧原文。</p><p>“阶段完成”不代表审核通过。人工审核、发布与导出入口正在接入；当前可以查看完整生成产物和问题，不能把它直接当成已确认执行方案。</p></section>
+      <section v-if="help" class="card"><h2>如何使用</h2><p>导入材料 → 提取并检查事实 → 规划场景 → 生成草稿 → 审查质量。各阶段会保存独立产物，关闭页面不会取消生成。点击依据可定位左侧原文。</p><p>“阶段完成”不代表审核通过。选择已完成的质量审查记录后，在下方编辑人工口径、确认或排除用例并保存。未保存草稿留在当前标签页，离开会提示；发布与导出界面正在接入。</p></section>
       <p v-if="importError" role="alert" class="error">{{ importError }} <button @click="loadList">重试列表</button></p>
       <template v-if="!route.params.id">
         <form class="card" @submit.prevent="create"><h2>创建用例设计</h2><label>任务名称<input v-model="name" maxlength="200" required /></label><label>需求材料（PDF、Markdown、TXT，1–5 份）<input type="file" accept=".pdf,.md,.markdown,.txt" multiple @change="chooseFiles" /></label>
@@ -81,6 +82,7 @@ function locate(value:EvidenceRef) { reference.value=value; showSource.value=tru
               <article v-for="issue in selected?.output.issues" :key="issue.id"><h3>{{ issue.severity==='blocking'?'阻塞问题':'审查提醒' }} · {{ issue.checkedBy==='rule'?'代码检查':'模型建议' }}</h3><p>{{ issue.reason }}</p></article>
             </section>
           </div>
+          <CaseDesignReview v-if="selected?.stage==='checking' && selected.status==='completed'" :key="selected.id" :design-id="design.id" :run="selected" @locate="locate" />
         </template>
       </template>
     </main>

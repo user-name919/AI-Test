@@ -3,7 +3,7 @@ import test from 'node:test'
 import { createServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
-import type { CaseDesign, DesignRun } from '@quality-ai/contracts/case-design'
+import type { CaseDesign, DesignRun, DesignReview } from '@quality-ai/contracts/case-design'
 import { createEvidenceDocuments } from '../../api/src/modules/case-design/documents'
 
 test('独立设计页面导入、阶段条件、原文定位与刷新，无需环境', async () => {
@@ -13,6 +13,8 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
   let runs:DesignRun[]=[]
   let imported=false
   let failedOnce=true
+  let reviews:DesignReview[]=[]
+  let reviewConflict=true
   const server=await createServer({root:new URL('../../web',import.meta.url).pathname,configFile:false,plugins:[vue()],server:{host:'127.0.0.1',port:0}})
   let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined
   try {
@@ -23,6 +25,14 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     const errors:string[]=[]; page.on('pageerror',error=>errors.push(error.message))
     await page.route('**/api/**',async route=> {
       const path=new URL(route.request().url()).pathname
+      if(path.endsWith('/reviews')) {
+        if(route.request().method()==='GET'){await route.fulfill({json:{reviews}});return}
+        const body=route.request().postDataJSON()
+        if(reviewConflict){reviewConflict=false;reviews=[{id:'other-review',designId:design.id,runId:'checked',revision:1,inputHash:design.inputHash,inputRevision:1,createdAt:design.createdAt,content:body.review}];await route.fulfill({status:409,json:{error:'版本冲突',review:reviews[0]}});return}
+        assert.equal(body.expectedRevision,1)
+        const review={...reviews[0],id:'saved-review',revision:2,content:body.review};reviews=[review,...reviews]
+        await route.fulfill({status:201,json:{review}});return
+      }
       if(path==='/api/case-designs' && route.request().method()==='POST') {
         const body=route.request().postDataJSON()
         assert.equal(body.files[0].content,'支持部分关键词搜索。')
@@ -57,6 +67,23 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     assert.match(page.url(),/runId=run-fixture/)
     await page.getByRole('button',{name:'使用指引',exact:true}).click()
     await page.getByRole('heading',{name:'如何使用',exact:true}).waitFor()
+    runs.unshift({...structuredClone(runs[0]),id:'checked',stage:'checking',attempt:2,output:{...structuredClone(runs[0].output),modelReviewCompleted:true,cases:[{id:'case-1',title:'部分关键词搜索',scenarioId:'s1',factIds:['f1'],questionIds:[],verification:'browser',verificationReason:'页面可观察',requiresReview:true,contract:{objective:'AI建议目标',preconditions:['打开搜索框'],steps:['从实际选项选择部分词'],expectedAssertions:['选项保留'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}}]}})
+    await page.reload()
+    await page.getByLabel('查看阶段产物',{exact:true}).selectOption('checked')
+    await page.getByLabel('测试目标',{exact:true}).fill('人工修改后的目标')
+    await page.getByLabel('预期断言（每行一项）',{exact:true}).fill('匹配部分高亮\n来源选项仍存在')
+    await page.getByLabel('审核状态',{exact:true}).selectOption('confirmed')
+    await page.reload()
+    await page.getByText('已恢复当前标签页未保存草稿；保存时仍会校验服务端版本。',{exact:true}).waitFor()
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'人工修改后的目标')
+    await page.getByRole('button',{name:'保存人工审核',exact:true}).click()
+    await page.getByText('审核版本已更新。草稿未覆盖，请对比最新记录后再保存。',{exact:false}).waitFor()
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'人工修改后的目标')
+    await page.getByRole('button',{name:'已对比，保留我的草稿并更新版本号',exact:true}).click()
+    await page.getByRole('button',{name:'保存人工审核',exact:true}).click()
+    await page.getByText('已保存审核 v2，尚未发布，也不代表测试通过。',{exact:true}).waitFor()
+    assert.deepEqual(reviews[0].content.cases['case-1'].contract.expectedAssertions,['匹配部分高亮','来源选项仍存在'])
+    assert.equal(runs[0].output.cases![0].contract.objective,'AI建议目标')
     assert.ok((await page.locator('main').boundingBox())!.x<200)
     if(process.env.UI_DESIGN_SCREENSHOT_PATH) await page.screenshot({path:process.env.UI_DESIGN_SCREENSHOT_PATH,fullPage:true})
     await page.setViewportSize({width:390,height:844})
