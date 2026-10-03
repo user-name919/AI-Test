@@ -4,9 +4,19 @@ import { json, readJson } from '../../http/response'
 import { freezeChangeSet, getChangeSet, listChangeSets, previewChangeSet } from './change-sets'
 import { createRegression, getRegression, listRegressions, cancelRegression } from './jobs'
 import { getRegressionReviews, regressionReviewItems, saveRegressionReview } from './review'
+import { listDeploymentConfirmations, saveDeploymentConfirmation } from './deployments'
 
 export async function handleRegressionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+  const deploymentMatch = pathname.match(/^\/api\/regressions\/([a-f0-9-]{36})\/deployments$/i)
+  if (deploymentMatch) {
+    if (!getRegression(deploymentMatch[1]!)) return json(response, 404, { error: '回归分析不存在' })
+    if (request.method === 'GET') return json(response, 200, { confirmations: listDeploymentConfirmations(deploymentMatch[1]!) })
+    if (request.method === 'POST') {
+      try { return json(response, 201, { confirmation: saveDeploymentConfirmation(deploymentMatch[1]!, await readJson(request)) }) }
+      catch (error) { return json(response, 409, { error: error instanceof Error ? error.message : '部署确认失败' }) }
+    }
+  }
   const reviewMatch = pathname.match(/^\/api\/regressions\/([a-f0-9-]{36})\/review$/i)
   if (reviewMatch) {
     const analysis = getRegression(reviewMatch[1]!)

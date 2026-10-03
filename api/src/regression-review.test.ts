@@ -15,6 +15,8 @@ const { initializeRegressionReviews, regressionReviewItems, getRegressionReviews
 const { getRegressionCaseAsset, listRegressionCaseAssets } = await import('./modules/cases/regression-assets')
 const { prepareAssetExecution } = await import('./modules/cases/execution-preparation')
 const { createApiServer } = await import('./app')
+const { saveEnvironment } = await import('./modules/projects/environment-repository')
+const { validateDeploymentForExecution, getDeploymentConfirmation } = await import('./modules/regressions/deployments')
 
 test('人工范围排除有理由、修改用例独立版本且不覆盖 AI 原文', async t => {
   t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }) })
@@ -61,5 +63,27 @@ test('人工范围排除有理由、修改用例独立版本且不覆盖 AI 原�
     assert.deepEqual(detail.asset, asset)
     const immutable = await fetch(`${url}/api/cases/${encodeURIComponent(asset.id)}/review`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' })
     assert.equal(immutable.status, 409)
+    const environment = saveEnvironment({ name: '合成测试环境', baseUrl: 'http://example.test', targetUrl: 'http://example.test/page' })
+    const expected = { regressionId: id, reviewRevision: 2, environmentId: environment.id, targetUrl: environment.targetUrl }
+    const confirmationInput = { reviewRevision: 2, environmentId: environment.id, targetUrl: environment.targetUrl, confirmedBy: '测试人员', note: '根据本地夹具发布记录人工核对', deployedSha: analysis.targetSha }
+    const postConfirmation = (body: unknown) => fetch(`${url}/api/regressions/${id}/deployments`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    const matchedResponse = await postConfirmation(confirmationInput)
+    assert.equal(matchedResponse.status, 201)
+    const matched = (await matchedResponse.json()).confirmation
+    assert.equal(matched.status, 'matched')
+    assert.equal(validateDeploymentForExecution(matched.id, expected).id, matched.id)
+    assert.throws(() => validateDeploymentForExecution(matched.id, { ...expected, reviewRevision: 1 }), /不一致/)
+    const mismatched = (await (await postConfirmation({ ...confirmationInput, deployedSha: 'c'.repeat(40) })).json()).confirmation
+    assert.equal(mismatched.status, 'mismatched')
+    assert.throws(() => validateDeploymentForExecution(mismatched.id, expected), /不匹配/)
+    assert.throws(() => validateDeploymentForExecution(matched.id, expected), /更新的部署确认/)
+    assert.deepEqual(getDeploymentConfirmation(matched.id), matched, '新确认不重写旧历史')
+    const unknown = (await (await postConfirmation({ ...confirmationInput, deployedSha: undefined, note: '未核实版本，仅进行探索性回归，保留此限制' })).json()).confirmation
+    assert.equal(validateDeploymentForExecution(unknown.id, expected).status, 'unverified')
+    assert.equal((await postConfirmation({ ...confirmationInput, note: ' ' })).status, 409)
+    assert.equal((await postConfirmation({ ...confirmationInput, targetUrl: 'http://other.test' })).status, 409)
+    saveEnvironment({ id: environment.id, name: environment.name, baseUrl: environment.baseUrl, targetUrl: 'http://example.test/changed' })
+    assert.throws(() => validateDeploymentForExecution(unknown.id, expected), /配置已变化/)
+    assert.equal((await (await fetch(`${url}/api/regressions/${id}/deployments`)).json()).confirmations.length, 3)
   } finally { await new Promise<void>(resolve => api.close(() => resolve())) }
 })

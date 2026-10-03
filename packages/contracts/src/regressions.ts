@@ -126,3 +126,20 @@ export interface RegressionReview {
   analysisHash: string
   content: z.infer<typeof regressionReviewContentSchema>
 }
+export const deploymentConfirmationSchema = z.object({
+  reviewRevision: z.number().int().positive(), environmentId: z.string().uuid(),
+  targetUrl: z.string().url().refine(value => ['http:', 'https:'].includes(new URL(value).protocol)),
+  deployedSha: z.string().regex(/^[a-f0-9]{40,64}$/i).transform(value => value.toLowerCase()).optional(),
+  confirmedBy: z.string().trim().min(1).max(100), note: z.string().trim().min(1).max(4000),
+}).strict()
+export interface DeploymentConfirmation extends z.infer<typeof deploymentConfirmationSchema> {
+  id: string
+  regressionId: string
+  changeSetId: string
+  projectId: string
+  targetSha: string
+  status: 'matched' | 'mismatched' | 'unverified'
+  environmentBaseUrl: string
+  environmentTargetUrl: string
+  createdAt: string
+}
