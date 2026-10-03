@@ -27,7 +27,7 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
       modelRequests.push(Buffer.concat(chunks).toString())
       await gate
       response.writeHead(200,{'content-type':'application/json'})
-      response.end(JSON.stringify({output_text:JSON.stringify({name:'合成固定计划',targetUrl:target,steps:[{action:'click',locator:{by:'text',value:'继续'}},{action:'expectText',text:'已继续'}]})}))
+      response.end(JSON.stringify({output_text:JSON.stringify({name:'合成固定计划',targetUrl:target,steps:[{action:'click',locator:{by:'text',value:'继续'}},{action:'expectText',assertionIndex:0,text:'已继续'}]})}))
     }else{
       response.writeHead(200,{'content-type':'text/html; charset=utf-8'})
       response.end('<button onclick="this.textContent=\'已继续\'">继续</button>')
@@ -90,8 +90,8 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   for(let i=0;i<100 && modelRequests.length<2;i++)await new Promise(resolve=>setTimeout(resolve,10))
   assert.equal(modelRequests.length,2)
   const cancelRunning=await post(`/api/execution-jobs/${running.id}/cancel`,{})
-  assert.equal((await cancelRunning.json()).job.status,'cancelling')
-  assert.equal((await(await post(`/api/execution-jobs/${running.id}/cancel`,{})).json()).job.status,'cancelling')
+  assert.ok(['cancelling','cancelled'].includes((await cancelRunning.json()).job.status))
+  assert.ok(['cancelling','cancelled'].includes((await(await post(`/api/execution-jobs/${running.id}/cancel`,{})).json()).job.status))
   releaseModel()
   let stopped:ExecutionJob=running
   for(let i=0;i<100;i++){

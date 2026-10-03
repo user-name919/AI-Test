@@ -34,7 +34,7 @@ test('固定规划与运行时模型提议串联三策略，首条错误预期�
       output={type:'resolve_test_data',snapshotId:snapshot.snapshotId,bindingId:binding.id,sourceElementRef:option.ref,value:binding.strategy==='visible_option_full'?'AlphaBook':binding.strategy==='visible_option_substring'?'Alpha':'ZZZ',reason:'使用当前真实选项及契约范围'}
     }else{
       const contract=JSON.parse(prompt.split('最终执行契约（唯一执行依据）：')[1].split('\n用例标识：')[0])
-      output={name:'合成固定规划',targetUrl,steps:[{action:'click',locator:{by:'role',value:'button',name:'重置'}},{action:'resolveTestData',bindingId:'query'},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:'query'},contract.dataBindings[0].strategy==='visible_option_substring'?{action:'expectText',valueRef:'query'}:{action:'expectText',text:contract.expectedAssertions[0]}]}
+      output={name:'合成固定规划',targetUrl,steps:[{action:'click',locator:{by:'role',value:'button',name:'重置'}},{action:'resolveTestData',bindingId:'query'},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:'query'},contract.dataBindings[0].strategy==='visible_option_substring'?{action:'expectText',assertionIndex:0,valueRef:'query'}:{action:'expectText',assertionIndex:0,text:contract.expectedAssertions[0]}]}
     }
     response.setHeader('content-type','application/json');response.end(JSON.stringify({output_text:JSON.stringify(output)}))
   })

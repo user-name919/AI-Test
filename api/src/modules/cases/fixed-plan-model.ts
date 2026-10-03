@@ -3,6 +3,7 @@ import { agentDecisionSchema, automationPlanSchema, type PageSnapshot, type Reso
 import { getModelConfig, type ModelConfig } from '../../model-config'
 import { ResponsesModelClient } from '../../model-client'
 import { RuntimeDataBindingBlockedError } from '../../test-data-binding'
+import { validateFixedAssertionCoverage } from '../../fixed-assertion-coverage'
 
 const parse=(text:string)=>JSON.parse(jsonrepair(text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'')))
 
@@ -12,6 +13,7 @@ export async function generateFixedPlan(targetUrl:string,testCase:ResolvedCaseEx
 格式 {"name":"计划名称","targetUrl":"${targetUrl}","steps":[]}。
 允许 goto{path}、click{locator}、fill{locator,value或valueRef}、expectText{text或valueRef}、screenshot{name}、resolveTestData{bindingId}；每步有 action 字段。
 元素断言支持 expectVisible{locator}、expectHidden{locator}、expectEnabled{locator}、expectDisabled{locator}、expectValue{locator,value或valueRef}、expectAttribute{locator,name,value,match:"exact|token"}。属性 exact 为完整值相等，token 为独立空白分隔标记（例如 class）。高亮必须有明确的标记元素及属性依据，没有依据就报告能力受阻，不猜样式或把文本存在当高亮。
+每个 expect 动作必须带 assertionIndex，指向最终契约 expectedAssertions 数组的下标（从0开始）。每项预期至少有一个真正验证它的动作；不得重复验证容易的预期而漏掉其他项。
 locator={by:"role|label|text|css",value:"定位内容",name:"可选名称"}；优先语义定位，不能杜撰选择器。
 runtime_dom 的输入不能在生成时猜测：先通过操作展开真实选项，再 resolveTestData，随后 fill 使用 valueRef。完整名称、部分词、负例的策略来自契约，实际值执行时才提议。绑定不存在或未解析不能使用；重复搜索可再次解析。
 value 与 valueRef、text 与 valueRef 各自只能选一个。非运行时输入必须来自已确认 fixture/manual。无匹配场景断言原始空态，不把不存在的搜索词当可见预期。禁止跳转目标域外、禁止改业务断言或把不支持的验证偷换为文本存在。不能用 expectText 证明样式高亮。无法表达的验证返回 {"blocked":"具体缺口"}，不要伪造步骤。
@@ -35,6 +37,7 @@ value 与 valueRef、text 与 valueRef 各自只能选一个。非运行时输�
   for(const binding of testCase.contract.dataBindings.filter(item=>item.mode==='runtime_dom')){
     if(!resolved.has(binding.id)||!plan.steps.some(step=>step.action==='fill'&&step.valueRef===binding.id))throw new Error(`固定计划遗漏运行时数据的解析或使用：${binding.id}`)
   }
+  validateFixedAssertionCoverage(plan.steps,testCase.contract)
   return plan
 }
 

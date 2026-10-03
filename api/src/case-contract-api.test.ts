@@ -38,13 +38,14 @@ const modelServer = createServer(async (request, response) => {
   const body = JSON.parse(Buffer.concat(chunks).toString()) as { input: Array<{ content: string }> }
   modelPrompts.push(body.input.map(message => message.content).join('\n'))
   const contractLine=modelPrompts[modelPrompts.length-1].split('\n').find(line=>line.startsWith('最终执行契约（唯一执行依据）：'))
-  const runtime=contractLine?JSON.parse(contractLine.split('：').slice(1).join('：')).dataBindings?.find((item:{mode:string})=>item.mode==='runtime_dom'):undefined
+  const generatedContract:CaseExecutionContract|undefined=contractLine?JSON.parse(contractLine.split('：').slice(1).join('：')):undefined
+  const runtime=generatedContract?.dataBindings.find(item=>item.mode==='runtime_dom')
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({
     status: 'completed',
     output_text: JSON.stringify({
       name: '单用例固定计划', targetUrl: 'https://example.test/exams',
-      steps: runtime?[{action:'resolveTestData',bindingId:runtime.id},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:runtime.id},{action:'expectText',valueRef:runtime.id}]:[{ action: 'goto', path: '/exams' }, { action: 'screenshot', name: '证据' }],
+      steps: runtime?[{action:'resolveTestData',bindingId:runtime.id},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:runtime.id},{action:'expectText',assertionIndex:0,valueRef:runtime.id}]:[{ action: 'goto', path: '/exams' },...(generatedContract?.expectedAssertions??[]).map((text,assertionIndex)=>({action:'expectText',text,assertionIndex})), { action: 'screenshot', name: '证据' }],
     }),
   }))
 })
@@ -285,7 +286,7 @@ test('generates one ready fixed plan per case and combines them into case checkp
   assert.deepEqual(body.automationPlan.plan.casePlans.map(item => item.title), ['按考试名称筛选', '按考试状态筛选'])
   assert.equal(body.automationPlan.plan.casePlans[0]?.contract.dataBindings[0]?.fixture?.value, '期中考试')
   assert.equal(body.automationPlan.plan.casePlans[1]?.contract.dataBindings[0]?.manual?.value, '已发布')
-  assert.ok(body.automationPlan.plan.casePlans.every(item => item.steps.length === 2))
+  assert.ok(body.automationPlan.plan.casePlans.every(item => item.steps.length === item.contract.expectedAssertions.length+2))
   assert.equal(modelPrompts.length, 2)
   const sentContracts = modelPrompts.map(prompt => {
     const contractLine = prompt.split('\n').find(line => line.startsWith('最终执行契约（唯一执行依据）：'))
@@ -300,7 +301,7 @@ test('generates one ready fixed plan per case and combines them into case checkp
 
 test('a real local browser run persists the captured case version in its report', async () => {
   const original = databaseModule.getLatestAutomationPlan()!
-  const plan = { ...original, id: '33333333-3333-4333-8333-333333333333', createdAt: new Date(Date.now() + 1000).toISOString(), plan: { ...original.plan, targetUrl: `${modelBaseUrl}/exams` } }
+  const plan = { ...original, id: '33333333-3333-4333-8333-333333333333', createdAt: new Date(Date.now() + 1000).toISOString(), plan: { ...original.plan, targetUrl: `${modelBaseUrl}/exams`,casePlans:original.plan.casePlans!.map(item=>({...item,steps:item.steps.filter(step=>!step.action.startsWith('expect'))})) } }
   databaseModule.saveAutomationPlan(plan)
   const response = await fetch(`${baseUrl}/api/automation/run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ automationPlanId: plan.id }) })
   assert.equal(response.status, 422)

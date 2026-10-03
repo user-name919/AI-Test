@@ -46,7 +46,7 @@ test('回归审核经部署校验后实际执行，冻结子项目源码和报�
       modelInputs.push(Buffer.concat(chunks).toString())
       await gate
       response.setHeader('content-type', 'application/json')
-      response.end(JSON.stringify({ output_text: JSON.stringify({ name: '公开合成回归', targetUrl: target, steps: [{ action: 'click', locator: { by: 'text', value: '继续' } }, { action: 'expectText', text: '已继续' }] }) }))
+      response.end(JSON.stringify({ output_text: JSON.stringify({ name: '公开合成回归', targetUrl: target, steps: [{ action: 'click', locator: { by: 'text', value: '继续' } }, { action:'expectText',assertionIndex:0, text: '已继续' }] }) }))
     } else {
       visits++
       response.setHeader('content-type', 'text/html; charset=utf-8')

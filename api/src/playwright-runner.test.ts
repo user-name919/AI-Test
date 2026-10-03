@@ -16,7 +16,7 @@ test('固定执行器运行时取真实option，失败绑定不污染后续同�
   const address=web.address();assert.ok(address&&typeof address!=='string')
   const binding={id:'query',label:'查询词',mode:'runtime_dom',strategy:'visible_option_substring',targetHint:'搜索',businessIntent:'部分搜索',constraints:{mustComeFromCurrentDom:true,mustBePartialOfSource:true}}
   const contract={objective:'搜索',preconditions:[],steps:['输入真实关键词'],expectedAssertions:['可见关键词'],dataBindings:[binding],forbiddenBehaviors:[],uncertainties:[]}
-  const steps=[{action:'resolveTestData',bindingId:'query'},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:'query'},{action:'expectText',valueRef:'query'}]
+  const steps=[{action:'resolveTestData',bindingId:'query'},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:'query'},{action:'expectText',assertionIndex:0,valueRef:'query'}]
   let calls=0
   const result=await runAutomationPlan({name:'运行时数据',targetUrl:`http://127.0.0.1:${address.port}`,steps,casePlans:[0,1].map(index=>({caseKey:`0-TC-${index}`,title:`用例${index}`,contractFingerprint:'frozen',contract,steps}))},undefined,{artifactRoot,resolveTestData:async(binding,snapshot)=>{
     calls++
@@ -118,13 +118,13 @@ test('fixed plans execute real case checkpoints on one continuous page after a f
         { action: 'goto', path: 'https://outside.invalid/' },
       ] },
       { caseKey: '0-TC-1', title: '第二条', contractFingerprint: 'second', steps: [
-        { action: 'expectText', text: '已继续' }, { action: 'screenshot', name: '第二条证据' },
+        { action:'expectText',assertionIndex:0, text: '已继续' }, { action: 'screenshot', name: '第二条证据' },
       ] },
       { caseKey: '0-TC-2', title: '只有操作无断言', contractFingerprint: 'third', steps: [
         { action: 'screenshot', name: '不能作为通过依据' },
       ] },
       { caseKey: '0-TC-3', title: '受阻后继续', contractFingerprint: 'fourth', steps: [
-        { action: 'expectText', text: '已继续' },
+        { action:'expectText',assertionIndex:0, text: '已继续' },
       ] },
     ],
   }, undefined, { artifactRoot })

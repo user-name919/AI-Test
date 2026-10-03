@@ -58,7 +58,7 @@ test('故事 C：三个重构提交经实际界面审核部署执行，失败报
         planned++
         assert.match(content,/人工预期：必须显示人工错误标记/)
         assert.doesNotMatch(content,/"expectedAssertions":\["显示已继续"\]/)
-        output={name:'人工最终回归',targetUrl:targetUrl,steps:[{action:'click',locator:{by:'text',value:'继续'}},{action:'expectText',text:'人工错误标记'},{action:'screenshot',name:'结果'}]}
+        output={name:'人工最终回归',targetUrl:targetUrl,steps:[{action:'click',locator:{by:'text',value:'继续'}},{action:'expectText',assertionIndex:0,text:'人工错误标记'},{action:'screenshot',name:'结果'}]}
       }
       response.setHeader('content-type','application/json');response.end(JSON.stringify({output_text:JSON.stringify(output)}))
     }catch(error){response.writeHead(500);response.end(JSON.stringify({error:{message:String(error)}}))}

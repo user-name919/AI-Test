@@ -13,6 +13,7 @@ import { completeCaseResults } from './complete-case-results'
 import type { PageSnapshot, TestDataBinding, ResolveTestDataDecision } from '@quality-ai/contracts'
 import { resolveRuntimeDataBinding, RuntimeDataBindingBlockedError } from './test-data-binding'
 import { assertFixedLocator } from './fixed-locator-assertion'
+import { validateFixedAssertionCoverage } from './fixed-assertion-coverage'
 
 interface AutomationRunnerOptions {
   signal?: AbortSignal
@@ -102,6 +103,10 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
       caseResults.push(checkpoint)
       let chunkStarted = false
       try {
+        if(casePlan.contract){
+          try{validateFixedAssertionCoverage(casePlan.steps,casePlan.contract)}
+          catch(error){checkpoint.status='blocked';checkpoint.error=error instanceof Error?error.message:String(error);continue}
+        }
         if (sessionFailure()) throw new Error(sessionFailure())
         await context.tracing.startChunk({ title: casePlan.title })
         chunkStarted = true
@@ -138,7 +143,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.text
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`断言引用尚未解析：${step.valueRef}`)
               await page.getByText(value).first().waitFor({ state: 'visible', timeout: 10_000 })
-              checkpoint.passedAssertions.push(`step-${index + 1}`)
+              checkpoint.passedAssertions.push(step.assertionIndex===undefined?`step-${index+1}`:`assertion-${step.assertionIndex}`)
             } else if(step.action==='resolveTestData'){
               const binding=casePlan.contract?.dataBindings.find(item=>item.id===step.bindingId)
               if(!binding||!options.resolveTestData)throw new RuntimeDataBindingBlockedError('缺少运行时数据契约或解析能力')
@@ -151,7 +156,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               const expected=step.action==='expectValue'?(step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value):undefined
               if(step.action==='expectValue'&&expected===undefined)throw new RuntimeDataBindingBlockedError(`断言引用尚未解析：${step.valueRef}`)
               await assertFixedLocator(locatorFor(page,step.locator),step,expected,options.signal)
-              checkpoint.passedAssertions.push(`step-${index+1}`)
+              checkpoint.passedAssertions.push(step.assertionIndex===undefined?`step-${index+1}`:`assertion-${step.assertionIndex}`)
             } else {
               const filePath = resolve(caseDirectory, `${String(index + 1).padStart(2, '0')}-${step.name.replace(/[^\w\u4e00-\u9fa5-]/g, '_')}.png`)
               await page.screenshot({ path: filePath, fullPage: true })
