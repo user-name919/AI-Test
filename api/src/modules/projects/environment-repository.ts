@@ -21,7 +21,9 @@ export function saveEnvironment(input: { id?: string; name: string; baseUrl: str
   const now = new Date().toISOString()
   const id = input.id ?? randomUUID()
   database.prepare(`INSERT INTO test_environments (id,name,base_url,target_url,created_at,updated_at) VALUES (?,?,?,?,?,?)
-    ON CONFLICT(id) DO UPDATE SET name=excluded.name,base_url=excluded.base_url,target_url=excluded.target_url,updated_at=excluded.updated_at`)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name,
+      storage_state_path=CASE WHEN test_environments.base_url=excluded.base_url THEN test_environments.storage_state_path ELSE NULL END,
+      base_url=excluded.base_url,target_url=excluded.target_url,updated_at=excluded.updated_at`)
     .run(id, input.name, input.baseUrl, input.targetUrl, now, now)
   const environment = getEnvironmentById(id)
   if (!environment) throw new Error('测试环境保存失败')

@@ -799,6 +799,7 @@ onMounted(loadSavedAnalysis)
   <div class="app-shell">
     <aside class="sidebar">
       <RouterLink to="/case-designs" style="color:#d8d2ff;padding:12px 20px;font-size:16px">用例设计 · 独立入口</RouterLink>
+      <RouterLink to="/environments" style="color:#d8d2ff;padding:12px 20px;font-size:16px">测试环境与登录态</RouterLink>
       <RouterLink to="/execution-jobs" style="color:#d8d2ff;padding:12px 20px;font-size:16px">后台执行任务</RouterLink>
       <RouterLink to="/regressions" style="color:#d8d2ff;padding:12px 20px;font-size:16px">代码变更回归</RouterLink>
       <div class="brand"><span>知</span><div><strong>知测 AI</strong><small>测试工作台</small></div></div>

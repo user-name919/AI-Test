@@ -89,7 +89,8 @@ async function start(){
         <label>执行模式<select v-model="mode" aria-label="执行模式"><option value="agent">动态 Agent</option><option value="plan">固定计划</option></select></label>
         <label>测试页面地址<input v-model="targetUrl" aria-label="测试页面地址" type="url" placeholder="https://测试环境/目标页面" /></label>
         <label v-if="environment"><input v-model="useEnvironment" type="checkbox" />使用最近环境「{{ environment.name }}」 · {{ environment.hasStorageState?'已有登录态（有效性需运行验证）':'未配置登录态' }}</label>
-        <p v-else>尚无已保存环境，可输入公开测试地址。需要登录时，请先在原工作台配置环境和 storageState。</p>
+        <p v-else>尚无已保存环境，可输入公开测试地址。</p>
+        <p><RouterLink to="/environments">管理测试环境与登录态</RouterLink> · 保存后返回此处重新读取配置。</p>
         <label>源码项目<select v-model="projectId" aria-label="源码项目"><option value="">不选择（固定计划可选）</option><option v-for="project in projects" :key="project.id" :value="project.id">{{ project.name }} · {{ project.branch??'未知分支' }} · {{ project.commit??'未记录 SHA' }}</option></select></label>
       </fieldset>
       <p>{{ reason||'配置条件满足，可预览；服务端启动时仍会重新校验版本和环境。' }}</p>

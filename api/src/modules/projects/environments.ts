@@ -19,7 +19,9 @@ export async function handleEnvironmentRoutes(request: IncomingMessage, response
       : typeof body.baseUrl === 'string' ? body.baseUrl.trim() : ''
     const id = typeof body.id === 'string' ? body.id : undefined
     if (!name || !targetUrl) return json(response, 400, { error: '环境名称和测试页面地址不能为空' })
-    const url = new URL(targetUrl)
+    if(id&&(!/^[a-f0-9-]{36}$/i.test(id)||!getEnvironmentById(id)))return json(response,404,{error:'需要编辑的环境不存在'})
+    let url:URL
+    try{url=new URL(targetUrl)}catch{return json(response,400,{error:'请输入完整的 HTTP(S) 测试页面地址'})}
     if (!['http:', 'https:'].includes(url.protocol)) return json(response, 400, { error: '环境地址只允许 HTTP 或 HTTPS' })
     return json(response, 200, { environment: saveEnvironment({ id, name, baseUrl: url.origin, targetUrl: url.href }) })
   }

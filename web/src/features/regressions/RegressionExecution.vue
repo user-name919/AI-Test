@@ -22,7 +22,7 @@ const input=computed(()=>({mode:mode.value,projectId:props.projectId,environment
 const deploymentReason=computed(()=>{
   if(props.disabled)return '审核仍有未保存内容、版本冲突或正在保存，请先处理人工审核'
   if(!revision.value)return '请先确认至少一个人工审核版本'
-  if(!environment.value)return '请选择已保存测试环境；没有环境时请在版本中心配置环境和登录态后刷新配置'
+  if(!environment.value)return '请选择已保存测试环境；没有环境时请在测试环境页配置后刷新配置'
   try{const url=new URL(targetUrl.value);if(!['http:','https:'].includes(url.protocol)||url.origin!==new URL(environment.value.baseUrl).origin)return '测试地址必须是所选环境的 HTTP(S) 地址'}catch{return '请输入完整测试页面地址'}
   if(deployedSha.value.trim()&&!/^[a-f0-9]{40,64}$/i.test(deployedSha.value.trim()))return '部署版本请填写完整 SHA；未核实时留空并在依据中说明'
   if(!confirmedBy.value.trim()||!note.value.trim())return '请填写确认人和部署核对依据；未核实也需要说明'
@@ -75,6 +75,7 @@ onMounted(()=>{void load()});onUnmounted(()=>{disposed=true;epoch++})
     <p v-if="error" role="alert" class="reg-error">{{ error }}</p><p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="!confirmed.length">尚无已确认审核版本。请先完成上方人工范围与用例确认。</p>
     <button :disabled="busy||loading" @click="load">刷新环境与部署记录</button>
+    <RouterLink to="/environments">管理测试环境与登录态</RouterLink>
     <fieldset :disabled="busy||loading||disabled"><legend>选择确切审核版本和环境</legend>
       <label>执行审核版本<select v-model.number="revision" aria-label="执行审核版本"><option :value="0">请选择确认版本</option><option v-for="review in confirmed" :key="review.revision" :value="review.revision">v{{ review.revision }} · {{ review.createdAt }}</option></select></label>
       <label>回归测试环境<select v-model="environmentId" aria-label="回归测试环境" @change="targetUrl=environment?.targetUrl??''"><option value="">请选择环境</option><option v-for="env in environments" :key="env.id" :value="env.id">{{ env.name }} · {{ env.baseUrl }}</option></select></label>
