@@ -2,7 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { json, readJson } from '../../http/response'
 import { randomUUID } from 'node:crypto'
 import { reviewStateSchema } from '@quality-ai/contracts'
-import { getAnalysisById, getLatestAnalysis, listAnalyses, saveAnalysis, saveReview } from '../requirements/repository'
+import { getAnalysisById, getLatestAnalysis, listAnalyses, saveAnalysis } from '../requirements/repository'
+import { saveAnalysisReviewWithHistory } from '../cases/repository'
 import { analyzePrd } from '../../model'
 import { parseSourceDocuments } from '../../source-documents'
 import { collectReviewSourceContext, generateReviewExecutionContract } from '../../review-contract'
@@ -73,13 +74,13 @@ export async function handleRequirementRoutes(request: IncomingMessage, response
       if (!caseReviewsResult.success) return json(response, 400, { error: '用例 Review 格式错误' })
       parsedCaseReviews = caseReviewsResult.data
     }
-    return json(response, 200, {
-      review: saveReview(decodeURIComponent(reviewMatch[1]), {
+    const saved = saveAnalysisReviewWithHistory(analysis, {
         confirmedQuestions, selectedCases,
         questionReviews: parsedQuestionReviews,
         caseReviews: parsedCaseReviews,
-      }),
     })
+    if (saved.kind === 'conflict') return json(response, 409, { error: '用例已建立版本记录，请通过用例审核接口携带 expectedRevision 保存' })
+    return json(response, 200, { review: saved.review })
   }
 
   const reviewContractMatch = request.url?.match(/^\/api\/analyses\/([^/]+)\/review\/contract$/)

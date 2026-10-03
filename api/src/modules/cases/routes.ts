@@ -5,9 +5,37 @@ import { getAnalysisById } from '../requirements/repository'
 import { saveAutomationPlan } from '../cases/plan-repository'
 import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { generateCasePlans } from './plan-generation'
+import { caseAssetReviewRequestSchema } from '@quality-ai/contracts/cases'
+import { getCaseAsset, listCaseAssetRevisions, listCaseAssets, saveCaseAssetReview } from './repository'
 
 
 export async function handleCaseRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const url = new URL(request.url ?? '/', 'http://localhost')
+  if (request.method === 'GET' && url.pathname === '/api/cases') {
+    const sourceType = url.searchParams.get('sourceType')
+    if (sourceType && sourceType !== 'requirement') return json(response, 400, { error: '当前资产入口仅支持 requirement，其他来源将在对应模块接入' })
+    return json(response, 200, { cases: listCaseAssets(url.searchParams.get('sourceId') ?? undefined) })
+  }
+  const assetMatch = url.pathname.match(/^\/api\/cases\/([^/]+)\/(contract|review|history)$/)
+  if (assetMatch) {
+    const id = decodeURIComponent(assetMatch[1])
+    if (request.method === 'GET' && assetMatch[2] === 'contract') {
+      const asset = getCaseAsset(id)
+      return asset ? json(response, 200, { asset, caseContract: asset.resolved }) : json(response, 404, { error: '用例资产不存在' })
+    }
+    if (request.method === 'GET' && assetMatch[2] === 'history') {
+      const revisions = listCaseAssetRevisions(id)
+      return revisions ? json(response, 200, { revisions }) : json(response, 404, { error: '用例资产不存在' })
+    }
+    if (request.method === 'PATCH' && assetMatch[2] === 'review') {
+      const parsed = caseAssetReviewRequestSchema.safeParse(await readJson(request))
+      if (!parsed.success) return json(response, 400, { error: '审核内容或预期版本不合法', issues: parsed.error.issues })
+      const result = saveCaseAssetReview(id, parsed.data.expectedRevision, parsed.data.review)
+      if (result.kind === 'missing') return json(response, 404, { error: '用例资产不存在' })
+      if (result.kind === 'conflict') return json(response, 409, { error: '用例已被修改，请保留草稿并对比最新版本', asset: result.asset })
+      return json(response, 200, { asset: result.asset })
+    }
+  }
   const caseContractsMatch = request.url?.match(/^\/api\/analyses\/([^/]+)\/case-contracts$/)
   if (request.method === 'GET' && caseContractsMatch) {
     const analysis = getAnalysisById(decodeURIComponent(caseContractsMatch[1]))
