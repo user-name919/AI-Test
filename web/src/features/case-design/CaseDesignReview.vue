@@ -5,6 +5,7 @@ import { designReviewContentSchema, type DesignReview, type DesignReviewContent,
 import ContractEditor from './ContractEditor.vue'
 import ContractView from './ContractView.vue'
 import PublicationPanel from './PublicationPanel.vue'
+import RegenerationComparison from './RegenerationComparison.vue'
 import { designRequest } from './useCaseDesign'
 const props=defineProps<{designId:string;run:DesignRun}>()
 const emit=defineEmits<{locate:[value:EvidenceRef]}>()
@@ -67,12 +68,19 @@ async function save() {
 }
 function rebase(){if(conflict.value){revision.value=conflict.value.revision;conflict.value=null;sessionStorage.setItem(storageKey.value,JSON.stringify({revision:revision.value,content:content.value}));notice.value='已更新基线，请再次保存以提交你的口径。'}}
 function issueStatus(id:string,event:Event){const status=(event.target as HTMLSelectElement).value;if(!status)delete content.value.issueDecisions[id];else content.value.issueDecisions[id]={status:status as 'addressed'|'dismissed',reason:content.value.issueDecisions[id]?.reason??''}}
+function adopt(value:{caseId:string;review:DesignReviewContent['cases'][string]}){
+  if(!ready.value||busy.value||conflict.value||!content.value.cases[value.caseId])return
+  content.value.cases[value.caseId]=copy(value.review)
+  notice.value='已更新此用例草稿，尚未确认或保存；请核对关联依据、步骤与断言。'
+  void router.replace({query:{...route.query,caseId:value.caseId}})
+}
 </script>
 <template>
   <section class="design-review-editor">
     <header><div><h2>人工审核用例</h2><p>逐条选择确认、草稿或排除，保存完整审核快照。{{ dirty?'有未保存修改':'当前无未保存修改' }}</p></div><button :disabled="!ready||busy||!!conflict" @click="save">{{ busy?'正在保存…':'保存人工审核' }}</button></header>
     <p v-if="error" role="alert" class="error">{{ error }} <button v-if="!ready" @click="load">重试读取</button></p><p v-if="notice" role="status">{{ notice }}</p>
     <div v-if="conflict" class="error"><h3>服务端最新审核 v{{ conflict.revision }}</h3><p v-if="conflict.runId!==run.id">最新审核来自另一份生成产物。保留本草稿会建立旧产物的新审核版本，请确认这是你的意图。</p><details><summary>展开最新口径对比（不会覆盖草稿）</summary><pre>{{ JSON.stringify(conflict.content,null,2) }}</pre></details><button @click="rebase">已对比，保留我的草稿并更新版本号</button></div>
+    <RegenerationComparison v-if="run.regeneration" :key="run.id" :design-id="designId" :run-id="run.id" :disabled="!ready||busy||!!conflict" @adopt="adopt" />
     <div v-if="ready" class="review-columns">
       <nav aria-label="审核用例列表"><button v-for="item in run.output.cases" :key="item.id" :class="{selected:item.id===activeId}" @click="router.replace({query:{...route.query,caseId:item.id}})">{{ content.cases[item.id]?.title || item.title }}<small>{{ {draft:'待审核草稿',confirmed:'人工已确认',excluded:'已排除'}[content.cases[item.id]?.status??'draft'] }}</small></button></nav>
       <div v-if="current" class="case-detail"><fieldset :disabled="busy"><legend>完整人工口径</legend><label>用例标题<input v-model="current.title" /></label><label>审核状态<select aria-label="审核状态" v-model="current.status"><option value="draft">草稿，尚未确认</option><option value="confirmed">人工确认</option><option value="excluded">本次排除</option></select></label><label v-if="current.status==='excluded'">排除理由<textarea v-model="current.exclusionReason" /></label><label>验证方式<select aria-label="验证方式" v-model="current.verification"><option value="browser">浏览器</option><option value="api">接口</option><option value="manual">人工</option></select></label><label>验证方式依据<input v-model="current.verificationReason" /></label><ContractEditor v-model="current.contract" /></fieldset>

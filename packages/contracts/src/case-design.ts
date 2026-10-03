@@ -100,6 +100,19 @@ export interface DesignReviewDraft {
   sourceReviewRevision: number | null
   inheritedCaseIds: string[]
 }
+export interface RegenerationComparison {
+  runId: string
+  status: DesignRun['status']
+  baseRunId: string
+  reviewId: string | null
+  reviewRevision: number
+  scenarios: Array<{
+    scenarioId: string
+    before: CaseDesignDraft[]
+    suggestions: CaseDesignDraft[]
+    human: Array<{caseId: string; review: DesignReviewContent['cases'][string] | null}>
+  }>
+}
 export interface DesignPublication {
   id: string
   designId: string

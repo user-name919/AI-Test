@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { designReviewContentSchema, type DesignReview, type DesignReviewContent } from '@quality-ai/contracts/case-design'
+import { designReviewContentSchema, type DesignReview, type DesignReviewContent, type RegenerationComparison } from '@quality-ai/contracts/case-design'
 import { database } from '../../storage/database'
 import { getCaseDesign, listDesignRuns } from './repository'
 import { buildReviewDraft, findBaselineReview } from './review-draft'
@@ -17,7 +17,7 @@ export function listDesignReviews(designId: string): DesignReview[] {
   return rows.map(row => JSON.parse(row.review_json))
 }
 
-export function getRegenerationComparison(designId: string, runId: string) {
+export function getRegenerationComparison(designId: string, runId: string): RegenerationComparison | null {
   const runs = listDesignRuns(designId)
   const run = runs.find(item => item.id === runId)
   if (!run?.regeneration) return null

@@ -5,7 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
 import type { CaseDesign, DesignRun, DesignReview, DesignPublication } from '@quality-ai/contracts/case-design'
 import { createEvidenceDocuments } from '../../api/src/modules/case-design/documents'
-import { buildReviewDraft } from '../../api/src/modules/case-design/review-draft'
+import { buildReviewDraft, findBaselineReview } from '../../api/src/modules/case-design/review-draft'
 
 test('独立设计页面导入、阶段条件、原文定位与刷新，无需环境', async () => {
   const documents=createEvidenceDocuments([{fileName:'需求.md',role:'prd',content:'# 搜索规则\n\n支持部分关键词搜索。'}])
@@ -30,6 +30,12 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.route('**/api/**',async route=> {
       const path=new URL(route.request().url()).pathname
       if(path.endsWith('/review-draft')){const run=runs.find(item=>path.includes(`/runs/${item.id}/`))!;await route.fulfill({json:{draft:buildReviewDraft(run,runs,reviews)}});return}
+      if(path.endsWith('/comparison')){
+        const run=runs.find(item=>path.includes(`/runs/${item.id}/`))!
+        const base=runs.find(item=>item.id===run.regeneration!.baseRunId)!
+        const human=findBaselineReview(run,runs,reviews)
+        await route.fulfill({json:{comparison:{runId:run.id,status:run.status,baseRunId:base.id,reviewId:human?.id??null,reviewRevision:human?.revision??0,scenarios:run.regeneration!.scenarioIds.map(id=>{const before=base.output.cases!.filter(item=>item.scenarioId===id);return {scenarioId:id,before,suggestions:run.output.cases!.filter(item=>item.scenarioId===id),human:before.map(item=>({caseId:item.id,review:human?.content.cases[item.id]??null}))}})}}});return
+      }
       if(path.endsWith('/publications')){await route.fulfill({json:{publications}});return}
       if(path.endsWith('/publish')) {
         assert.equal(route.request().postDataJSON().expectedRevision,2)
@@ -148,6 +154,8 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.setViewportSize({width:390,height:844})
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
     runs[0].output.cases!.push({...structuredClone(runs[0].output.cases![0]),id:'old-second',scenarioId:'s2',title:'另一个场景'})
+    reviews[0].content.cases['old-second']={...structuredClone(reviews[0].content.cases['case-1']),title:'人工第二场景'}
+    reviews[0].content.cases['old-second'].contract.objective='以前人工确认的第二场景目标'
     const regenerated=structuredClone(runs[0])
     regenerated.id='regenerated';regenerated.attempt=3
     regenerated.regeneration={baseRunId:'checked',scenarioIds:['s2']}
@@ -165,6 +173,19 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     assert.equal(await page.getByLabel('审核状态',{exact:true}).inputValue(),'draft')
     assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'新场景建议，尚未人工确认')
     assert.equal(reviews[0].content.cases['new-second'],undefined)
+    await page.getByLabel('为“另一个场景”选择旧人工口径',{exact:true}).selectOption('old-second')
+    page.once('dialog',dialog=>dialog.dismiss())
+    await page.getByRole('button',{name:'保留所选人工口径到此草稿',exact:true}).click()
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'新场景建议，尚未人工确认')
+    page.once('dialog',dialog=>dialog.accept())
+    await page.getByRole('button',{name:'保留所选人工口径到此草稿',exact:true}).click()
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'以前人工确认的第二场景目标')
+    assert.equal(await page.getByLabel('审核状态',{exact:true}).inputValue(),'draft')
+    page.once('dialog',dialog=>dialog.accept())
+    await page.getByRole('button',{name:'采用此新建议到草稿',exact:true}).click()
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'新场景建议，尚未人工确认')
+    assert.equal(reviews[0].content.cases['old-second'].contract.objective,'以前人工确认的第二场景目标')
+    if(process.env.UI_COMPARISON_SCREENSHOT_PATH) await page.locator('.regeneration-comparison').screenshot({path:process.env.UI_COMPARISON_SCREENSHOT_PATH})
     runs[0].output.scenarios=[{id:'s1',title:'保留场景',testIntent:'保留人工决定',factIds:[],questionIds:[],coverage:'positive',requiresReview:true},{id:'s2',title:'更新场景',testIntent:'只更新第二个场景',factIds:[],questionIds:[],coverage:'positive',requiresReview:true}]
     const planning={...structuredClone(runs[0]),id:'planning-fixture',stage:'planning' as const}
     runs.push(planning)
