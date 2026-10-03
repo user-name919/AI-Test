@@ -7,7 +7,7 @@ import { getEnvironmentById } from '../projects/environment-repository'
 import { getProjectProviderRegistry } from '../../project-knowledge/registry'
 import { runAgentTest } from '../../agent-test-runner'
 import { runAutomationPlan } from '../../playwright-runner'
-import { generateAutomationPlan } from '../../model'
+import { generateFixedPlan, proposeFixedPlanData } from '../cases/fixed-plan-model'
 import { saveExecution } from './repository'
 import { validateDeploymentForExecution } from '../regressions/deployments'
 import { acquireChangeSetWorktree, releaseChangeSetWorktree } from '../../integrations/git/worktree-manager'
@@ -135,7 +135,7 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
         const casePlans = []
         for (const snapshot of job.snapshots) {
           controller.signal.throwIfAborted()
-          const generated = await generateAutomationPlan(job.targetUrl,snapshot.resolved)
+          const generated = await generateFixedPlan(job.targetUrl,snapshot.resolved,controller.signal)
           controller.signal.throwIfAborted()
           casePlans.push({caseKey:snapshot.resolved.caseKey,title:snapshot.resolved.title,contractFingerprint:snapshot.resolved.contractFingerprint,contract:snapshot.resolved.contract,steps:generated.steps})
         }
@@ -145,7 +145,7 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
       checkDeployment()
       const result = request.mode === 'agent'
         ? await runAgentTest(preparation.goals,environment?.storageStatePath,{projectProvider:executionProvider!,executionId:job.id,onEvent,signal:controller.signal})
-        : await runAutomationPlan(plan,environment?.storageStatePath,{executionId:job.id,onEvent,signal:controller.signal})
+        : await runAutomationPlan(plan,environment?.storageStatePath,{executionId:job.id,onEvent,signal:controller.signal,resolveTestData:(binding,snapshot)=>proposeFixedPlanData(binding,snapshot,controller.signal)})
       result.caseSnapshots = job.snapshots
       result.sourceProject = job.sourceProject
       result.deploymentConfirmation = deployment
