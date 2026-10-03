@@ -25,22 +25,29 @@ export default class CaseDesignProvider {
   async callApi(prompt:string){
     const started=Date.now()
     const stages:DesignRun[]=[]
+    let provenance:Record<string,string>={variant:this.variant,humanReview:'pending',evidenceMode:process.env.QUALITY_AI_EVAL_MODE==='stub'?'stub':'real-model'}
+    let failedStage:string='input'
     try{
       const input=JSON.parse(prompt) as {sampleId:string;documents:SourceDocument[]}
       if(!input.sampleId||!Array.isArray(input.documents)||!input.documents.length)throw new Error('评估输入需要 sampleId 和 documents')
-      const config=getModelConfig()
       const inputHash=createHash('sha256').update(JSON.stringify(input.documents)).digest('hex')
-      const provenance={variant:this.variant,sampleId:input.sampleId,inputHash,model:config.model,protocol:config.protocol,modelConfigHash:createHash('sha256').update(JSON.stringify({...config,apiKey:undefined})).digest('hex'),humanReview:'pending',evidenceMode:process.env.QUALITY_AI_EVAL_MODE==='stub'?'stub':'real-model'}
+      provenance={...provenance,sampleId:input.sampleId,inputHash}
+      failedStage='configuration'
+      const config=getModelConfig()
+      provenance={...provenance,model:config.model,protocol:config.protocol,modelConfigHash:createHash('sha256').update(JSON.stringify({...config,apiKey:undefined})).digest('hex')}
       if(this.variant==='legacy'){
+        failedStage='legacy'
         const result=await analyzePrd(input.documents)
         return {output:JSON.stringify({...provenance,analysis:result.result}),metadata:{durationMs:Date.now()-started},cached:false}
       }
       const now=new Date().toISOString()
+      failedStage='documents'
       const documents=createEvidenceDocuments(input.documents)
       const design:CaseDesign={id:randomUUID(),name:input.sampleId,revision:1,inputHash,documents,createdAt:now,updatedAt:now}
       const run:DesignRun={id:randomUUID(),designId:design.id,attempt:1,stage:'extracting',status:'running',inputRevision:1,inputHash,model:config.model,modelConfigHash:provenance.modelConfigHash,protocol:config.protocol,promptVersion:'evaluation-production-pipeline-v1',skills:[],createdAt:now,updatedAt:now,statistics:{calls:0,inputCharacters:0,outputCharacters:0},output:{facts:[],questions:[],processedBlockIds:[],unprocessedBlockIds:documents.flatMap(document=>document.blocks.filter(block=>block.text.trim()).map(block=>block.id))}}
       const signal=AbortSignal.timeout(15*60*1000)
       for(const stage of ['extracting','modeling','planning','generating','checking'] as const){
+        failedStage=stage
         run.stage=stage;run.status='running'
         const skills=loadStageSkills(stage,this.variant==='skills')
         run.skills=skills.map(({id,version,hash})=>({id,version,hash}))
@@ -52,6 +59,6 @@ export default class CaseDesignProvider {
         stages.push(structuredClone(run))
       }
       return {output:JSON.stringify({...provenance,design,stages,output:run.output}),metadata:{durationMs:Date.now()-started,calls:run.statistics.calls},cached:false}
-    }catch(error){return {error:error instanceof Error?error.message:String(error),metadata:{variant:this.variant,completedStages:stages.map(run=>run.stage),durationMs:Date.now()-started}}}
+    }catch(error){return {error:error instanceof Error?error.message:String(error),metadata:{variant:this.variant,provenance,failedStage,completedStages:stages.map(run=>run.stage),durationMs:Date.now()-started},cached:false}}
   }
 }

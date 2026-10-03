@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { samples } from './samples'
 
-interface Row {provider:{id:string};success:boolean;error?:string;response?:{output?:string;error?:string;metadata?:{completedStages?:string[]}};gradingResult?:{reason?:string};vars:{payload:string}}
+interface Row {provider:{id:string};success:boolean;error?:string;response?:{output?:string;error?:string;metadata?:{completedStages?:string[];failedStage?:string;provenance?:Record<string,string>}};gradingResult?:{reason?:string};vars:{payload:string}}
 const cell=(value:unknown)=>String(value??'未记录').replace(/\|/g,'\\|').replace(/\r?\n/g,' ')
 
 // 这是错误表现分类，不把校验发现层冒充模型推理或业务根因。
@@ -30,10 +30,10 @@ export function summarize(rows:Row[]){
   const entries=rows.map(row=>{
     let output:Record<string,unknown>|undefined
     try{output=JSON.parse(row.response?.output??'')}catch{/* Errors are retained as missing output. */}
-    return {row,output,input:JSON.parse(row.vars.payload) as {sampleId:string}}
+    return {row,output,provenance:output??row.response?.metadata?.provenance,input:JSON.parse(row.vars.payload) as {sampleId:string}}
   })
-  const modes=new Set(entries.map(entry=>entry.output?.evidenceMode).filter(Boolean))
-  const mode=modes.size===1?[...modes][0]:'混合或缺失，不能比较'
+  const modes=new Set(entries.map(entry=>entry.provenance?.evidenceMode))
+  const mode=modes.size===1&&!modes.has(undefined)?[...modes][0]:'混合或缺失，不能比较'
   const lines=['# 用例生成评估结果','',`证据类型：${mode}；共 ${rows.length} 项。`,'','机器检查通过不代表设计质量通过。以下不计算语义总分，不把夹具结果推断为真实模型提升。人工期望全部待审核。','', '| 样本 | 旧流程机器通过 | 五阶段机器通过 | Skills 机器通过 | 同输入同模型 | 人工覆盖/预期准确性 |','|---|---|---|---|---|---|']
   for(const sample of samples){
     const subset=entries.filter(entry=>entry.input.sampleId===sample.id)
@@ -42,7 +42,7 @@ export function summarize(rows:Row[]){
       return `${selected.filter(entry=>entry.row.success).length}/${selected.length}（期望3）`
     })
     const countsComplete=['legacy','pipeline','skills'].every(variant=>subset.filter(entry=>entry.row.provider.id===`quality-ai-${variant}`).length===3)
-    const hashConsistent=countsComplete&&subset.length===9&&subset.every(entry=>typeof entry.output?.inputHash==='string'&&typeof entry.output?.modelConfigHash==='string')&&new Set(subset.map(entry=>entry.output?.inputHash)).size===1&&new Set(subset.map(entry=>entry.output?.modelConfigHash)).size===1
+    const hashConsistent=countsComplete&&subset.length===9&&subset.every(entry=>typeof entry.provenance?.inputHash==='string'&&typeof entry.provenance?.modelConfigHash==='string')&&new Set(subset.map(entry=>entry.provenance?.inputHash)).size===1&&new Set(subset.map(entry=>entry.provenance?.modelConfigHash)).size===1
     lines.push(`| ${sample.id} · ${sample.title} | ${cells.join(' | ')} | ${hashConsistent?'一致':'缺失或不一致'} | 待人工评审 |`)
   }
   lines.push('','## 错误表现分类','','分类只依据保存的错误信息，不自动诊断模型为何生成错误，也不证明业务语义质量。','','| 分类 | 旧流程 | 五阶段 | Skills | 合计 |','|---|---|---|---|---|')
@@ -71,7 +71,7 @@ export function summarize(rows:Row[]){
     const issues=issueRows(output)
     const completed=row.response?.metadata?.completedStages
     const failure=row.success?'机器检查通过；非业务验收':row.response?.error??row.error
-      ?`${failureCategory(row)}；生成流程/请求失败；已完成阶段：${completed?.join('、')||'未记录'}；具体失败层需核对错误：${row.response?.error??row.error}`
+      ?`${failureCategory(row)}；生成流程/请求失败；已完成阶段：${completed?.join('、')||'未记录'}；失败时所在阶段：${row.response?.metadata?.failedStage??'未记录'}；具体失败层需核对错误：${row.response?.error??row.error}`
       :`评估断言层：${row.gradingResult?.reason??'原因缺失'}`
     lines.push(`| ${cell(key)} / ${attempt} | ${count} | ${issues.length?`审查层 ${issues.length} 项`:'未记录审查问题（不代表无问题）'} | ${cell(failure)} |`)
     if(issues.length)details.push('',`### ${cell(key)} / ${attempt} 的审查问题`,'',...issues.map(issue=>`- ${issue}`))

@@ -2,6 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { summarize, failureCategory } from './report'
 
+test('失败元数据可验证比较条件，但不能将失败计为通过或补造旧记录',()=>{
+  const rows=['legacy','pipeline','skills'].flatMap(variant=>Array.from({length:3},()=>({provider:{id:`quality-ai-${variant}`},success:false,response:{error:'timeout',metadata:{failedStage:'generating',provenance:{evidenceMode:'stub',inputHash:'i',modelConfigHash:'m'}}},vars:{payload:JSON.stringify({sampleId:'full-search'})}})))
+  assert.match(summarize(rows),/0\/3（期望3） \| 0\/3（期望3） \| 0\/3（期望3） \| 一致/)
+  assert.match(summarize(rows),/失败时所在阶段：generating/)
+  rows[0].response.metadata.provenance.inputHash='different'
+  assert.match(summarize(rows),/缺失或不一致/)
+  const legacy={provider:{id:'quality-ai-legacy'},success:false,error:'timeout',vars:{payload:JSON.stringify({sampleId:'full-search'})}}
+  assert.match(summarize([...rows,legacy]),/证据类型：混合或缺失/)
+})
+
 test('报告明确区别机器通过与人工评审，不将缺失运行视为可比',()=>{
   const row={provider:{id:'quality-ai-legacy'},success:true,response:{output:JSON.stringify({evidenceMode:'stub',inputHash:'i',modelConfigHash:'m'})},vars:{payload:JSON.stringify({sampleId:'full-search'})}}
   const report=summarize([row])
