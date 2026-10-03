@@ -309,3 +309,50 @@ test('does not pass deferred review口径 into execution planning', () => {
 
   assert.deepEqual(collectResolvedReviewContext(analysis, ['0-TC-0']), [])
 })
+
+test('explicit question mapping excludes unrelated reviews and only blocks on linked questions', () => {
+  const analysis = makeAnalysis()
+  const requirement = analysis.result.requirements[0]!
+  requirement.questions.push({ title: '下载格式', reason: '未知格式', suggestion: 'CSV' })
+  requirement.testCases[0]!.questionIds = ['0-Q-0']
+  requirement.testCases[0]!.blockedByQuestion = false // 显式关联优先于旧布尔标记
+  analysis.review.questionReviews = {
+    '0-Q-1': { status: 'edited', finalStatement: '下载 CSV', updatedAt: null },
+  }
+  assert.equal(resolveCaseExecutionContract(analysis, '0-TC-0').readiness.agent.executable, false)
+  analysis.review.questionReviews['0-Q-0'] = { status: 'edited', finalStatement: '失败可重试', updatedAt: null }
+  const resolved = resolveCaseExecutionContract(analysis, '0-TC-0')
+  assert.deepEqual(resolved.resolvedQuestions.map(question => question.questionKey), ['0-Q-0'])
+  assert.deepEqual(resolved.questionAssociation, { mode: 'explicit', questionKeys: ['0-Q-0'] })
+  assert.equal(resolved.readiness.agent.executable, true)
+  analysis.review.questionReviews['0-Q-1']!.finalStatement = '改为 PDF'
+  assert.equal(resolveCaseExecutionContract(analysis, '0-TC-0').contractFingerprint, resolved.contractFingerprint)
+  assert.deepEqual(collectResolvedReviewContext(analysis, ['0-TC-0', '0-TC-0']).map(question => question.questionKey), ['0-Q-0'])
+})
+
+test('explicit empty mapping adds no question assertions while legacy mapping is visibly marked', () => {
+  const analysis = makeAnalysis()
+  const legacy = resolveCaseExecutionContract(analysis, '0-TC-0')
+  assert.equal(legacy.questionAssociation.mode, 'legacy_requirement')
+  assert.match(legacy.questionAssociation.warning!, /历史关联待复核/)
+  analysis.review.questionReviews = { '0-Q-0': { status: 'edited', finalStatement: '失败可重试', updatedAt: null } }
+  analysis.result.requirements[0]!.testCases[0]!.questionIds = []
+  const explicit = resolveCaseExecutionContract(analysis, '0-TC-0')
+  assert.deepEqual(explicit.resolvedQuestions, [])
+  assert.equal(explicit.readiness.agent.executable, true)
+  assert.notEqual(explicit.contractFingerprint, legacy.contractFingerprint)
+})
+
+test('invalid question links and unresolved contract uncertainties fail closed', () => {
+  const analysis = makeAnalysis()
+  analysis.result.requirements[0]!.testCases[0]!.questionIds = ['0-Q-9']
+  assert.match(resolveCaseExecutionContract(analysis, '0-TC-0').readiness.agent.reason!, /关联的问题不存在/)
+  analysis.result.requirements[0]!.testCases[0]!.questionIds = []
+  analysis.result.requirements[0]!.testCases[0]!.blockedByQuestion = true
+  assert.equal(resolveCaseExecutionContract(analysis, '0-TC-0').readiness.agent.executable, false)
+  analysis.result.requirements[0]!.testCases[0]!.blockedByQuestion = false
+  analysis.review.caseReviews = { '0-TC-0': { status: 'confirmed', updatedAt: null,
+    finalContract: { ...reviewedContract(), uncertainties: ['成功反馈未确定'] },
+  } }
+  assert.match(resolveCaseExecutionContract(analysis, '0-TC-0').readiness.agent.reason!, /仍有不确定项/)
+})

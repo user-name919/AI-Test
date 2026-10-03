@@ -11,7 +11,7 @@ const systemPrompt = `你是一名资深 B 端前端测试架构师。请阅读�
 3. pageStates 使用“触发条件、页面初始状态、用户交互、预期结果”描述。
 4. questions 只记录文档无法唯一确定、会影响实现或测试的事项，并给出保守建议。
 5. testCases 覆盖主流程、分支、边界、异常、回归、交互、空数据和数据契约中适用的类型，每个需求生成 6-12 条关键用例。
-6. blockedByQuestion 表示用例是否依赖未确认问题。
+6. blockedByQuestion 表示用例是否依赖未确认问题。每条用例必须提供 questionIds，只关联影响该用例的问题；无关联填 []。问题 ID 格式为“需求数组从0开始的下标-Q-该需求问题数组从0开始的下标”，例如第一需求第二个问题是 0-Q-1。禁止因为处于同一个需求就关联所有问题。
 
 输出 JSON 结构示例：
 {
@@ -33,7 +33,8 @@ const systemPrompt = `你是一名资深 B 端前端测试架构师。请阅读�
       "preconditions":["前置条件"],
       "steps":["操作步骤"],
       "expectedResult":"预期结果",
-      "blockedByQuestion":false
+      "blockedByQuestion":false,
+      "questionIds":[]
     }]
   }]
 }`

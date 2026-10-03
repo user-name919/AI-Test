@@ -31,6 +31,7 @@ export const requirementAnalysisSchema = z.object({
     steps: z.array(z.string()).min(1),
     expectedResult: z.string().min(1),
     blockedByQuestion: z.boolean(),
+    questionIds: z.array(z.string().regex(/^\d+-Q-\d+$/)).optional(),
   })).min(1),
 })
 
@@ -122,6 +123,11 @@ export interface ResolvedCaseExecutionContract {
   caseIndex: number
   title: string
   contract: CaseExecutionContract
+  questionAssociation: {
+    mode: 'explicit' | 'legacy_requirement'
+    questionKeys: string[]
+    warning?: string
+  }
   resolvedQuestions: Array<{
     questionKey: string
     finalStatement: string

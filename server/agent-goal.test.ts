@@ -45,6 +45,19 @@ test('rejects stale or forged case keys', () => {
   assert.throws(() => buildAgentTestGoal(analysis(), '9-TC-9', 'http://localhost:5173/students'), /测试用例不存在/)
 })
 
+test('does not inject an unrelated download assertion into a search goal', () => {
+  const saved = analysis()
+  saved.result.requirements[0]!.testCases[0]!.questionIds = []
+  saved.review.questionReviews = { '0-Q-0': {
+    status: 'edited', finalStatement: '导出 CSV 文件', updatedAt: null,
+    executionContract: { objective: '验证下载', triggers: [], preconditions: [], behaviors: ['下载'],
+      assertions: ['存在下载文件'], forbiddenBehaviors: [], sourceHints: [], uncertainties: [], confidence: 'high' },
+  } }
+  const goal = buildAgentTestGoal(saved, '0-TC-0', 'http://localhost:5173/students')
+  assert.deepEqual(goal.requiredAssertions.map(assertion => assertion.description), ['页面显示保存成功'])
+  assert.deepEqual(goal.resolvedQuestions, [])
+})
+
 test('allows a blocked case after its question has an explicit human resolution', () => {
   const reviewed = analysis(true)
   reviewed.review.confirmedQuestions = ['0-Q-0']

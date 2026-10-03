@@ -44,11 +44,8 @@ function collectRequirementReviewContext(analysis: SavedAnalysis, requirementInd
 }
 
 export function collectResolvedReviewContext(analysis: SavedAnalysis, caseKeys: string[]): ResolvedReviewContext[] {
-  const requirementIndexes = new Set(caseKeys.flatMap(key => {
-    const match = key.match(/^(\d+)-TC-\d+$/)
-    return match ? [Number(match[1])] : []
-  }))
-  return [...requirementIndexes].flatMap(requirementIndex => collectRequirementReviewContext(analysis, requirementIndex))
+  const contexts = caseKeys.flatMap(key => resolveCaseExecutionContract(analysis, key).resolvedQuestions)
+  return [...new Map(contexts.map(context => [context.questionKey, context])).values()]
 }
 
 function legacyContract(testCase: SavedAnalysis['result']['requirements'][number]['testCases'][number]): CaseExecutionContract {
@@ -113,18 +110,33 @@ export function resolveCaseExecutionContract(
 
   const caseReview = analysis.review.caseReviews?.[caseKey]
   const contract = structuredClone(caseReview?.finalContract ?? legacyContract(testCase))
+  const requirementQuestionKeys = requirement.questions.map((_, index) => `${requirementIndex}-Q-${index}`)
+  const questionKeys = [...new Set(testCase.questionIds ?? requirementQuestionKeys)].sort()
+  const questionAssociation: ResolvedCaseExecutionContract['questionAssociation'] = {
+    mode: testCase.questionIds === undefined ? 'legacy_requirement' : 'explicit',
+    questionKeys,
+    ...(testCase.questionIds === undefined ? { warning: '历史关联待复核：沿用需求级问题关联，尚未确认每条用例的精确范围' } : {}),
+  }
   const resolvedQuestions = collectRequirementReviewContext(analysis, requirementIndex)
+    .filter(question => questionKeys.includes(question.questionKey))
 
   const caseReadiness = (mode: 'agent' | 'plan') => {
     const readiness = isCaseReviewExecutable(analysis.review, caseKey, mode)
     if (!readiness.executable) return readiness
+    if (questionKeys.some(key => !requirementQuestionKeys.includes(key))) {
+      return { executable: false, reason: '用例关联的问题不存在或不属于当前需求，请复核关联' }
+    }
+    if (contract.uncertainties.length) {
+      return { executable: false, reason: '用例执行契约仍有不确定项' }
+    }
     if (containsUnprovenDataLiteral(contract)) {
       return { executable: false, reason: '用例需要确认测试数据' }
     }
-    if (!testCase.blockedByQuestion) return readiness
+    if (testCase.questionIds === undefined && !testCase.blockedByQuestion) return readiness
+    if (testCase.questionIds?.length === 0 && !testCase.blockedByQuestion) return readiness
 
-    const allQuestionsResolved = requirement.questions.length > 0
-      && requirement.questions.every((_, questionIndex) => isQuestionReviewResolved(analysis.review, `${requirementIndex}-Q-${questionIndex}`))
+    const allQuestionsResolved = questionKeys.length > 0
+      && questionKeys.every(key => isQuestionReviewResolved(analysis.review, key))
     if (!allQuestionsResolved) return { executable: false, reason: '用例仍有待确认问题' }
     if (resolvedQuestions.some(question => question.uncertainties.length > 0)) {
       return { executable: false, reason: '用例对应的执行契约仍有不确定项' }
@@ -141,6 +153,7 @@ export function resolveCaseExecutionContract(
     title: testCase.title,
     contract,
     resolvedQuestions,
+    questionAssociation,
     caseReviewStatus: caseReview?.status ?? null,
     readiness,
   }
@@ -151,6 +164,7 @@ export function resolveCaseExecutionContract(
     title: testCase.title,
     contract,
     resolvedQuestions,
+    questionAssociation,
     readiness,
     contractFingerprint: createHash('sha256').update(stableJson(fingerprintSource)).digest('hex'),
   }
