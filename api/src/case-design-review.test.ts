@@ -48,6 +48,29 @@ test('人工审核历史与AI产物隔离，过期编辑拒绝并返回最新版
   assert.equal(asset.originalSuggestion.objective,'AI原始目标')
   assert.equal(asset.resolved.resolvedQuestions[0].finalStatement,'按原文大小写匹配')
   const assetPath=`/api/cases/${encodeURIComponent(asset.id)}`
+  const executionRequest={mode:'agent',targetUrl:'https://example.test/search',cases:[{caseId:asset.id,revision:asset.revision,contractFingerprint:asset.resolved.contractFingerprint}]}
+  const prepared=await post('/api/cases/prepare-execution',executionRequest)
+  const preparedBody=await prepared.json()
+  assert.equal(prepared.status,200,JSON.stringify(preparedBody))
+  const preparation=preparedBody.preparation
+  assert.deepEqual(preparation.snapshots[0].source,asset.source)
+  assert.equal(preparation.snapshots[0].analysisId,undefined)
+  assert.deepEqual(preparation.snapshots[0].resolved,asset.resolved)
+  assert.deepEqual(preparation.goals[0].executionContract.contract,publication.snapshot.cases[0].contract)
+  assert.equal(preparation.goals[0].objective,'人工最终目标')
+  assert.equal(preparation.goals[0].resolvedQuestions[0].finalStatement,'按原文大小写匹配')
+  for(const invalid of [
+    {...executionRequest,cases:[]},
+    {...executionRequest,cases:[...executionRequest.cases,...executionRequest.cases]},
+    {...executionRequest,cases:[{...executionRequest.cases[0],revision:99}]},
+    {...executionRequest,cases:[{...executionRequest.cases[0],contractFingerprint:'forged'}]},
+    {...executionRequest,cases:[{...executionRequest.cases[0],caseId:'missing'}]},
+    {...executionRequest,targetUrl:'file:///tmp/test'},
+    {...executionRequest,contract:{objective:'恶意替换最终口径'}},
+  ])assert.equal((await post('/api/cases/prepare-execution',invalid)).status,409)
+  const planPrepared=await post('/api/cases/prepare-execution',{...executionRequest,mode:'plan'})
+  assert.equal(planPrepared.status,200)
+  assert.deepEqual((await planPrepared.json()).preparation.snapshots[0].resolved,preparation.snapshots[0].resolved)
   assert.deepEqual((await(await fetch(url+assetPath+'/contract')).json()).asset,asset)
   assert.equal((await fetch(url+assetPath+'/review',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({})})).status,409)
   assert.match(publication.contentHash,/^[a-f0-9]{64}$/)

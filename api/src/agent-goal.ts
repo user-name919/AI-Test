@@ -1,8 +1,13 @@
-import { agentTestGoalSchema, type AgentTestGoal, type SavedAnalysis } from '@quality-ai/contracts'
+import { agentTestGoalSchema, type AgentTestGoal, type SavedAnalysis, type ResolvedCaseExecutionContract } from '@quality-ai/contracts'
 import { resolveCaseExecutionContract } from './review-execution-context'
 
 export function buildAgentTestGoal(analysis: SavedAnalysis, caseKey: string, targetUrl: string): AgentTestGoal {
   const resolved = resolveCaseExecutionContract(analysis, caseKey)
+  return buildAgentGoalFromContract(resolved, targetUrl)
+}
+
+export function buildAgentGoalFromContract(resolved: ResolvedCaseExecutionContract, targetUrl: string): AgentTestGoal {
+  const caseKey = resolved.caseKey
   if (!resolved.readiness.agent.executable) throw new Error(`${resolved.readiness.agent.reason}：${caseKey}`)
   const { requirementIndex, caseIndex, contract, resolvedQuestions } = resolved
   return agentTestGoalSchema.parse({
@@ -13,7 +18,7 @@ export function buildAgentTestGoal(analysis: SavedAnalysis, caseKey: string, tar
     resolvedQuestions,
     requiredAssertions: [
       ...contract.expectedAssertions.map((description, index) => ({
-        id: `r${requirementIndex + 1}-tc${caseIndex + 1}-a${index + 1}`, description,
+        id: requirementIndex >= 0 ? `r${requirementIndex + 1}-tc${caseIndex + 1}-a${index + 1}` : `published-tc${caseIndex + 1}-a${index + 1}`, description,
       })),
       ...resolvedQuestions.flatMap(question => question.assertions.map((description, index) => ({
         id: `${question.questionKey}-a${index + 1}`, description,

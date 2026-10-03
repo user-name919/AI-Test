@@ -349,7 +349,8 @@ export const storageStateSchema = z.object({
 export interface ExecutionCaseSnapshot {
   caseId: string
   revision: number
-  analysisId: string
+  analysisId?: string
+  source?: import('./case-assets').CaseSource
   capturedAt: string
   resolved: ResolvedCaseExecutionContract
 }
@@ -512,7 +513,7 @@ export const agentTestGoalSchema = z.object({
     description: z.string().min(1),
   })).min(1).max(20),
   executionContract: z.object({
-    caseKey: z.string().regex(/^\d+-TC-\d+$/),
+    caseKey: z.string().min(1),
     contract: caseExecutionContractSchema,
     contractFingerprint: z.string().min(1),
   }).optional(),

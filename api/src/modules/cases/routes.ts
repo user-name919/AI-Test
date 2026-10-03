@@ -8,10 +8,18 @@ import { generateCasePlans } from './plan-generation'
 import { caseAssetReviewRequestSchema } from '@quality-ai/contracts/cases'
 import { getCaseAsset, listCaseAssetRevisions, listCaseAssets, saveCaseAssetReview } from './repository'
 import { getPublishedCaseAsset, listPublishedCaseAssets } from './published-assets'
+import { prepareAssetExecution } from './execution-preparation'
 
 
 export async function handleCaseRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const url = new URL(request.url ?? '/', 'http://localhost')
+  if (request.method === 'POST' && url.pathname === '/api/cases/prepare-execution') {
+    try {
+      return json(response, 200, { preparation: prepareAssetExecution(await readJson(request)) })
+    } catch (error) {
+      return json(response, 409, { error: error instanceof Error ? error.message : '用例执行准备失败' })
+    }
+  }
   if (request.method === 'GET' && url.pathname === '/api/cases') {
     const sourceType = url.searchParams.get('sourceType')
     if(sourceType==='case_design')return json(response,200,{cases:listPublishedCaseAssets(url.searchParams.get('sourceId')??undefined)})

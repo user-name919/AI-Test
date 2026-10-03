@@ -127,7 +127,7 @@ export function captureExecutionCases(analysisId: string, expected: Array<{ case
       const asset = synchronizeAsset(analysis, item.caseKey)
       if (asset.resolved.contractFingerprint !== item.contractFingerprint) throw new Error(`用例口径已变化，请重新生成执行计划：${item.caseKey}`)
       if (!asset.resolved.readiness[mode].executable) throw new Error(asset.resolved.readiness[mode].reason ?? '用例尚未就绪')
-      return { caseId: asset.id, revision: asset.revision, analysisId, capturedAt: new Date().toISOString(), resolved: asset.resolved }
+      return { caseId: asset.id, revision: asset.revision, analysisId, source: asset.source, capturedAt: new Date().toISOString(), resolved: asset.resolved }
     })
   })
 }

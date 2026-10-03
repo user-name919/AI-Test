@@ -30,3 +30,13 @@ export const caseAssetReviewRequestSchema = z.object({
   expectedRevision: z.number().int().positive(),
   review: caseReviewSchema.omit({ updatedAt: true }),
 })
+
+export const executionPreparationSchema = z.object({
+  mode: z.enum(['agent', 'plan']),
+  targetUrl: z.string().url().refine(value => ['http:', 'https:'].includes(new URL(value).protocol), '测试地址必须使用 HTTP(S)'),
+  cases: z.array(z.object({
+    caseId: z.string().min(1),
+    revision: z.number().int().positive(),
+    contractFingerprint: z.string().min(1),
+  }).strict()).min(1).max(100),
+}).strict()
