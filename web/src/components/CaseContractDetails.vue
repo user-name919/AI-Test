@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { ResolvedCaseExecutionContract } from '@quality-ai/contracts'
-defineProps<{ resolved?: ResolvedCaseExecutionContract; unavailableReason: string }>()
+defineProps<{ resolved?: ResolvedCaseExecutionContract; unavailableReason: string; expanded?: boolean }>()
 </script>
 
 <template>
-  <details class="case-contract-details">
+  <details class="case-contract-details" :open="expanded">
     <summary>{{ resolved?.title ?? '用例' }} · 查看完整执行口径<span v-if="resolved?.questionAssociation.warning"> · 历史关联待复核</span></summary>
     <p v-if="!resolved" role="status">{{ unavailableReason }}</p>
     <div v-else>

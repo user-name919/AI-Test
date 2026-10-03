@@ -4,6 +4,7 @@ import type { AgentDecision, AnalysisSummary, ExecutionRecord, LiveExecutionEven
 import { consumeNdjsonChunk, createLiveExecutionState, reduceLiveExecutionState } from '@quality-ai/contracts/live-execution'
 import { useCaseContracts } from './composables/useCaseContracts'
 import CaseContractDetails from './components/CaseContractDetails.vue'
+import CaseAssetWorkbench from './components/CaseAssetWorkbench.vue'
 
 type Tab = 'overview' | 'states' | 'questions' | 'cases'
 type WorkspaceView = 'version' | 'requirements' | 'cases' | 'executions' | 'memory'
@@ -99,7 +100,6 @@ const workspaceView = ref<WorkspaceView>('version')
 const executionHistory = ref<ExecutionRecord[]>([])
 const selectedExecutionId = ref('')
 const executionFilter = ref<'all' | 'passed' | 'failed' | 'blocked'>('all')
-const caseAssetFilter = ref<'all' | 'ready' | 'blocked'>('all')
 const projects = ref<ProjectOption[]>([])
 const projectId = ref('')
 const liveExecution = ref(createLiveExecutionState())
@@ -180,7 +180,6 @@ const caseAssets = computed(() => requirements.value.flatMap((item, requirementI
   key: `${requirementIndex}-TC-${caseIndex}`,
   code: `${requirementCode(requirementIndex)} / TC-${String(caseIndex + 1).padStart(3, '0')}`,
 }))))
-const filteredCaseAssets = computed(() => caseAssetFilter.value === 'all' ? caseAssets.value : caseAssets.value.filter(asset => caseAssetFilter.value === 'blocked' ? asset.blocked : !asset.blocked))
 const memoryRules = computed(() => requirements.value.flatMap((item, requirementIndex) => item.businessRules.map(rule => ({ ...rule, requirementTitle: item.title, requirementIndex }))))
 const memoryFailures = computed(() => executionHistory.value.filter(item => item.status !== 'passed' && item.error).slice(0, 20))
 const memorySourceUses = computed(() => executionHistory.value.flatMap(execution => execution.agent?.trajectory.flatMap(item => item.decision.type === 'need_project_context' ? [{ execution, item }] : []) ?? []).slice(0, 20))
@@ -835,8 +834,8 @@ onMounted(loadSavedAnalysis)
         <template v-else-if="workspaceView==='cases'">
           <section class="heading hub-heading"><div><small><i></i>{{ analysis.versionName }}</small><h1>用例资产</h1><p>跨需求查看当前版本全部用例，维护执行选择并快速进入测试配置。</p></div><div><button class="primary" @click="workspaceView='version';activeTab='cases'">配置并执行</button></div></section>
           <section class="metrics"><article><i class="purple">例</i><p><span>用例总数</span><strong>{{ caseAssets.length }}</strong><small>当前版本</small></p></article><article><i class="green">✓</i><p><span>Agent 用例就绪</span><strong>{{ readyCases }}</strong><small>不代表已执行通过</small></p></article><article><i class="amber">?</i><p><span>未就绪</span><strong>{{ caseAssets.length - readyCases }}</strong><small>暂不进入 Agent</small></p></article><article><i class="blue">选</i><p><span>已选择</span><strong>{{ selectedCaseKeys.length }}</strong><small>将用于自动化</small></p></article></section>
-          <div class="execution-filters"><button :class="{active:caseAssetFilter==='all'}" @click="caseAssetFilter='all'">全部</button><button :class="{active:caseAssetFilter==='ready'}" @click="caseAssetFilter='ready'">Agent 就绪</button><button :class="{active:caseAssetFilter==='blocked'}" @click="caseAssetFilter='blocked'">未就绪</button></div>
-          <div v-if="caseContractsError" class="agent-case-warning" role="alert">{{ caseContractsError }} <button @click="reloadCaseContracts">重试读取执行口径</button></div><section class="case-assets"><article v-for="asset in filteredCaseAssets" :key="asset.key"><label><input :checked="Boolean(selectedCases[asset.key])" type="checkbox" @change="toggleCaseAsset(asset.key)"/><span>{{ asset.code }}</span></label><div><header><strong>{{ asset.item.title }}</strong><b :class="asset.item.priority.toLowerCase()">{{ asset.item.priority }}</b><em :class="asset.blocked?'blocked':'ready'">{{ asset.blocked ? '未就绪' : 'Agent 就绪' }}</em></header><p>{{ asset.requirementTitle }}</p><small>步骤：{{ asset.resolved?.contract.steps.join(' → ') ?? '请展开查看加载状态' }}</small><CaseContractDetails :resolved="asset.resolved" :unavailable-reason="contractUnavailableReason" /><footer><span>预期：{{ asset.resolved?.contract.expectedAssertions.join('；') ?? '执行口径尚未加载' }}</span><button @click="openCaseAsset(asset.requirementIndex)">查看并执行 →</button></footer></div></article><div v-if="!filteredCaseAssets.length" class="empty">当前筛选条件下暂无用例</div></section>
+          <CaseAssetWorkbench v-if="savedAnalysis" :analysis-id="savedAnalysis.id" :selected="selectedCases" @toggle="toggleCaseAsset" @execute="openCaseAsset" @saved="reloadCaseContracts" />
+          <p v-else class="empty">请先导入并保存需求分析，示例内容不能作为真实用例审核。</p>
         </template>
         <template v-else>
           <section class="heading hub-heading"><div><small><i></i>由真实评审与执行自动沉淀</small><h1>质量记忆</h1><p>汇总已提取业务规则、历史失败和 Agent 使用过的源码线索，避免后续测试重复摸索。</p></div></section>
