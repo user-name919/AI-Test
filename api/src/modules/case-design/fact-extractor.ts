@@ -3,6 +3,7 @@ import { factExtractionSchema, type CaseDesign, type DesignRun, type DocumentBlo
 import { ResponsesModelClient } from '../../model-client'
 import type { ModelConfig } from '../../model-config'
 import { validateEvidence, validateFactEvidence } from './evidence-validator'
+import type { LoadedDesignSkill } from './skill-loader'
 
 export const factsPromptVersion = 'requirement-facts-v1'
 const system = `你是需求事实分析员。只分析提供的文档块，输出严格 JSON。
@@ -12,7 +13,8 @@ const system = `你是需求事实分析员。只分析提供的文档块，输�
 输出 {"facts":[{"id":"f1","statement":"规则","kind":"explicit","evidence":[{"documentId":"...","blockId":"...","quote":"原文"}],"relatedQuestionIds":[]}],"questions":[{"id":"q1","question":"需要确认的内容","evidence":[]}]}。
 引用校验通过不是人工审核通过，不输出批准或测试通过结论。`
 
-export async function extractFacts(design: CaseDesign, run: DesignRun, config: ModelConfig, signal: AbortSignal, checkpoint: () => void) {
+export async function extractFacts(design: CaseDesign, run: DesignRun, config: ModelConfig, signal: AbortSignal, checkpoint: () => void, skills: LoadedDesignSkill[] = []) {
+  const instructions = [system,...skills.map(skill=>`平台技能 ${skill.id}@${skill.version} (${skill.hash})\n${skill.content}`)].join('\n\n')
   const blocks = design.documents.flatMap(document => document.blocks).filter(block => block.text.trim())
   const batches: DocumentBlock[][] = []
   for (const block of blocks) {
@@ -24,9 +26,9 @@ export async function extractFacts(design: CaseDesign, run: DesignRun, config: M
   for (const [index,batch] of batches.entries()) {
     signal.throwIfAborted()
     const input = JSON.stringify({documents:design.documents.map(({id,fileName,role})=>({id,fileName,role})),blocks:batch})
-    run.statistics.calls += 1; run.statistics.inputCharacters += system.length + input.length
+    run.statistics.calls += 1; run.statistics.inputCharacters += instructions.length + input.length
     checkpoint()
-    const output = await client.generateText({ messages: [{role:'system',content:system},{role:'user',content:`文档块（json）：${input}`}], maxOutputTokens:12000, signal })
+    const output = await client.generateText({ messages: [{role:'system',content:instructions},{role:'user',content:`文档块（json）：${input}`}], maxOutputTokens:12000, signal })
     signal.throwIfAborted()
     run.statistics.outputCharacters += output.length
     const parsed = factExtractionSchema.parse(JSON.parse(jsonrepair(output.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''))))

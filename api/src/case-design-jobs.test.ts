@@ -17,10 +17,12 @@ let mode: 'valid' | 'invalid' | 'hold' = 'valid'
 let release: (()=>void) | undefined
 let received = 0
 let failAt = -1
+const instructions: string[] = []
 const model = createServer(async (request,response) => {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.from(chunk))
   const body = JSON.parse(Buffer.concat(chunks).toString())
+  instructions.push(body.instructions)
   const message = body.input[0].content as string
   const input = JSON.parse(message.slice(message.indexOf('：')+1).split('\n\nReturn only')[0])
   const block = input.blocks[0]
@@ -66,6 +68,10 @@ test('background generation survives request completion and records model, input
   assert.equal(run.statistics.calls,1)
   assert.ok(run.statistics.outputCharacters>0)
   assert.equal(JSON.stringify(run).includes('synthetic-key'),false)
+  assert.deepEqual(run.skills.map(skill=>skill.id),['requirement-facts'])
+  assert.match(instructions.at(-1)!,/需求事实提取/)
+  assert.match(instructions.at(-1)!,new RegExp(run.skills[0].hash))
+  assert.equal(instructions.at(-1)!.includes('平台技能 test-data-design'),false)
 })
 test('invalid evidence fails without approving output; retries create separate attempts',async()=> {
   const design=await create(); mode='invalid'
@@ -107,4 +113,13 @@ test('later batch failure keeps completed batch facts and explicit unprocessed b
   assert.equal(run.output.unprocessedBlockIds.length,1)
   assert.match(run.modelConfigHash,/^[a-f0-9]{64}$/)
   failAt=-1
+})
+
+test('skills can be disabled for reproducible evaluation without changing input documents',async()=> {
+  const design=await create()
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'extracting',expectedRevision:1,skillsEnabled:false})
+  const run=await waitFor(design.id,'completed')
+  assert.deepEqual(run.skills,[])
+  assert.equal(instructions.at(-1)!.includes('平台技能'),false)
+  assert.equal(run.inputHash,design.inputHash)
 })

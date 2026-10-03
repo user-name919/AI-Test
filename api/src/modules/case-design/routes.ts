@@ -23,7 +23,8 @@ export async function handleCaseDesignRoutes(request: IncomingMessage, response:
     if (operation[2] === 'cancel') return json(response,200,{cancelled:cancelDesignRun(id)})
     const body = await readJson(request)
     if (body.stage !== 'extracting' || !Number.isInteger(body.expectedRevision)) return json(response,400,{error:'请提供 extracting 阶段及 expectedRevision；其他阶段尚未接入'})
-    try { return json(response,202,{run:startDesignRun(id,Number(body.expectedRevision))}) }
+    if (body.skillsEnabled !== undefined && typeof body.skillsEnabled !== 'boolean') return json(response,400,{error:'skillsEnabled 必须为布尔值'})
+    try { return json(response,202,{run:startDesignRun(id,Number(body.expectedRevision),body.skillsEnabled !== false)}) }
     catch (error) { return json(response,409,{error:error instanceof Error ? error.message : '无法创建生成任务'}) }
   }
   const match = request.url?.match(/^\/api\/case-designs\/([^/?]+)$/)

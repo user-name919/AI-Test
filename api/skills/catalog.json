@@ -1,0 +1,5 @@
+[
+  { "id": "requirement-facts", "version": "1.0.0", "stages": ["extracting", "modeling", "planning"], "resources": ["SKILL.md", "references/examples.md"] },
+  { "id": "test-data-design", "version": "1.0.0", "stages": ["generating"], "resources": ["SKILL.md", "references/examples.md"] },
+  { "id": "case-quality-review", "version": "1.0.0", "stages": ["checking"], "resources": ["SKILL.md", "references/examples.md"] }
+]
