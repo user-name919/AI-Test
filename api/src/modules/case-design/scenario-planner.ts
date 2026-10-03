@@ -4,6 +4,7 @@ import { ResponsesModelClient } from '../../model-client'
 import type { ModelConfig } from '../../model-config'
 import type { LoadedDesignSkill } from './skill-loader'
 import { validateEvidence, validateFactEvidence } from './evidence-validator'
+import { encodeFactInput } from './fact-input'
 
 export const modelingPrompt = `阶段：modeling。输出严格json，整理已抽取事实，不生成用例。
 输出 {"consolidatedFacts":[{"id":"m1","sourceFactIds":["上游事实ID"],"statement":"规则","kind":"explicit|inferred|unresolved","evidence":[],"relatedQuestionIds":[]}],"conflicts":[{"id":"conflict1","factIds":["m1","m2"],"question":"待人工确认","evidence":[]}]}。
@@ -49,8 +50,8 @@ export function validateFactModel(model: FactModel, design: CaseDesign, run: Des
 
 export async function planFromFacts(design:CaseDesign,run:DesignRun,config:ModelConfig,signal:AbortSignal,checkpoint:()=>void,skills:LoadedDesignSkill[]) {
   const prompt=run.stage==='modeling'?modelingPrompt:planningPrompt
-  const instructions=[prompt,...skills.map(skill=>`平台技能 ${skill.id}@${skill.version} (${skill.hash})\n${skill.content}`)].join('\n\n')
-  const input=JSON.stringify({facts:run.stage==='modeling'?run.output.facts:run.output.factModel?.consolidatedFacts,questions:run.output.questions,conflicts:run.output.factModel?.conflicts,unprocessedBlockIds:run.output.unprocessedBlockIds})
+  const instructions=[prompt,'输入采用无损证据引用：每条事实/问题/冲突的 evidenceRefs 指向 evidenceTable 中的完整 evidence。引用不是原文，必须读取对应条目的documentId、blockId、quote等全部字段。输出仍使用原schema的完整evidence对象，不输出evidenceRefs，不丢失任何来源；相同原文不代表规则语义相同。',...skills.map(skill=>`平台技能 ${skill.id}@${skill.version} (${skill.hash})\n${skill.content}`)].join('\n\n')
+  const input=encodeFactInput(run)
   if(input.length>120000) throw new Error('事实总量超过本阶段合并预算；未截断材料，需拆分任务，不能声称已完成跨章节检查')
   signal.throwIfAborted()
   run.statistics.calls++; run.statistics.inputCharacters+=input.length+instructions.length; checkpoint()
