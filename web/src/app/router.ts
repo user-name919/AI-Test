@@ -3,6 +3,7 @@ import WorkspaceShell from './WorkspaceShell.vue'
 import NotFoundPage from './NotFoundPage.vue'
 import CaseDesignPage from '../features/case-design/CaseDesignPage.vue'
 import ExecutionJobsPage from '../features/executions/ExecutionJobsPage.vue'
+import ExecutionReportsPage from '../features/executions/ExecutionReportsPage.vue'
 import RegressionPage from '../features/regressions/RegressionPage.vue'
 import EnvironmentsPage from '../features/projects/EnvironmentsPage.vue'
 import ProjectsPage from '../features/projects/ProjectsPage.vue'
@@ -18,7 +19,7 @@ export const router = createRouter({
     { path: '/requirements/:id', name: 'requirement-detail', meta: { workspace: 'version' }, component: WorkspaceShell },
     { path: '/cases', name: 'cases', component: WorkspaceShell },
     { path: '/case-designs/:id?', name: 'case-designs', component: CaseDesignPage },
-    { path: '/executions/:id?', name: 'executions', component: WorkspaceShell },
+    { path: '/executions/:id?', name: 'executions', component: ExecutionReportsPage },
     { path: '/execution-jobs/:id?', name: 'execution-jobs', component: ExecutionJobsPage },
     { path: '/regressions/:id?', name: 'regressions', component: RegressionPage },
     { path: '/environments', name: 'environments', component: EnvironmentsPage },

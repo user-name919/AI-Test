@@ -34,7 +34,9 @@ test('失败报告保留上传快照与真实下载，附件读取可重试、�
   saveExecution(record, { caseKeys: record.caseKeys })
   const snapshots = [{ caseId: 'case', revision: 1, capturedAt: 'now', resolved: { caseKey: 'case', title: '核对导出内容', contractFingerprint: 'frozen', contract: { objective: '核对导出内容', preconditions: [], steps: ['上传后导出'], expectedAssertions: ['文件内容符合预期'], dataBindings: [], forbiddenBehaviors: [], uncertainties: [] } } }]
   let failArtifacts = true
+  const requests: string[] = []
   const api = createHttpServer(async (request, response) => {
+    requests.push(request.url ?? '')
     // 仅任务及事件为合成夹具；报告、附件及Markdown使用生产路由和临时数据库。
     if (request.url?.startsWith(`/api/execution-jobs/${id}`)) {
       response.setHeader('content-type', 'application/json')
@@ -87,6 +89,30 @@ test('失败报告保留上传快照与真实下载，附件读取可重试、�
     await page.setViewportSize({ width: 390, height: 844 })
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
     await page.screenshot({ path: '/private/tmp/quality-ai-execution-files.png', fullPage: true })
+    requests.length=0
+    await page.goto(`http://127.0.0.1:${web.port}/#/executions/${id}`)
+    await page.getByRole('heading',{name:'合成导出失败报告',exact:true}).waitFor()
+    await page.locator('summary').filter({hasText:'核对导出内容 · 验证失败'}).click()
+    await page.getByText('输入样本.csv',{exact:true}).waitFor()
+    await page.getByRole('link',{name:'下载文件',exact:true}).waitFor()
+    assert.equal(await page.getByRole('button',{name:'创建独立重跑任务'}).isDisabled(),true)
+    await page.getByText('历史报告没有用例版本快照，请从用例重新确认',{exact:true}).waitFor()
+    await page.reload()
+    await page.getByRole('heading',{name:'合成导出失败报告',exact:true}).waitFor()
+    await page.getByRole('link',{name:'返回报告列表',exact:true}).click()
+    await page.getByRole('link',{name:/合成导出失败报告/}).waitFor()
+    await page.getByLabel('状态筛选').selectOption('passed')
+    await page.getByText('当前筛选下没有执行记录。',{exact:true}).waitFor()
+    await page.getByLabel('状态筛选').selectOption('failed')
+    await page.getByRole('link',{name:/合成导出失败报告/}).click()
+    await page.locator('summary').filter({hasText:'核对导出内容 · 验证失败'}).click()
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1))
+    assert.equal((await page.locator('main').boundingBox())?.x,0)
+    await page.screenshot({path:'/private/tmp/quality-ai-execution-report-page.png',fullPage:true})
+    await page.goto(`http://127.0.0.1:${web.port}/#/executions/${randomUUID()}`)
+    await page.getByRole('alert').filter({hasText:'执行记录不存在'}).waitFor()
+    assert.equal(await page.getByRole('heading',{name:'合成导出失败报告',exact:true}).count(),0)
+    assert.ok(requests.every(url=>url.startsWith('/api/executions')),requests.join('\n'))
     assert.deepEqual(errors, [])
   } finally {
     await browser.close(); await server.close()

@@ -43,6 +43,7 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
     page.on('pageerror', error => errors.push(error.message))
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname
+      if(path==='/api/executions/missing'){await route.fulfill({status:404,json:{error:'执行记录不存在'}});return}
       if(path==='/api/execution-jobs'&&route.request().method()==='POST'){
         jobInput=route.request().postDataJSON()
         await route.fulfill({status:202,json:{job}})
@@ -71,6 +72,8 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
         '/api/health': { configured: true }, '/api/analyses/latest': { analysis }, '/api/analyses': { analyses: [] },
         [`/api/analyses/${analysis.id}`]: { analysis },
         '/api/executions/latest': { execution: null }, '/api/executions': { executions: [historicalExecution] },
+        [`/api/executions/${historicalExecution.id}`]: {execution:historicalExecution},
+        [`/api/executions/${historicalExecution.id}/artifacts`]: {artifacts:[]},
         '/api/environments/latest': { environment: { id: 'env', name: '合成环境', targetUrl: 'https://example.test/exams' } },
         '/api/projects': { projects: [{ id: 'project', name: '合成项目', connected: true, targetOrigins: ['https://example.test'] }] },
         '/api/cases': { cases: [asset] },
@@ -154,7 +157,7 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
     await evidence.getByText('人工确认：验证真实考试的部分搜索', { exact: true }).waitFor()
     assert.equal(await evidence.getByText('人工编辑后的搜索目标', { exact: true }).count(), 0)
     await page.goto(`http://127.0.0.1:${address.port}/#/executions/missing?sourceId=${analysis.id}`)
-    await page.getByText('执行记录不存在或尚未加载，未自动替换为其他报告。', { exact: false }).waitFor()
+    await page.getByRole('alert').filter({hasText:'执行记录不存在。未自动替换为其他报告。'}).waitFor()
     await page.goto(`http://127.0.0.1:${address.port}/#/cases?sourceId=missing`)
     await page.getByRole('heading', { name: '记录无法打开' }).waitFor()
     await page.getByRole('button', { name: '返回版本中心', exact: true }).click()
