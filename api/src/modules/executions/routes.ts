@@ -16,7 +16,7 @@ import { openNdjsonResponse } from '../../ndjson-response'
 import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { getRuntimePaths } from '../../config/paths'
 import { captureExecutionCases } from '../cases/repository'
-import { createExecutionJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelExecutionJob } from './jobs'
+import { createExecutionJob, createExecutionRerunJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelExecutionJob } from './jobs'
 import { executionArtifacts } from './artifacts'
 import { executionMarkdown } from './report'
 import { proposeFixedPlanData } from '../cases/fixed-plan-model'
@@ -24,6 +24,11 @@ import { proposeFixedPlanData } from '../cases/fixed-plan-model'
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const url = new URL(request.url ?? '/', 'http://localhost')
+  const rerunJobMatch=url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/rerun-job$/i)
+  if(request.method==='POST'&&rerunJobMatch){
+    try{return json(response,202,{job:await createExecutionRerunJob(rerunJobMatch[1])})}
+    catch(error){return json(response,409,{error:error instanceof Error?error.message:'重跑任务创建失败'})}
+  }
   const reportMatch=url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/report\.md$/i)
   if(request.method==='GET'&&reportMatch){
     const execution=getExecutionById(reportMatch[1])

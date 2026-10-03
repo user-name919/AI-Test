@@ -300,7 +300,9 @@ function dismissNotice() {
 }
 function rerunDisabledReason(execution: ExecutionRecord) {
   if (executionRunning.value) return '当前已有任务执行中'
-  if (!execution.plan) return execution.mode === 'agent' ? '动态 Agent 需要从用例重新发起，以重新观察页面' : '旧记录没有保存固定计划，无法重跑'
+  if(execution.deploymentConfirmation||execution.caseSnapshots?.some(item=>item.source?.type==='change_regression'))return '请返回回归任务重新确认部署版本'
+  if(!execution.caseSnapshots?.length)return '历史报告缺少用例版本快照，请从用例重新确认'
+  if (execution.mode==='plan'&&!execution.plan) return '旧记录没有保存固定计划，无法重跑'
   return ''
 }
 function formatVersionTime(value: string) { return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) }
@@ -690,16 +692,15 @@ async function runDynamicAgent() {
 }
 
 async function rerunExecution(execution: ExecutionRecord) {
-  if (!execution.plan || executionRunning.value) return
+  if (rerunDisabledReason(execution)) return
   executionRunning.value = true
   showNotice(`正在重新执行「${execution.name}」…`, 'loading', 0)
   try {
-    const response = await fetch(`/api/executions/${encodeURIComponent(execution.id)}/rerun`, { method: 'POST' })
-    const payload = await response.json() as { execution?: ExecutionRecord; error?: string }
-    if (!payload.execution) throw new Error(payload.error ?? '重新执行失败')
-    latestExecution.value = payload.execution
-    await refreshExecutions(payload.execution.id)
-    toast(`重新执行${payload.execution.status === 'passed' ? '通过' : '失败'}，已生成新的执行记录`)
+    const response = await fetch(`/api/executions/${encodeURIComponent(execution.id)}/rerun-job`, { method: 'POST' })
+    const payload = await response.json() as { job?: {id:string}; error?: string }
+    if (!response.ok||!payload.job) throw new Error(payload.error ?? '重新执行失败')
+    toast('已创建独立重跑任务，原报告保留不变')
+    await router.push(`/execution-jobs/${payload.job.id}`)
   } catch (error) {
     toast(`重新执行失败：${error instanceof Error ? error.message : '未知错误'}`)
   } finally {

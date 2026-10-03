@@ -23,7 +23,8 @@ process.env.QUALITY_AI_DATABASE_PATH=join(directory,'db.sqlite')
 process.env.QUALITY_AI_DATA_ROOT=directory
 const {createApiServer}=await import('./app')
 const {database}=await import('./storage/database')
-const {saveAnalysis}=await import('./modules/requirements/repository')
+const {saveAnalysis,saveReview}=await import('./modules/requirements/repository')
+const {saveExecution}=await import('./modules/executions/repository')
 const {listCaseAssets}=await import('./modules/cases/repository')
 const {saveAutomationPlan}=await import('./modules/cases/plan-repository')
 
@@ -110,6 +111,23 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   assert.deepEqual(confirmedResult.plan,result.plan,'执行必须保留人员确认的计划，不能重新生成替换')
   assert.equal(confirmedResult.automationPlanId,automationPlanId)
   assert.equal(modelRequests.length,1,'已确认计划不再调用计划生成模型')
+  const originalBefore=(await(await fetch(url+`/api/executions/${confirmedJob.id}`)).json()).execution
+  const rerunResponse=await post(`/api/executions/${confirmedJob.id}/rerun-job`,{})
+  assert.equal(rerunResponse.status,202)
+  let rerun=(await rerunResponse.json()).job as ExecutionJob
+  for(let i=0;i<200;i++){
+    rerun=(await(await fetch(url+`/api/execution-jobs/${rerun.id}`)).json()).job
+    if(['completed','failed'].includes(rerun.status))break
+    await new Promise(resolve=>setTimeout(resolve,50))
+  }
+  assert.equal(rerun.status,'completed',rerun.error)
+  assert.equal(rerun.rerunOf,confirmedJob.id)
+  const rerunResult=(await(await fetch(url+`/api/executions/${rerun.id}`)).json()).execution
+  assert.equal(rerunResult.status,'passed')
+  assert.equal(rerunResult.rerunOf,confirmedJob.id)
+  assert.deepEqual(rerunResult.plan,originalBefore.plan)
+  assert.deepEqual((await(await fetch(url+`/api/executions/${confirmedJob.id}`)).json()).execution,originalBefore)
+  assert.equal(modelRequests.length,1,'固定计划重跑也不能重新调用模型生成计划')
   const history=(await(await fetch(url+`/api/execution-jobs/${job.id}/events?after=0`)).json())
   assert.ok(history.events.some((item:{event:{type:string}})=>item.event.type==='execution_started'))
   assert.ok(history.events.some((item:{event:{type:string}})=>item.event.type==='activity'))
@@ -160,6 +178,16 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   const allBlocked=await executeBatch()
   assert.deepEqual(allBlocked.caseResults.map((item:{status:string})=>item.status),['blocked','blocked'])
   assert.equal(allBlocked.steps.length,0,'全受阻批次不得伪造浏览器动作')
+  saveReview('synthetic',{confirmedQuestions:[],selectedCases:[],caseReviews:{'0-TC-0':{status:'confirmed',updatedAt:null,finalContract:{...asset.resolved.contract,expectedAssertions:['已修改的最终预期']}}}})
+  const changed=await post(`/api/executions/${confirmedJob.id}/rerun-job`,{})
+  assert.equal(changed.status,409)
+  assert.match((await changed.json()).error,/版本或口径已变化/)
+  const regressionReportId='33333333-3333-4333-8333-333333333333'
+  saveExecution({...originalBefore,id:regressionReportId},{caseKeys:['regression:historical']})
+  assert.match((await(await post(`/api/executions/${regressionReportId}/rerun-job`,{})).json()).error,/重新确认部署/)
+  const legacyReportId='44444444-4444-4444-8444-444444444444'
+  saveExecution({...originalBefore,id:legacyReportId,caseSnapshots:undefined})
+  assert.match((await(await post(`/api/executions/${legacyReportId}/rerun-job`,{})).json()).error,/缺少用例版本快照/)
   const orphan={...job,id:'orphan',status:'running'}
   database.prepare('INSERT INTO execution_jobs VALUES (?,?,?)').run('orphan','running',JSON.stringify(orphan))
   const restart=execFileSync(process.execPath,['--import','tsx','--input-type=module','-e',"const m=await import('./src/modules/executions/jobs.ts');m.initializeExecutionJobs();console.log(JSON.stringify(m.getExecutionJob('orphan')));"],{cwd:import.meta.dirname+'/..',env:process.env,encoding:'utf8'})

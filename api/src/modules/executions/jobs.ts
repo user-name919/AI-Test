@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { executionJobRequestSchema, type ExecutionJob } from '@quality-ai/contracts/cases'
-import { automationPlanSchema, type AutomationPlan, type LiveExecutionEvent } from '@quality-ai/contracts'
+import { automationPlanSchema, type AutomationPlan, type ExecutionRecord, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { database } from '../../storage/database'
 import { prepareAssetExecution } from '../cases/execution-preparation'
 import { getEnvironmentById } from '../projects/environment-repository'
@@ -8,7 +8,7 @@ import { getProjectProviderRegistry } from '../../project-knowledge/registry'
 import { runAgentTest } from '../../agent-test-runner'
 import { runAutomationPlan } from '../../playwright-runner'
 import { generateFixedPlan, proposeFixedPlanData } from '../cases/fixed-plan-model'
-import { saveExecution } from './repository'
+import { getExecutionById, saveExecution } from './repository'
 import { validateDeploymentForExecution } from '../regressions/deployments'
 import { acquireChangeSetWorktree, releaseChangeSetWorktree } from '../../integrations/git/worktree-manager'
 import { loadProjectConfigs } from '../../project-knowledge/config'
@@ -79,7 +79,17 @@ async function drainQueue() {
   try { while (queue.length) await queue.shift()!() } finally { working = false }
 }
 
-export async function createExecutionJob(input: unknown): Promise<ExecutionJob> {
+export async function createExecutionRerunJob(id:string):Promise<ExecutionJob>{
+  const original=getExecutionById(id)
+  if(!original)throw new Error('原执行记录不存在')
+  if(original.deploymentConfirmation||original.caseSnapshots?.some(item=>item.source?.type==='change_regression')||original.caseKeys.some(key=>key.startsWith('regression:')))throw new Error('回归重跑须返回回归任务重新确认部署版本')
+  if(!original.caseSnapshots?.length)throw new Error('历史报告缺少用例版本快照，请返回用例重新确认执行')
+  if(original.mode==='plan'&&!original.plan)throw new Error('历史报告未保存固定计划，请重新生成并确认')
+  return createExecutionJob({mode:original.mode,targetUrl:original.targetUrl,environmentId:original.environmentId,projectId:original.projectId,
+    cases:original.caseSnapshots.map(item=>({caseId:item.caseId,revision:item.revision,contractFingerprint:item.resolved.contractFingerprint}))},original)
+}
+
+export async function createExecutionJob(input: unknown, replay?:ExecutionRecord): Promise<ExecutionJob> {
   const request = executionJobRequestSchema.parse(input)
   if (queue.length >= 20) throw new Error('执行队列已满，请等待当前任务完成')
   const environment = request.environmentId ? getEnvironmentById(request.environmentId) : null
@@ -97,6 +107,14 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
   const savedPlan = request.automationPlanId ? getAutomationPlanById(request.automationPlanId) : null
   if(request.automationPlanId&&!savedPlan)throw new Error('已确认计划不存在，请重新生成并查看计划')
   let confirmedPlan:AutomationPlan|undefined
+  if(replay?.mode==='plan'){
+    confirmedPlan=automationPlanSchema.parse(replay.plan)
+    if(confirmedPlan.targetUrl!==request.targetUrl||confirmedPlan.casePlans?.length!==preparation.snapshots.length)throw new Error('历史计划与执行快照不完整，请重新确认')
+    for(const [index,snapshot] of preparation.snapshots.entries()){
+      const item=confirmedPlan.casePlans![index]!
+      if(item.caseKey!==snapshot.resolved.caseKey||item.contractFingerprint!==snapshot.resolved.contractFingerprint||!item.contract)throw new Error('历史计划的契约或顺序不匹配，请重新确认')
+    }
+  }
   if(savedPlan){
     if(request.mode!=='plan')throw new Error('已确认固定计划不能用于动态执行')
     confirmedPlan=automationPlanSchema.parse(savedPlan.plan)
@@ -113,7 +131,7 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
   if (queue.length >= 20) throw new Error('执行队列已满，请等待当前任务完成')
   const now = new Date().toISOString()
   const job: ExecutionJob = {id:randomUUID(),status:'queued',mode:request.mode,targetUrl:request.targetUrl,snapshots:preparation.snapshots,createdAt:now,updatedAt:now,
-    environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,automationPlanId:savedPlan?.id,
+    environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,automationPlanId:savedPlan?.id??replay?.automationPlanId,rerunOf:replay?.id,
     sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit} : undefined}
   writeJob(job)
   queue.push(async () => {
@@ -172,7 +190,7 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
       result.caseSnapshots = job.snapshots
       result.sourceProject = job.sourceProject
       result.deploymentConfirmation = deployment
-      saveExecution(result,{analysisId:savedPlan?.analysisId,automationPlanId:savedPlan?.id,environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
+      saveExecution(result,{analysisId:savedPlan?.analysisId??replay?.analysisId,automationPlanId:job.automationPlanId,rerunOf:replay?.id,environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
       job.executionId = result.id
       job.status = controller.signal.aborted ? 'cancelled' : 'completed' // 完成任务不等于用例通过。
       writeJob(job)
