@@ -43,6 +43,7 @@ export interface SourceDocument {
   fileName: string
   role: 'prd' | 'interface'
   content: string
+  pages?: Array<{ page: number; text: string; warnings: string[] }>
 }
 
 export async function analyzePrd(documents: SourceDocument[]): Promise<{ result: PrdAnalysis; model: string }> {

@@ -3,6 +3,17 @@ import type { DatabaseSync } from 'node:sqlite'
 // 保留历史增量迁移顺序；所有领域共享一个连接，不各自初始化数据库。
 export function migrateDatabase(database: DatabaseSync) {
   database.exec(`
+    CREATE TABLE IF NOT EXISTS case_designs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      documents_json TEXT NOT NULL,
+      input_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `)
+  database.exec(`
     CREATE TABLE IF NOT EXISTS case_assets (
       id TEXT PRIMARY KEY,
       analysis_id TEXT NOT NULL,

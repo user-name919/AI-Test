@@ -18,6 +18,7 @@ function normalizePageText(items: unknown[]) {
 export interface PdfTextResult {
   content: string
   pageCount: number
+  pages: Array<{ page: number; text: string; warnings: string[] }>
 }
 
 export async function extractPdfText(data: Uint8Array): Promise<PdfTextResult> {
@@ -30,10 +31,12 @@ export async function extractPdfText(data: Uint8Array): Promise<PdfTextResult> {
     const document = await loadingTask.promise
     if (document.numPages > maxPdfPages) throw new Error(`PDF 页数超过上限 ${maxPdfPages}`)
     const pages: string[] = []
+    const pageBlocks: PdfTextResult['pages'] = []
     let characters = 0
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber)
       const pageText = normalizePageText((await page.getTextContent()).items)
+      pageBlocks.push({ page: pageNumber, text: pageText, warnings: pageText ? ['PDF 仅提取文本，图片及复杂表格布局未验证'] : ['本页未提取到文字，图片或扫描内容未识别'] })
       if (pageText) {
         characters += pageText.length
         if (characters > maxPdfCharacters) throw new Error('PDF 正文超过 40 万字符，请拆分后上传')
@@ -43,7 +46,7 @@ export async function extractPdfText(data: Uint8Array): Promise<PdfTextResult> {
     }
     const content = pages.join('\n\n').trim()
     if (content.replace(/\s/g, '').length < 10) throw new Error('PDF 未提取到可用文字，可能是扫描件，请先进行 OCR')
-    return { content, pageCount: document.numPages }
+    return { content, pageCount: document.numPages, pages: pageBlocks }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (/password/i.test(message)) throw new Error('PDF 已加密，请解除密码后重新上传')

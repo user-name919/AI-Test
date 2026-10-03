@@ -25,7 +25,7 @@ export async function parseSourceDocuments(rawFiles: unknown[]): Promise<SourceD
     if (!fileName) throw new Error(`第 ${index + 1} 份材料名称为空`)
     if (/\.pdf$/i.test(fileName)) {
       const pdf = await extractPdfText(decodeBase64(value.contentBase64))
-      return { fileName, content: sanitizeContent(pdf.content), role }
+      return { fileName, content: sanitizeContent(pdf.content), role, pages: pdf.pages }
     }
     if (!/\.(md|markdown|txt)$/i.test(fileName)) throw new Error('当前支持 PDF、Markdown 和纯文本材料')
     const content = typeof value.content === 'string' ? sanitizeContent(value.content) : ''

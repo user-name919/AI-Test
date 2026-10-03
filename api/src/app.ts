@@ -5,8 +5,9 @@ import { handleCaseRoutes } from './modules/cases/routes'
 import { handleExecutionRoutes } from './modules/executions/routes'
 import { handleProjectRoutes } from './modules/projects/routes'
 import { handleEnvironmentRoutes } from './modules/projects/environments'
+import { handleCaseDesignRoutes } from './modules/case-design/routes'
 
-const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes]
+const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleCaseDesignRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes]
 
 export function createApiServer() {
   return createServer(async (request, response) => {

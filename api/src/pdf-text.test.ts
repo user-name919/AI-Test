@@ -3,14 +3,17 @@ import test from 'node:test'
 import { extractPdfText } from './pdf-text'
 import { parseSourceDocuments } from './source-documents'
 
-function createTextPdf(text: string) {
-  const escaped = text.replace(/([\\()])/g, '\\$1')
-  const stream = `BT /F1 14 Tf 72 720 Td (${escaped}) Tj ET`
+function createTextPdf(text: string | string[]) {
+  const texts = typeof text === 'string' ? [text] : text
+  const fontId = 3 + texts.length * 2
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
-    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+    `<< /Type /Pages /Kids [${texts.map((_,index) => `${3+index*2} 0 R`).join(' ')}] /Count ${texts.length} >>`,
+    ...texts.flatMap((text,index) => {
+      const escaped = text.replace(/([\\()])/g, '\\$1')
+      const stream = `BT /F1 14 Tf 72 720 Td (${escaped}) Tj ET`
+      return [`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${4+index*2} 0 R >>`, `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`]
+    }),
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
   ]
   let output = '%PDF-1.4\n'
@@ -31,6 +34,14 @@ test('extracts readable requirement text and page boundaries from a PDF', async 
   assert.equal(result.pageCount, 1)
   assert.match(result.content, /第 1 页/)
   assert.match(result.content, /student search and save flow/)
+})
+
+test('preserves actual PDF page numbers including unreadable blank pages', async () => {
+  const result = await extractPdfText(createTextPdf(['First page product rule', '', 'Third page contradiction']))
+  assert.deepEqual(result.pages.map(page => page.page), [1, 2, 3])
+  assert.equal(result.pages[1].text, '')
+  assert.match(result.pages[1].warnings.join(' '), /未提取到文字/)
+  assert.match(result.pages[2].text, /Third page/)
 })
 
 test('parses PDF and Markdown files into one model-ready document list', async () => {
