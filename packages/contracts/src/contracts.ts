@@ -397,10 +397,10 @@ export interface CaseExecutionResult {
   caseKey: string
   title: string
   contractFingerprint: string
-  status: ExecutionStatus
+  status: ExecutionStatus | 'not_run'
   startedFromUrl: string
   startedFromSnapshotId?: string
-  continuation: 'reused_current_page' | 'agent_recovered_page'
+  continuation: 'reused_current_page' | 'agent_recovered_page' | 'not_started'
   resolvedDataBindings: ResolvedDataBinding[]
   passedAssertions: string[]
   trajectory: NonNullable<ExecutionResult['agent']>['trajectory']
@@ -524,7 +524,7 @@ export const agentTestGoalSchema = z.object({
     uncertainties: z.array(z.string()), confidence: z.enum(['high', 'medium', 'low']).optional(),
   })).optional(),
   previousCaseSummaries: z.array(z.object({
-    caseKey: z.string(), title: z.string(), status: z.enum(['passed', 'failed', 'blocked', 'infrastructure_failed', 'cancelled']),
+    caseKey: z.string(), title: z.string(), status: z.enum(['passed', 'failed', 'blocked', 'infrastructure_failed', 'cancelled', 'not_run']),
     summary: z.string(), actions: z.array(z.string()),
   })).optional(),
   sessionContinuation: z.string().optional(),

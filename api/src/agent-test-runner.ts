@@ -12,6 +12,7 @@ import { ResponsesDecisionProvider } from './responses-decision-provider'
 import { SingleActionExecutor } from './single-action-executor'
 import { TestAgent } from './test-agent'
 import { startLivePageStream } from './live-page-stream'
+import { completeCaseResults } from './complete-case-results'
 
 export interface AgentTestRunnerOptions {
   signal?: AbortSignal
@@ -46,6 +47,7 @@ export function aggregateExecutionStatus(results: CaseExecutionResult[]): Execut
   for (const status of ['cancelled', 'infrastructure_failed', 'failed', 'blocked'] as const) {
     if (results.some(result => result.status === status)) return status
   }
+  if (!results.length || results.some(result => result.status === 'not_run')) return 'infrastructure_failed'
   return 'passed'
 }
 
@@ -228,7 +230,8 @@ export async function runAgentTest(
     screenshots: caseResults.flatMap(result => result.screenshots),
     tracePath: caseResults.find(result => result.tracePath)?.tracePath,
     error: options.signal?.aborted ? summary : infrastructureError ?? (caseResults.some(result => result.status !== 'passed') ? summary : undefined),
-    caseResults,
+    caseResults: completeCaseResults(goals.map(goal=>({caseKey:goal.executionContract!.caseKey,title:goal.name,contractFingerprint:goal.executionContract!.contractFingerprint})),caseResults,
+      options.signal?.aborted ? '批次已取消，该用例尚未开始' : infrastructureError ?? '批次提前结束，该用例尚未开始'),
     agent: {
       summary,
       passedAssertions: caseResults.flatMap(result => result.passedAssertions),

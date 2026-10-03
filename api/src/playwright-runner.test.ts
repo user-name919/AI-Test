@@ -7,6 +7,21 @@ import test from 'node:test'
 import type { LiveExecutionEvent } from '@quality-ai/contracts'
 import { runAutomationPlan } from './playwright-runner'
 
+test('启动前取消仍返回全部选中用例的未执行记录且不启动浏览器',async t=>{
+  const artifactRoot=await mkdtemp(join(tmpdir(),'quality-ai-plan-not-run-'))
+  t.after(()=>rm(artifactRoot,{recursive:true,force:true}))
+  const controller=new AbortController()
+  controller.abort()
+  const steps=[{action:'goto' as const,path:'/'}]
+  const result=await runAutomationPlan({name:'未开始',targetUrl:'http://localhost',steps,casePlans:[
+    {caseKey:'0-TC-0',title:'第一条',contractFingerprint:'first',steps},
+    {caseKey:'0-TC-1',title:'第二条',contractFingerprint:'second',steps},
+  ]},undefined,{artifactRoot,signal:controller.signal,launchBrowser:async()=>{throw new Error('不应启动')}})
+  assert.equal(result.status,'cancelled')
+  assert.deepEqual(result.caseResults?.map(item=>item.status),['not_run','not_run'])
+  assert.ok(result.caseResults?.every(item=>item.continuation==='not_started'&&!item.startedFromSnapshotId&&item.screenshots.length===0))
+})
+
 test('固定计划取消保留已完成步骤但禁止后续操作',async t=>{
   const artifactRoot=await mkdtemp(join(tmpdir(),'quality-ai-plan-cancel-'))
   t.after(()=>rm(artifactRoot,{recursive:true,force:true}))

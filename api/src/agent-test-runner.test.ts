@@ -206,7 +206,7 @@ test('stops the batch on browser loss and attributes infrastructure failure to t
   })
   assert.equal(result.status, 'infrastructure_failed')
   assert.equal(decisions, 1)
-  assert.deepEqual(result.caseResults?.map(item => [item.caseKey, item.status]), [['0-TC-0', 'infrastructure_failed']])
+  assert.deepEqual(result.caseResults?.map(item => [item.caseKey, item.status]), [['0-TC-0', 'infrastructure_failed'],['0-TC-1','not_run']])
 })
 
 for (const firstStatus of ['failed', 'blocked'] as const) {
@@ -237,6 +237,9 @@ test('records launch failures as batch infrastructure failures', async () => {
   })
   assert.equal(result.status, 'infrastructure_failed')
   assert.match(result.error!, /browser unavailable/)
+  assert.equal(result.caseResults?.[0]?.status,'not_run')
+  assert.equal(result.caseResults?.[0]?.continuation,'not_started')
+  assert.deepEqual(result.caseResults?.[0]?.steps,[])
 })
 
 test('取消后拒绝迟到模型决策并停止后续用例', async t => {
@@ -249,6 +252,6 @@ test('取消后拒绝迟到模型决策并停止后续用例', async t => {
   })
   assert.equal(decisions,1)
   assert.equal(result.status,'cancelled')
-  assert.deepEqual(result.caseResults?.map(item=>item.status),['cancelled'])
+  assert.deepEqual(result.caseResults?.map(item=>item.status),['cancelled','not_run'])
   assert.deepEqual(result.caseResults?.[0]?.passedAssertions,[])
 })

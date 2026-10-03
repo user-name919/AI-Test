@@ -9,6 +9,7 @@ import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
 import { startLivePageStream } from './live-page-stream'
 import { PageObserver } from './page-observer'
 import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-runner'
+import { completeCaseResults } from './complete-case-results'
 
 interface AutomationRunnerOptions {
   signal?: AbortSignal
@@ -181,6 +182,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
     screenshots: caseResults.flatMap(result => result.screenshots),
     tracePath: caseResults.find(result => result.tracePath)?.tracePath,
     error: options.signal?.aborted ? '用户取消执行；已提交的业务操作不会回滚' : infrastructureError ?? caseResults.find(result => result.error)?.error,
-    caseResults: plan.casePlans ? caseResults : undefined,
+    caseResults: plan.casePlans ? completeCaseResults(plan.casePlans,caseResults,
+      options.signal?.aborted ? '批次已取消，该用例尚未开始' : infrastructureError ?? '批次提前结束，该用例尚未开始') : undefined,
   }
 }
