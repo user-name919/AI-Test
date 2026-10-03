@@ -3,9 +3,20 @@ import { changeSetPreviewSchema, freezeChangeSetSchema, createRegressionSchema }
 import { json, readJson } from '../../http/response'
 import { freezeChangeSet, getChangeSet, listChangeSets, previewChangeSet } from './change-sets'
 import { createRegression, getRegression, listRegressions, cancelRegression } from './jobs'
+import { getRegressionReviews, regressionReviewItems, saveRegressionReview } from './review'
 
 export async function handleRegressionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+  const reviewMatch = pathname.match(/^\/api\/regressions\/([a-f0-9-]{36})\/review$/i)
+  if (reviewMatch) {
+    const analysis = getRegression(reviewMatch[1]!)
+    if (!analysis) return json(response, 404, { error: '回归分析不存在' })
+    if (request.method === 'GET') return json(response, 200, { items: regressionReviewItems(analysis), reviews: getRegressionReviews(analysis.id) })
+    if (request.method === 'PATCH') {
+      try { return json(response, 200, { review: saveRegressionReview(analysis.id, await readJson(request)) }) }
+      catch (error) { return json(response, 409, { error: error instanceof Error ? error.message : '审核保存失败' }) }
+    }
+  }
   if (request.method === 'GET' && pathname === '/api/regressions') return json(response, 200, { regressions: listRegressions() })
   if (request.method === 'POST' && pathname === '/api/regressions') {
     const parsed = createRegressionSchema.safeParse(await readJson(request))

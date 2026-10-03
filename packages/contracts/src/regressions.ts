@@ -105,3 +105,24 @@ export interface RegressionAnalysis {
   generation?: RegressionGeneration
   error?: string
 }
+const riskDecisionSchema = z.discriminatedUnion('decision', [
+  z.object({ key: z.string().min(1), decision: z.literal('include'), reason: z.string().max(2000).default('') }).strict(),
+  z.object({ key: z.string().min(1), decision: z.literal('exclude'), reason: z.string().trim().min(1).max(2000) }).strict(),
+])
+const caseDecisionSchema = z.discriminatedUnion('decision', [
+  z.object({ key: z.string().min(1), decision: z.literal('include'), title: z.string().trim().min(1).max(300), finalContract: caseExecutionContractSchema,
+    verification: z.enum(['browser', 'api', 'manual']), verificationReason: z.string().trim().min(1).max(2000) }).strict(),
+  z.object({ key: z.string().min(1), decision: z.literal('exclude'), reason: z.string().trim().min(1).max(2000) }).strict(),
+])
+export const regressionReviewContentSchema = z.object({
+  status: z.enum(['draft', 'confirmed']), risks: z.array(riskDecisionSchema).max(1000), cases: z.array(caseDecisionSchema).max(1600),
+  scopeNote: z.string().max(5000),
+}).strict()
+export const saveRegressionReviewSchema = z.object({ expectedRevision: z.number().int().nonnegative(), content: regressionReviewContentSchema }).strict()
+export interface RegressionReview {
+  regressionId: string
+  revision: number
+  createdAt: string
+  analysisHash: string
+  content: z.infer<typeof regressionReviewContentSchema>
+}

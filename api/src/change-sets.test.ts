@@ -85,6 +85,10 @@ test('实际 API 预览与冻结使用服务端事实，刷新与分支移动不
   assert.equal(completed.generation.batches.length, 1)
   assert.ok(completed.sourceImpact.trees.length >= 2)
   assert.equal(calls, 1)
+  const reviewResponse = await fetch(`${url}/api/regressions/${created.id}/review`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: 0, content: { status: 'confirmed', risks: [], cases: [], scopeNote: '夹具无建议，不代表已完成业务回归' } }) })
+  assert.equal(reviewResponse.status, 200)
+  const savedReview = (await reviewResponse.json()).review
+  assert.equal((await (await fetch(`${url}/api/regressions/${created.id}/review`)).json()).reviews[0].revision, savedReview.revision)
   hold = true
   const cancelling = (await (await post('/api/regressions', { ...input, requestId: randomUUID() })).json()).regression
   await waitFor(async () => calls === 2)
