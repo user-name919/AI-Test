@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test, { after, before } from 'node:test'
-import type { CaseExecutionContract, PrdAnalysis } from '../shared/contracts'
+import { caseExecutionContractSchema, type CaseExecutionContract, type PrdAnalysis } from '../shared/contracts'
 
 const temporaryDirectory = mkdtempSync(join(tmpdir(), 'quality-ai-contract-api-test-'))
 const projectRoot = join(temporaryDirectory, 'source-project')
@@ -21,12 +21,16 @@ const databaseModule = await import('./database')
 const { resetProjectProviderRegistry } = await import('./project-knowledge/registry')
 const { createApiServer } = await import('./index')
 const server = createApiServer()
+const modelPrompts: string[] = []
 const modelServer = createServer(async (request, response) => {
   if (request.method !== 'POST' || request.url !== '/responses') {
     response.writeHead(404).end()
     return
   }
-  for await (const _ of request) { void _ /* consume request body */ }
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(Buffer.from(chunk))
+  const body = JSON.parse(Buffer.concat(chunks).toString()) as { input: Array<{ content: string }> }
+  modelPrompts.push(body.input.map(message => message.content).join('\n'))
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({
     status: 'completed',
@@ -222,6 +226,7 @@ test('rejects fixed-plan generation when runtime DOM data has not been preflight
 })
 
 test('generates one ready fixed plan per case and combines them into case checkpoints', async () => {
+  modelPrompts.length = 0
   const fixtureContract: CaseExecutionContract = {
     ...reviewedContract,
     dataBindings: [{
@@ -259,5 +264,14 @@ test('generates one ready fixed plan per case and combines them into case checkp
   assert.equal(body.automationPlan.plan.casePlans[0]?.contract.dataBindings[0]?.fixture?.value, '期中考试')
   assert.equal(body.automationPlan.plan.casePlans[1]?.contract.dataBindings[0]?.manual?.value, '已发布')
   assert.ok(body.automationPlan.plan.casePlans.every(item => item.steps.length === 2))
+  assert.equal(modelPrompts.length, 2)
+  const sentContracts = modelPrompts.map(prompt => {
+    const contractLine = prompt.split('\n').find(line => line.startsWith('最终执行契约（唯一执行依据）：'))
+    assert.ok(contractLine, '模型请求必须包含最终执行契约，而不是原始用例')
+    return JSON.parse(contractLine.slice('最终执行契约（唯一执行依据）：'.length)) as CaseExecutionContract
+  })
+  assert.deepEqual(sentContracts.find(contract => contract.objective === fixtureContract.objective), JSON.parse(JSON.stringify(caseExecutionContractSchema.parse(fixtureContract))))
+  assert.deepEqual(sentContracts.find(contract => contract.objective === manualContract.objective), JSON.parse(JSON.stringify(caseExecutionContractSchema.parse(manualContract))))
+  assert.ok(modelPrompts.every(prompt => !prompt.includes('选择考试状态')))
   assert.equal(modelBaseUrl.startsWith('http://127.0.0.1:'), true)
 })

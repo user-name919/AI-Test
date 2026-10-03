@@ -1,8 +1,7 @@
-import { automationPlanSchema, prdAnalysisSchema, type AutomationPlan, type PrdAnalysis } from '../shared/contracts'
+import { automationPlanSchema, prdAnalysisSchema, type AutomationPlan, type PrdAnalysis, type ResolvedCaseExecutionContract } from '../shared/contracts'
 import { jsonrepair } from 'jsonrepair'
 import { getModelConfig } from './model-config'
 import { ResponsesModelClient } from './model-client'
-import type { ResolvedReviewContext } from './review-execution-context'
 
 const systemPrompt = `你是一名资深 B 端前端测试架构师。请阅读用户提供的需求材料，并输出严格 JSON。
 目标不是复述文档，而是把需求转成可评审、可测试、未来可映射到 Playwright 的结构。
@@ -73,7 +72,10 @@ export async function analyzePrd(documents: SourceDocument[]): Promise<{ result:
   throw lastError ?? new Error('模型解析失败')
 }
 
-export async function generateAutomationPlan(targetUrl: string, testCases: PrdAnalysis['requirements'][number]['testCases'], reviewContexts: ResolvedReviewContext[] = []): Promise<AutomationPlan> {
+export async function generateAutomationPlan(targetUrl: string, testCase: ResolvedCaseExecutionContract): Promise<AutomationPlan> {
+  if (!testCase.readiness.plan.executable) {
+    throw new Error(testCase.readiness.plan.reason ?? `用例不能生成固定计划：${testCase.caseKey}`)
+  }
   const config = getModelConfig()
   const client = new ResponsesModelClient(config)
   const prompt = `你是 Playwright 自动化测试规划器。将测试用例转换为严格 JSON 的受控步骤，不输出 JavaScript。
@@ -86,8 +88,10 @@ export async function generateAutomationPlan(targetUrl: string, testCases: PrdAn
 优先使用 role、label、text，只有材料明确提供稳定选择器时才用 css。不得跳转到目标域名之外。无法从用例确定的登录、账号或数据准备不要杜撰，只从进入目标首页后的可执行步骤开始。最后必须截图。
 JSON 格式：{"name":"计划名称","targetUrl":"${targetUrl}","steps":[]}
 目标地址：${targetUrl}
-测试用例：${JSON.stringify(testCases)}
-已确认的人工执行口径（优先于 AI 建议，必须回到真实 DOM 验证）：${JSON.stringify(reviewContexts.length ? reviewContexts : '无')}`
+用例标识：${testCase.caseKey}；版本指纹：${testCase.contractFingerprint}
+最终执行契约（唯一执行依据）：${JSON.stringify(testCase.contract)}
+仅与本用例关联的已确认问题：${JSON.stringify(testCase.resolvedQuestions)}
+必须遵守契约中的目标、前置条件、步骤、断言和禁止行为，不得补回原始 AI 示例或放宽业务预期。测试输入只能来自契约 dataBindings 中已确认的夹具、人工数据或预检结果；无法据此生成可执行步骤时报告原因，不杜撰数据。`
   const output = await client.generateText({ messages: [{ role: 'user', content: prompt }], maxOutputTokens: 6000 })
   return automationPlanSchema.parse(JSON.parse(jsonrepair(output.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''))))
 }

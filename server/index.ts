@@ -29,9 +29,7 @@ async function generateCasePlans(analysis: SavedAnalysis, caseKeys: string[], ta
     if (!item.readiness.plan.executable) throw new Error(item.readiness.plan.reason ?? `用例不能生成固定计划：${item.caseKey}`)
   }
   const casePlans = await Promise.all(cases.map(async item => {
-    const testCase = analysis.result.requirements[item.requirementIndex]?.testCases[item.caseIndex]
-    if (!testCase) throw new Error(`测试用例不存在：${item.caseKey}`)
-    const generated = await generateAutomationPlan(targetUrl, [testCase], item.resolvedQuestions)
+    const generated = await generateAutomationPlan(targetUrl, item)
     return {
       caseKey: item.caseKey,
       title: item.title,
