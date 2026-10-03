@@ -7,6 +7,7 @@ import { useCaseContracts } from '../composables/useCaseContracts'
 import CaseContractDetails from '../components/CaseContractDetails.vue'
 import CaseAssetWorkbench from '../components/CaseAssetWorkbench.vue'
 import ExecutionContractEvidence from '../components/ExecutionContractEvidence.vue'
+import RequirementsPage from '../features/requirements/RequirementsPage.vue'
 import { useWorkspaceNavigation, type WorkspaceView } from './useWorkspaceNavigation'
 
 const { workspaceView, activeTab, activeRequirement, selectedExecutionId } = useWorkspaceNavigation()
@@ -18,7 +19,8 @@ async function returnToVersions() {
   routeError.value = ''
   await loadSavedAnalysis()
 }
-watch(() => route.query.sourceId, id => {
+const routeSourceId = computed(() => route.name === 'requirement-detail' ? route.params.id : route.query.sourceId)
+watch(routeSourceId, id => {
   if (typeof id === 'string' && id !== savedAnalysis.value?.id) void switchVersion(id, true)
 })
 type NoticeKind = 'info' | 'success' | 'error' | 'loading'
@@ -157,6 +159,11 @@ const workspaceGuides: Record<WorkspaceView, WorkspaceGuide> = {
 const analysis = computed(() => savedAnalysis.value?.result ?? sampleAnalysis)
 const requirements = computed(() => analysis.value.requirements)
 const requirement = computed(() => requirements.value[activeRequirement.value] ?? requirements.value[0])
+const invalidRequirement = computed(() => {
+  if (!savedAnalysis.value || workspaceView.value !== 'version') return false
+  const index = Number(route.query.requirement ?? 0)
+  return !Number.isSafeInteger(index) || index < 0 || index >= requirements.value.length
+})
 const states = computed(() => requirement.value?.pageStates ?? [])
 const questions = computed(() => requirement.value?.questions ?? [])
 const cases = computed(() => requirement.value?.testCases ?? [])
@@ -181,7 +188,6 @@ const blockedSelectedCaseKeys = computed(() => blockedCaseKeys(selectedCaseKeys.
 const selectedProject = computed(() => projects.value.find(project => project.id === projectId.value) ?? null)
 const targetOrigin = computed(() => { try { return new URL(targetUrl.value).origin } catch { return '' } })
 const matchingProjects = computed(() => projects.value.filter(project => project.connected && (!project.targetOrigins.length || project.targetOrigins.includes(targetOrigin.value))))
-const requirementAssets = computed(() => requirements.value.map((item, index) => ({ item, index, code: requirementCode(index) })))
 const caseAssets = computed(() => requirements.value.flatMap((item, requirementIndex) => item.testCases.map((testCase, caseIndex) => ({
   item: testCase,
   blocked: !caseContracts.value[`${requirementIndex}-TC-${caseIndex}`]?.readiness.agent.executable,
@@ -232,7 +238,10 @@ function caseIsBlocked(requirementIndex: number, testCase: PrdAnalysis['requirem
   return !caseContracts.value[`${requirementIndex}-TC-${caseIndex}`]?.readiness.agent.executable
 }
 function chooseRequirement(index: number) { activeRequirement.value = index; activeTab.value = 'overview' }
-function openRequirement(index: number) { chooseRequirement(index); workspaceView.value = 'version' }
+function openRequirement(index: number) {
+  if (!savedAnalysis.value) { chooseRequirement(index); workspaceView.value = 'version'; return }
+  void router.push({ name: 'requirement-detail', params: { id: savedAnalysis.value.id }, query: { sourceId: savedAnalysis.value.id, requirement: String(index) } })
+}
 function openCaseAsset(requirementIndex: number) { activeRequirement.value = requirementIndex; activeTab.value = 'cases'; workspaceView.value = 'version' }
 function openExecution(id: string) { selectedExecutionId.value = id; workspaceView.value = 'executions' }
 function questionDraft(index: number) {
@@ -510,7 +519,7 @@ function toggleQuestion(index: number) {
 
 async function loadSavedAnalysis() {
   try {
-    const sourceId = typeof route.query.sourceId === 'string' ? route.query.sourceId : ''
+    const sourceId = typeof routeSourceId.value === 'string' ? routeSourceId.value : ''
     const [healthResponse, latestResponse, executionResponse, environmentResponse, historyResponse, executionsResponse, projectsResponse] = await Promise.all([fetch('/api/health'), fetch(sourceId ? `/api/analyses/${encodeURIComponent(sourceId)}` : '/api/analyses/latest'), fetch('/api/executions/latest'), fetch('/api/environments/latest'), fetch('/api/analyses'), fetch('/api/executions'), fetch('/api/projects')])
     if (healthResponse.ok) apiConfigured.value = Boolean((await healthResponse.json()).configured)
     if (latestResponse.ok) {
@@ -518,7 +527,7 @@ async function loadSavedAnalysis() {
       if (payload.analysis) {
         savedAnalysis.value = payload.analysis
         applyReview(payload.analysis)
-        if (!sourceId) await router.replace({ query: { ...route.query, sourceId: payload.analysis.id } })
+        if (route.query.sourceId !== payload.analysis.id) await router.replace({ query: { ...route.query, sourceId: payload.analysis.id } })
       }
     }
     if (!latestResponse.ok && sourceId) routeError.value = '需求记录不存在或暂时无法读取，请返回版本中心选择其他版本。'
@@ -569,7 +578,7 @@ async function switchVersion(id: string, preserveNavigation = false) {
     routeError.value = ''
     applyReview(payload.analysis)
     if (!preserveNavigation) {
-      await router.push({ query: { ...route.query, sourceId: id, requirement: undefined, tab: undefined } })
+      await router.push({ name: 'version', query: { sourceId: id } })
     }
     latestAutomationPlan.value = null
     versionMenuOpen.value = false
@@ -803,6 +812,7 @@ onMounted(loadSavedAnalysis)
       <header class="topbar"><div v-if="workspaceView==='version'" class="version-switcher"><span>版本中心</span><b>/</b><button :disabled="switchingVersion" @click="versionMenuOpen=!versionMenuOpen"><strong>{{ analysis.versionName }}</strong><i>⌄</i></button><div v-if="versionMenuOpen" class="version-menu"><header><strong>版本记录</strong><span>{{ analysisHistory.length }} 个版本</span></header><button v-for="item in analysisHistory" :key="item.id" :class="{active:item.id===savedAnalysis?.id}" @click="switchVersion(item.id)"><i>{{ item.id===savedAnalysis?.id ? '✓' : '版' }}</i><span><strong>{{ item.productName }} · {{ item.versionName }}</strong><small>{{ formatVersionTime(item.createdAt) }} · {{ item.requirementCount }} 项需求 · {{ item.testCaseCount }} 条用例</small><em><b :style="{width:`${item.questionCount ? Math.round(item.confirmedQuestionCount/item.questionCount*100) : 100}%`}"></b></em></span></button><p v-if="!analysisHistory.length">导入第一份 PRD 后会形成版本记录</p></div></div><div v-else><span>{{ workspaceLabel }}</span><b>/</b><strong>{{ analysis.versionName }}</strong></div><div class="topbar-actions"><button class="guide-trigger" @click="helpOpen=true"><b>?</b> 如何使用</button><label v-if="workspaceView==='version'" :class="['import',{disabled:analyzing}]"><input :disabled="analyzing" multiple type="file" accept=".pdf,.md,.markdown,.txt,application/pdf" @change="importPrd" />{{ analyzing ? 'AI 解析中…' : '＋ 导入需求材料' }}</label></div></header>
       <div class="workspace">
         <section v-if="routeError" role="alert"><h1>记录无法打开</h1><p>{{ routeError }}</p><button @click="returnToVersions">返回版本中心</button></section>
+        <section v-else-if="invalidRequirement" role="alert"><h1>需求编号不存在</h1><p>该版本没有此需求，不会自动展示其他需求代替。</p><button @click="workspaceView='requirements';activeRequirement=0">返回需求列表</button></section>
         <template v-else-if="workspaceView==='version'">
         <section class="heading"><div><small><i></i>{{ savedAnalysis ? `真实解析 · ${savedAnalysis.provider}` : '示例模式 · 等待导入 PRD' }}</small><h1>{{ analysis.productName }} · {{ analysis.versionName }}</h1><p>{{ analysis.overview }}</p></div><div><button class="primary" @click="activeTab='cases';toast('已切换到当前测试用例')">查看测试建议</button></div></section>
         <section class="metrics"><article><i class="purple">需</i><p><span>前端需求</span><strong>{{ requirements.length }}</strong><small>{{ savedAnalysis ? '公司模型已解析' : '当前为示例数据' }}</small></p></article><article><i class="amber">?</i><p><span>待确认问题</span><strong>{{ totalQuestions }}</strong><small>影响规则与用例</small></p></article><article><i class="blue">例</i><p><span>测试用例</span><strong>{{ totalCases }}</strong><small>{{ readyCases }} 条可执行</small></p></article><article><i class="green">✓</i><p><span>用例就绪比例</span><strong>{{ coverage }}%</strong><small>确认后继续提升</small></p></article></section>
@@ -848,9 +858,7 @@ onMounted(loadSavedAnalysis)
           </section>
         </template>
         <template v-else-if="workspaceView==='requirements'">
-          <section class="heading hub-heading"><div><small><i></i>{{ analysis.versionName }}</small><h1>需求中心</h1><p>集中查看当前版本的需求风险、规则、页面状态和测试准备度。</p></div><div><button class="primary" @click="workspaceView='version'">打开评审详情</button></div></section>
-          <section class="metrics"><article><i class="purple">需</i><p><span>需求总数</span><strong>{{ requirements.length }}</strong><small>当前版本</small></p></article><article><i class="amber">高</i><p><span>高风险</span><strong>{{ requirements.filter(item=>item.risk==='高风险').length }}</strong><small>优先评审</small></p></article><article><i class="blue">规</i><p><span>业务规则</span><strong>{{ memoryRules.length }}</strong><small>具备 PRD 依据</small></p></article><article><i class="green">态</i><p><span>页面状态</span><strong>{{ requirements.reduce((sum,item)=>sum+item.pageStates.length,0) }}</strong><small>交互状态模型</small></p></article></section>
-          <section class="requirement-hub"><article v-for="asset in requirementAssets" :key="asset.code"><header><span>{{ asset.code }}</span><b :class="asset.item.risk==='高风险'?'high':asset.item.risk==='中风险'?'medium':'low'">{{ asset.item.risk }}</b></header><h2>{{ asset.item.title }}</h2><p>{{ asset.item.summary }}</p><div><span>规则 {{ asset.item.businessRules.length }}</span><span>状态 {{ asset.item.pageStates.length }}</span><span>问题 {{ asset.item.questions.length }}</span><span>用例 {{ asset.item.testCases.length }}</span></div><footer><small>{{ asset.item.riskReason }}</small><button @click="openRequirement(asset.index)">查看需求详情 →</button></footer></article></section>
+          <RequirementsPage :analysis="analysis" :persisted="Boolean(savedAnalysis)" @open="openRequirement" />
         </template>
         <template v-else-if="workspaceView==='cases'">
           <section class="heading hub-heading"><div><small><i></i>{{ analysis.versionName }}</small><h1>用例资产</h1><p>跨需求查看当前版本全部用例，维护执行选择并快速进入测试配置。</p></div><div><button class="primary" @click="workspaceView='version';activeTab='cases'">配置并执行</button></div></section>

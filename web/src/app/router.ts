@@ -9,6 +9,7 @@ export const router = createRouter({
     { path: '/', redirect: '/versions' },
     { path: '/versions', name: 'version', component: WorkspaceShell },
     { path: '/requirements', name: 'requirements', component: WorkspaceShell },
+    { path: '/requirements/:id', name: 'requirement-detail', meta: { workspace: 'version' }, component: WorkspaceShell },
     { path: '/cases', name: 'cases', component: WorkspaceShell },
     { path: '/executions/:id?', name: 'executions', component: WorkspaceShell },
     { path: '/memory', name: 'memory', component: WorkspaceShell },
