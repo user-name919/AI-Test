@@ -9,6 +9,7 @@ import type { AgentDecisionProvider } from './test-agent'
 import type { ProjectKnowledgeProvider } from './project-knowledge/types'
 import { runAgentTest } from './agent-test-runner'
 import type { AgentTestGoal, LiveExecutionEvent } from '@quality-ai/contracts'
+import { ResponsesDecisionProvider } from './responses-decision-provider'
 
 function caseGoal(targetUrl: string, index: number): AgentTestGoal {
   return {
@@ -30,6 +31,37 @@ const emptyProject: ProjectKnowledgeProvider = {
   async searchSource() { return [] },
   async inspectFiles() { return { projectId: 'test', reason: 'test', files: [], totalCharacters: 0 } },
 }
+
+test('取消正在等待的真实模型HTTP请求，不重试且后续用例未执行',{timeout:15000},async t=>{
+  const fixture=await sessionFixture(t)
+  const controller=new AbortController()
+  let calls=0,closed=false,cancelledAt=0
+  const model=createServer(async(request,response)=>{
+    for await(const chunk of request)void chunk
+    calls++
+    response.on('close',()=>{closed=true})
+    // 不返回模型结果，取消必须终止真正等待中的fetch，而不是等60秒超时。
+    cancelledAt=Date.now()
+    controller.abort(new Error('用户取消测试'))
+  })
+  await new Promise<void>(resolve=>model.listen(0,'127.0.0.1',resolve))
+  t.after(()=>new Promise<void>(resolve=>{model.closeAllConnections();model.close(()=>resolve())}))
+  const address=model.address();assert.ok(address&&typeof address!=='string')
+  const browser=await chromium.launch({headless:true})
+  t.after(()=>browser.close())
+  const provider=new ResponsesDecisionProvider({apiKey:'synthetic-only',baseUrl:`http://127.0.0.1:${address.port}`,model:'fixture'})
+  const result=await runAgentTest([caseGoal(fixture.targetUrl,0),caseGoal(fixture.targetUrl,1)],undefined,{
+    artifactRoot:fixture.artifactRoot,projectProvider:emptyProject,decisionProvider:provider,signal:controller.signal,launchBrowser:async()=>browser,
+  })
+  assert.equal(result.status,'cancelled')
+  assert.equal(result.caseResults?.[0].status,'cancelled')
+  assert.equal(result.caseResults?.[1].status,'not_run')
+  assert.equal(calls,1,'取消后不应再次请求模型修复')
+  assert.ok(Date.now()-cancelledAt<5000,'取消应及时结束，而不是等待模型超时')
+  for(let i=0;i<30&&!closed;i++)await new Promise(resolve=>setTimeout(resolve,10))
+  assert.equal(closed,true,'模型连接应关闭')
+  assert.equal(browser.isConnected(),false)
+})
 
 async function sessionFixture(testContext: test.TestContext) {
   const artifactRoot = await mkdtemp(join(tmpdir(), 'quality-ai-continuous-'))

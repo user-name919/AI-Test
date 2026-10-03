@@ -160,7 +160,7 @@ export async function runAgentTest(
             checkpoint.startedFromSnapshotId ??= input.snapshot.snapshotId
             checkpoint.trajectory = input.trajectory
             if (sessionFailure()) throw new Error(sessionFailure())
-            const decision = await decisionProvider.decide(input)
+            const decision = await decisionProvider.decide(input, options.signal)
             options.signal?.throwIfAborted()
             return decision
           },

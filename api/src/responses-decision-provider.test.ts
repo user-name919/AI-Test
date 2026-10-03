@@ -25,6 +25,14 @@ const modelOptions = {
   userAgent: 'codex_cli_rs/test', originator: 'codex_cli_rs',
 } as const
 
+test('已取消的决策不发送网络请求',async()=>{
+  let calls=0
+  const provider=new ResponsesDecisionProvider({...modelOptions,fetchImpl:async()=>{calls++;throw new Error('不应调用')}})
+  const controller=new AbortController();controller.abort(new Error('已取消'))
+  await assert.rejects(provider.decide(decisionInput(),controller.signal),/已取消/)
+  assert.equal(calls,0)
+})
+
 test('uses Responses API headers and returns a validated single action', async () => {
   const requests: Array<{ url: string; init?: RequestInit }> = []
   const provider = new ResponsesDecisionProvider({ ...modelOptions, fetchImpl: async (input, init) => {

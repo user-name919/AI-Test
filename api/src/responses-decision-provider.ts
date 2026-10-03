@@ -127,15 +127,17 @@ export class ResponsesDecisionProvider implements AgentDecisionProvider {
     this.client = new ResponsesModelClient(getModelConfig(options), options.fetchImpl, options.timeoutMs ?? 60_000)
   }
 
-  async decide(input: AgentDecisionInput): Promise<AgentDecision> {
+  async decide(input: AgentDecisionInput, signal?: AbortSignal): Promise<AgentDecision> {
+    signal?.throwIfAborted()
     const messages: ModelMessage[] = [
       { role: 'system', content: decisionSystemPrompt },
       { role: 'user', content: `请决定下一步。当前输入：\n${JSON.stringify(compactInput(input))}` },
     ]
     let lastError: Error | undefined
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      signal?.throwIfAborted()
       try {
-        const output = await this.client.generateText({ messages, maxOutputTokens: 1200 })
+        const output = await this.client.generateText({ messages, maxOutputTokens: 1200, signal })
         try {
           const candidate: unknown = JSON.parse(jsonrepair(cleanJsonOutput(output)))
           return agentDecisionSchema.parse(candidate)
@@ -152,6 +154,7 @@ export class ResponsesDecisionProvider implements AgentDecisionProvider {
           }
         }
       } catch (error) {
+        signal?.throwIfAborted()
         lastError = error instanceof Error ? error : new Error(String(error))
       }
     }

@@ -43,7 +43,7 @@ export interface AgentDecisionInput {
 }
 
 export interface AgentDecisionProvider {
-  decide(input: AgentDecisionInput): Promise<AgentDecision>
+  decide(input: AgentDecisionInput, signal?: AbortSignal): Promise<AgentDecision>
 }
 
 export interface TestAgentResult {
