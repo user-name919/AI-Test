@@ -43,6 +43,18 @@ test('builds a compact semantic snapshot and resolves element refs for its activ
   }
 })
 
+test('marks truncated option text so full-name and negative data strategies cannot trust partial labels', async () => {
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setContent('<div role="option">一个超过观察预算的完整考试名称</div><div role="option">数学</div>')
+    const snapshot = await new PageObserver({ maxTextLength: 4 }).observe(page)
+    assert.equal(snapshot.elements[0].text, '一个超过')
+    assert.equal(snapshot.elements[0].textTruncated, true)
+    assert.equal(snapshot.elements[1].textTruncated, false)
+  } finally { await browser.close() }
+})
+
 test('limits returned elements while reporting truncation', async () => {
   const browser = await chromium.launch({ headless: true })
   try {

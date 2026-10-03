@@ -53,7 +53,8 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
     element.setAttribute(refAttribute, `${snapshotId}:${ref}`)
     const label = explicitLabel(element) || labelledBy(element) || compact(element.getAttribute('aria-label'))
     const placeholder = compact(element.getAttribute('placeholder')) || undefined
-    const text = compact(element.innerText || element.textContent) || undefined
+    const rawText = normalize(element.innerText || element.textContent)
+    const text = compact(rawText) || undefined
     const name = label || placeholder || compact(element.getAttribute('title')) || text || compact(element.getAttribute('name'))
     const value = 'value' in element && !(element instanceof HTMLInputElement && element.type === 'password')
       ? compact(String(element.value)) || undefined
@@ -79,6 +80,11 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       placeholder,
       value,
       text,
+      textTruncated: rawText.length > maxTextLength,
+      nameTruncated: normalize(element.getAttribute('aria-label')).length > maxTextLength
+        || normalize(element.getAttribute('title')).length > maxTextLength
+        || normalize(element.getAttribute('name')).length > maxTextLength
+        || normalize(element.getAttribute('placeholder')).length > maxTextLength,
       visible: true,
       enabled: !disabled && !ariaDisabled,
       checked,

@@ -81,13 +81,25 @@ function changeMode(index: number, event: Event) {
   const binding = draft.value?.contract.dataBindings[index]
   if (!binding) return
   const mode = (event.target as HTMLSelectElement).value as typeof binding.mode
-  binding.mode = mode; delete binding.fixture; delete binding.manual; delete binding.strategy
+  binding.mode = mode; delete binding.fixture; delete binding.manual; delete binding.strategy; delete binding.optionUniverse
   binding.constraints = { mustComeFromCurrentDom: false }
   if (mode === 'runtime_dom') {
     binding.strategy = 'visible_option_substring'
     binding.constraints = { mustComeFromCurrentDom: true, mustBePartialOfSource: true, mustRemainAfterFiltering: true }
   } else if (mode === 'manual') binding.manual = { value: '', rationale: '' }
   else binding.fixture = { value: '', evidence: '' }
+}
+function changeStrategy(index: number, event: Event) {
+  const binding = draft.value?.contract.dataBindings[index]
+  if (!binding) return
+  binding.strategy = (event.target as HTMLSelectElement).value as typeof binding.strategy
+  binding.constraints = { mustComeFromCurrentDom: true, mustBePartialOfSource: binding.strategy === 'visible_option_substring', mustRemainAfterFiltering: binding.strategy !== 'non_matching_option_query' }
+  if (binding.strategy === 'non_matching_option_query') binding.optionUniverse = { completeness: 'unknown', options: [], evidence: '' }
+  else delete binding.optionUniverse
+}
+function updateOptions(index: number, event: Event) {
+  const universe = draft.value?.contract.dataBindings[index]?.optionUniverse
+  if (universe) universe.options = (event.target as HTMLTextAreaElement).value.split('\n').map(value => value.trim()).filter(Boolean)
 }
 async function save(status: 'draft' | 'confirmed') {
   if (!active.value || !draft.value) return
@@ -141,13 +153,20 @@ function rebase() {
           <legend>人工最终口径 · 基于 v{{ draft.revision }}</legend>
           <label>测试目标<input v-model="draft.contract.objective" /></label>
           <label v-for="field in listFields" :key="field.key">{{ field.label }}（每行一项）<textarea :value="draft.contract[field.key].join('\n')" rows="3" @input="updateLines(field.key,$event)" /></label>
-          <h3>测试数据来源</h3><p>运行时选项当前支持部分搜索。完整/无匹配策略将在执行能力阶段补齐，不会伪装成已支持。</p>
+          <h3>测试数据来源</h3><p>AI 根据当前选项选值，分别验证完整名称、部分关键词或无匹配负例。无匹配必须有完整候选范围依据，不能把当前可见列表当成全部远程数据。</p>
           <section v-for="(binding,index) in draft.contract.dataBindings" :key="binding.id" class="data-editor">
             <label>数据名称<input v-model="binding.label" /></label><label>目标控件<input v-model="binding.targetHint" /></label><label>业务用途<input v-model="binding.businessIntent" /></label>
-            <label>来源<select :value="binding.mode" @change="changeMode(index,$event)"><option value="runtime_dom">当前 DOM 选项的部分关键词</option><option value="manual">人工指定</option><option value="fixture">固定测试夹具</option></select></label>
+            <label>来源<select :value="binding.mode" @change="changeMode(index,$event)"><option value="runtime_dom">当前 DOM 选项</option><option value="manual">人工指定</option><option value="fixture">固定测试夹具</option></select></label>
+            <label v-if="binding.mode==='runtime_dom'">搜索策略<select aria-label="搜索策略" :value="binding.strategy" @change="changeStrategy(index,$event)"><option value="visible_option_full">完整名称搜索</option><option value="visible_option_substring">部分关键词搜索</option><option value="non_matching_option_query">无匹配搜索（负例）</option></select></label>
+            <template v-if="binding.optionUniverse">
+              <label>候选范围<select aria-label="候选范围" v-model="binding.optionUniverse.completeness"><option value="unknown">尚未确认</option><option value="partial_or_remote">分页、虚拟列表或远程搜索</option><option value="complete_local">已确认完整本地候选</option></select></label>
+              <label>完整候选名称（每行一项）<textarea :value="binding.optionUniverse.options.join('\n')" @input="updateOptions(index,$event)" /></label>
+              <label>完整性依据<input v-model="binding.optionUniverse.evidence" placeholder="例如已确认的受控夹具及数据范围；不能仅写当前页面可见" /></label>
+              <p>未确认完整范围时，动态取负例会受阻；可准备可控夹具后复核。这里只保存范围声明，不代表系统证明了全局不存在。</p>
+            </template>
             <template v-if="binding.manual"><label>人工值<input v-model="binding.manual.value" /></label><label>选值依据<input v-model="binding.manual.rationale" /></label></template>
             <template v-if="binding.fixture"><label>夹具值<input v-model="binding.fixture.value" /></label><label>存在性证据<input v-model="binding.fixture.evidence" /></label></template>
-            <label v-if="binding.mode==='runtime_dom'"><input v-model="binding.constraints.mustRemainAfterFiltering" type="checkbox" />筛选后来源选项仍应存在</label>
+            <label v-if="binding.mode==='runtime_dom' && binding.strategy!=='non_matching_option_query'"><input v-model="binding.constraints.mustRemainAfterFiltering" type="checkbox" />筛选后来源选项仍应存在</label>
             <button @click="draft.contract.dataBindings.splice(index,1)">移除此数据规则</button>
           </section>
           <button @click="addData">添加数据规则</button>

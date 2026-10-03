@@ -29,6 +29,55 @@ const binding: TestDataBinding = {
   constraints: { mustComeFromCurrentDom: true, mustBePartialOfSource: true, mustRemainAfterFiltering: true },
 }
 
+function proposal(value: string) {
+  return { type: 'resolve_test_data' as const, snapshotId: snapshot.snapshotId, bindingId: binding.id, sourceElementRef: 'e2', value, reason: '依据现场选项选择数据' }
+}
+
+test('完整搜索接受完整名称而非部分名称，截断文字不能冒充完整选项', () => {
+  const full: TestDataBinding = { ...binding, strategy: 'visible_option_full', constraints: { mustComeFromCurrentDom: true } }
+  assert.equal(resolveRuntimeDataBinding(full, snapshot, proposal('模考数学一')).value, '模考数学一')
+  assert.throws(() => resolveRuntimeDataBinding(full, snapshot, proposal('数学')), /完整名称/)
+  const truncated = structuredClone(snapshot)
+  truncated.elements[1].textTruncated = true
+  assert.throws(() => resolveRuntimeDataBinding(full, truncated, proposal('模考数学一')), /截断/)
+  assert.equal(resolveRuntimeDataBinding(binding, truncated, proposal('数学')).value, '数学')
+})
+
+const negative: TestDataBinding = {
+  ...binding, strategy: 'non_matching_option_query', constraints: { mustComeFromCurrentDom: true },
+  optionUniverse: { completeness: 'complete_local', options: ['模考数学一'], evidence: '合成单选项本地夹具，所有候选固定且无远程请求' },
+}
+
+test('无匹配负例基于已声明完整候选且现场一致，不接受仍匹配的词', () => {
+  assert.equal(resolveRuntimeDataBinding(negative, snapshot, proposal('不存在的考试')).value, '不存在的考试')
+  assert.throws(() => resolveRuntimeDataBinding(negative, snapshot, proposal('数学')), /仍能匹配/)
+})
+
+test('无匹配不把未知、分页、远程或缺失依据的列表当成完整范围', () => {
+  for (const optionUniverse of [undefined,
+    { completeness: 'unknown' as const, options: ['模考数学一'], evidence: '当前可见' },
+    { completeness: 'partial_or_remote' as const, options: ['模考数学一'], evidence: '第一页' },
+    { completeness: 'complete_local' as const, options: ['模考数学一'], evidence: '' },
+  ]) assert.throws(() => resolveRuntimeDataBinding({ ...negative, optionUniverse }, snapshot, proposal('不存在')), /完整本地候选范围依据/)
+})
+
+test('无匹配拒绝过期候选、加载中及被截断的现场证据', () => {
+  for (const update of [
+    (page: PageSnapshot) => { page.loading = true },
+    (page: PageSnapshot) => { page.stats.truncated = true },
+    (page: PageSnapshot) => { page.elements[1].textTruncated = true },
+    (page: PageSnapshot) => { page.elements[1].text = '新的考试名称' },
+  ]) {
+    const page = structuredClone(snapshot); update(page)
+    assert.throws(() => resolveRuntimeDataBinding(negative, page, proposal('不存在')), RuntimeDataBindingBlockedError)
+  }
+})
+
+test('不同策略不允许残留与其语义矛盾的约束', () => {
+  assert.equal(testDataBindingSchema.safeParse({ ...negative, constraints: { ...negative.constraints, mustRemainAfterFiltering: true } }).success, false)
+  assert.equal(testDataBindingSchema.safeParse({ ...binding, strategy: 'visible_option_full' }).success, false)
+})
+
 test('resolves a nonempty strict substring from a visible current option with its DOM evidence', () => {
   const resolved = resolveRuntimeDataBinding(binding, snapshot, {
     type: 'resolve_test_data',

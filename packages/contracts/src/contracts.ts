@@ -75,7 +75,12 @@ export interface TestDataBinding {
   mode: TestDataSourceMode
   targetHint: string
   businessIntent: string
-  strategy?: 'visible_option_substring'
+  strategy?: 'visible_option_full' | 'visible_option_substring' | 'non_matching_option_query'
+  optionUniverse?: {
+    completeness: 'complete_local' | 'partial_or_remote' | 'unknown'
+    options: string[]
+    evidence: string
+  }
   constraints: {
     mustComeFromCurrentDom: boolean
     mustBePartialOfSource?: boolean
@@ -174,7 +179,12 @@ const dataBindingBaseSchema = z.object({
   label: z.string().min(1),
   targetHint: z.string().min(1),
   businessIntent: z.string().min(1),
-  strategy: z.literal('visible_option_substring').optional(),
+  strategy: z.enum(['visible_option_full', 'visible_option_substring', 'non_matching_option_query']).optional(),
+  optionUniverse: z.object({
+    completeness: z.enum(['complete_local', 'partial_or_remote', 'unknown']),
+    options: z.array(z.string().min(1)),
+    evidence: z.string(),
+  }).optional(),
   constraints: z.object({
     mustComeFromCurrentDom: z.boolean(),
     mustBePartialOfSource: z.boolean().optional(),
@@ -197,14 +207,20 @@ export const testDataBindingSchema = dataBindingBaseSchema.extend({
     if (binding.fixture || binding.manual) {
       context.addIssue({ code: 'custom', message: '运行时 DOM 数据不能预填固定值', path: ['mode'] })
     }
-    if (binding.strategy !== 'visible_option_substring') {
-      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须使用可见 option 子串策略', path: ['strategy'] })
+    if (!binding.strategy) {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须声明搜索策略', path: ['strategy'] })
     }
     if (!binding.constraints.mustComeFromCurrentDom) {
       context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须来自当前 DOM', path: ['constraints', 'mustComeFromCurrentDom'] })
     }
-    if (!binding.constraints.mustBePartialOfSource) {
+    if (binding.strategy === 'visible_option_substring' && !binding.constraints.mustBePartialOfSource) {
       context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须是来源 option 的子串', path: ['constraints', 'mustBePartialOfSource'] })
+    }
+    if (binding.strategy !== 'visible_option_substring' && binding.constraints.mustBePartialOfSource) {
+      context.addIssue({ code: 'custom', message: '完整和无匹配搜索不能声明必须为子串', path: ['constraints', 'mustBePartialOfSource'] })
+    }
+    if (binding.strategy === 'non_matching_option_query' && binding.constraints.mustRemainAfterFiltering) {
+      context.addIssue({ code: 'custom', message: '无匹配搜索不能要求来源选项仍存在', path: ['constraints', 'mustRemainAfterFiltering'] })
     }
   }
   if (binding.mode === 'fixture' && binding.manual) {
@@ -443,6 +459,8 @@ export const semanticElementSchema = z.object({
   placeholder: z.string().optional(),
   value: z.string().optional(),
   text: z.string().optional(),
+  textTruncated: z.boolean().optional(),
+  nameTruncated: z.boolean().optional(),
   visible: z.boolean(),
   enabled: z.boolean(),
   checked: z.boolean().optional(),

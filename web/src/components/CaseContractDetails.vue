@@ -19,7 +19,8 @@ defineProps<{ resolved?: ResolvedCaseExecutionContract; unavailableReason: strin
           <p>用途：{{ binding.businessIntent }}；目标：{{ binding.targetHint }}</p>
           <p v-if="binding.fixture">值：{{ binding.fixture.value }}；证据：{{ binding.fixture.evidence }}</p>
           <p v-if="binding.manual">值：{{ binding.manual.value }}；说明：{{ binding.manual.rationale }}</p>
-          <p v-if="binding.strategy">策略：{{ binding.strategy }}；{{ binding.constraints.mustComeFromCurrentDom ? '必须来自当前 DOM' : '不要求当前 DOM 来源' }}{{ binding.constraints.mustBePartialOfSource ? '；必须为严格部分关键词' : '' }}{{ binding.constraints.mustRemainAfterFiltering ? '；筛选后来源选项仍需存在' : '' }}</p>
+          <p v-if="binding.strategy">策略：{{ binding.strategy }}；{{ binding.constraints.mustComeFromCurrentDom ? '必须基于当前 DOM' : '不要求当前 DOM 来源' }}{{ binding.constraints.mustBePartialOfSource ? '；必须为严格部分关键词' : '' }}{{ binding.constraints.mustRemainAfterFiltering ? '；筛选后来源选项仍需存在' : '' }}</p>
+          <p v-if="binding.optionUniverse">候选范围声明：{{ binding.optionUniverse.completeness }}；依据：{{ binding.optionUniverse.evidence || '尚未提供' }}；候选：{{ binding.optionUniverse.options.join('、') || '尚未提供' }}。范围声明不等于系统已证明全局不存在。</p>
         </div><span v-if="!resolved.contract.dataBindings.length">未配置结构化数据来源；不会因此证明示例数据真实存在。</span></dd>
         <dt>禁止行为</dt><dd>{{ resolved.contract.forbiddenBehaviors.join('；') || '未指定' }}</dd>
         <dt>未确定事项</dt><dd>{{ resolved.contract.uncertainties.join('；') || '无' }}</dd>

@@ -196,6 +196,38 @@ test('records resolved DOM binding evidence and uses valueRef without counting r
   }
 })
 
+for (const strategy of ['visible_option_full', 'non_matching_option_query'] as const) {
+  test(`${strategy} 使用真实 option 解析后通过 valueRef 输入与断言`, async () => {
+    const browser = await chromium.launch({ headless: true })
+    try {
+      const page = await browser.newPage()
+      await page.setContent('<label for="search">考试搜索框</label><input id="search"><div role="option">合成考试甲</div>')
+      const goal = runtimeDataGoal([{ id: 'input', description: '输入符合本次数据策略' }])
+      const binding = goal.executionContract!.contract.dataBindings[0]
+      binding.strategy = strategy
+      binding.constraints = { mustComeFromCurrentDom: true }
+      if (strategy === 'non_matching_option_query') binding.optionUniverse = { completeness: 'complete_local', options: ['合成考试甲'], evidence: '测试中固定的单选项本地夹具' }
+      const value = strategy === 'visible_option_full' ? '合成考试甲' : '不存在的考试'
+      let turn = 0
+      const provider: AgentDecisionProvider = {
+        async decide({ snapshot }) {
+          turn += 1
+          const search = snapshot.elements.find(element => element.role === 'textbox')!.ref
+          if (turn === 1) return { type: 'resolve_test_data', snapshotId: snapshot.snapshotId, bindingId: binding.id, sourceElementRef: snapshot.elements.find(element => element.role === 'option')!.ref, value, reason: '使用现场数据及已确认的候选范围' }
+          if (turn === 2) return { type: 'action', snapshotId: snapshot.snapshotId, action: { action: 'fill', elementRef: search, valueRef: binding.id }, reason: '输入策略值' }
+          if (turn === 3) return { type: 'action', snapshotId: snapshot.snapshotId, action: { action: 'expectValue', elementRef: search, valueRef: binding.id, assertionId: 'input' }, reason: '核对实际输入' }
+          return { type: 'finish', summary: '已验证策略值输入' }
+        },
+      }
+      const observer = new PageObserver()
+      const result = await new TestAgent(goal, observer, new SingleActionExecutor(page, observer.registry, goal.targetUrl, tmpdir()), provider).run(page)
+      assert.equal(result.status, 'passed')
+      assert.equal(result.resolvedDataBindings?.[0].value, value)
+      assert.equal(await page.locator('#search').inputValue(), value)
+    } finally { await browser.close() }
+  })
+}
+
 test('blocks the case when no safe DOM data proposal can be validated', async () => {
   const browser = await chromium.launch({ headless: true })
   try {
