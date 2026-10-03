@@ -11,6 +11,10 @@ npm run dev
 
 本地页面运行在 `http://127.0.0.1:4173`，TypeScript API 运行在 `http://127.0.0.1:8787`。
 
+持久数据路径以仓库根目录为基准，不随终端启动目录变化。默认数据库位于 `data/quality-ai.sqlite`，登录态位于 `data/auth`，执行证据位于 `data/artifacts`，源码项目配置位于 `config/projects.local.json`；已有文件无需移动。
+
+可通过 `QUALITY_AI_DATA_ROOT` 指定数据根目录，通过 `QUALITY_AI_DATABASE_PATH` 单独覆盖数据库位置，通过 `PROJECTS_CONFIG_PATH` 覆盖项目配置。相对路径均相对于仓库根目录，绝对路径保持原样；只覆盖数据库位置不会同时迁移登录态或产物。项目配置中相对的源码 `root` 也按仓库根目录解析。
+
 在 `.env.local` 中配置模型，文件已被 Git 忽略：
 
 ```dotenv

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { getRuntimePaths } from '../runtime-paths'
 import { realpath, readFile, readdir, stat } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -69,7 +70,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   private sourceRootPaths?: string[]
   private indexedFiles?: string[]
 
-  constructor(private readonly config: ProjectConfig, private readonly workspaceRoot = process.cwd()) {}
+  constructor(private readonly config: ProjectConfig, private readonly workspaceRoot = getRuntimePaths().workspaceRoot) {}
 
   private async getRoot() {
     if (this.resolvedRoot) return this.resolvedRoot

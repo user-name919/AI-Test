@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { getRuntimePaths } from './runtime-paths'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -32,7 +33,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
   }
   const id = randomUUID()
   const startedAt = new Date()
-  const artifactDirectory = resolve(options.artifactRoot ?? 'data/artifacts', id)
+  const artifactDirectory = resolve(getRuntimePaths().workspaceRoot, options.artifactRoot ?? getRuntimePaths().artifactRoot, id)
   await mkdir(artifactDirectory, { recursive: true })
   const caseResults: CaseExecutionResult[] = []
   let browser: Browser | undefined

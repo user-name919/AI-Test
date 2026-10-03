@@ -18,6 +18,7 @@ import { parseSourceDocuments } from './source-documents'
 import { openNdjsonResponse } from './ndjson-response'
 import { collectReviewSourceContext, generateReviewExecutionContract } from './review-contract'
 import { resolveCaseExecutionContract } from './review-execution-context'
+import { getRuntimePaths } from './runtime-paths'
 
 const port = Number(process.env.API_PORT ?? 8787)
 const maxBodySize = 30 * 1024 * 1024
@@ -210,7 +211,7 @@ export function createApiServer() {
       const environment = getEnvironmentById(stateMatch[1])
       if (!environment) return json(response, 404, { error: '测试环境不存在' })
       const storageState = storageStateSchema.parse(await readJson(request))
-      const directory = resolve('data/auth')
+      const directory = getRuntimePaths().authRoot
       await mkdir(directory, { recursive: true })
       const statePath = resolve(directory, `${environment.id}.json`)
       await writeFile(statePath, JSON.stringify(storageState), { mode: 0o600 })
@@ -222,7 +223,7 @@ export function createApiServer() {
       const executionId = artifactMatch[1]
       const fileName = basename(decodeURIComponent(artifactMatch[2]))
       if (!/^(trace\.zip|failure\.png|[\w\u4e00-\u9fa5-]+\.png)$/.test(fileName)) return json(response, 400, { error: '证据文件名不合法' })
-      const filePath = resolve('data/artifacts', executionId, fileName)
+      const filePath = resolve(getRuntimePaths().artifactRoot, executionId, fileName)
       if (!existsSync(filePath)) return json(response, 404, { error: '证据文件不存在' })
       response.writeHead(200, {
         'content-type': fileName.endsWith('.zip') ? 'application/zip' : 'image/png',

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import test, { after } from 'node:test'
 import type { CaseReview, ExecutionResult, PrdAnalysis } from '../shared/contracts'
+import { workspaceRoot } from './runtime-paths'
 
 const temporaryDirectory = mkdtempSync(join(tmpdir(), 'quality-ai-database-test-'))
 const databasePath = join(temporaryDirectory, 'quality-ai.sqlite')
@@ -83,6 +84,17 @@ const databaseModule = await import('./database')
 after(() => {
   delete process.env.QUALITY_AI_DATABASE_PATH
   rmSync(temporaryDirectory, { recursive: true, force: true })
+})
+
+test('legacy relative login-state paths resolve against repository root without rewriting stored data', () => {
+  const environment = databaseModule.saveEnvironment({ name: '合成环境', baseUrl: 'https://example.test', targetUrl: 'https://example.test/page' })
+  databaseModule.setEnvironmentStorageState(environment.id, 'data/auth/legacy.json')
+  assert.equal(databaseModule.getEnvironmentById(environment.id)?.storageStatePath, join(workspaceRoot, 'data/auth/legacy.json'))
+  const inspection = new DatabaseSync(databasePath, { readOnly: true })
+  try {
+    const row = inspection.prepare('SELECT storage_state_path FROM test_environments WHERE id=?').get(environment.id) as { storage_state_path: string }
+    assert.equal(row.storage_state_path, 'data/auth/legacy.json')
+  } finally { inspection.close() }
 })
 
 test('incrementally adds case review storage without losing a legacy row', () => {

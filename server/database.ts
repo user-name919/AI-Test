@@ -4,8 +4,9 @@ import { dirname, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { AnalysisSummary, AutomationPlan, ExecutionRecord, ExecutionResult, PrdAnalysis, ReviewState, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
 import { isQuestionReviewResolved, normalizeReviewState } from '../shared/review-state'
+import { getRuntimePaths } from './runtime-paths'
 
-const databasePath = resolve(process.env.QUALITY_AI_DATABASE_PATH ?? 'data/quality-ai.sqlite')
+const databasePath = getRuntimePaths().databasePath
 mkdirSync(dirname(databasePath), { recursive: true })
 
 const database = new DatabaseSync(databasePath)
@@ -324,7 +325,7 @@ export function setEnvironmentStorageState(id: string, path: string): TestEnviro
 export function getEnvironmentById(id: string): (TestEnvironment & { storageStatePath?: string }) | null {
   const row = database.prepare('SELECT * FROM test_environments WHERE id=?').get(id) as Record<string, string> | undefined
   const environment = mapEnvironment(row)
-  return environment ? { ...environment, storageStatePath: row?.storage_state_path || undefined } : null
+  return environment ? { ...environment, storageStatePath: row?.storage_state_path ? resolve(getRuntimePaths().workspaceRoot, row.storage_state_path) : undefined } : null
 }
 
 export function getLatestEnvironment(): TestEnvironment | null {
