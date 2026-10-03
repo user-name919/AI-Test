@@ -49,6 +49,7 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
     lines.push('','### 实际数据与结果','',`- 起始页面：${item.startedFromUrl?text(item.startedFromUrl):'未开始/未记录'}`,`- 起始 DOM 快照：${text(item.startedFromSnapshotId)}`,`- 结果说明：${text(item.error??labels[item.status])}`)
     for(const binding of item.resolvedDataBindings)lines.push(`- 数据 ${text(binding.bindingId)}：输入「${text(binding.value)}」，来源 option「${text(binding.sourceText)}」；DOM ${text(binding.snapshotId)} / ${text(binding.sourceElementRef)}；观察时间 ${text(binding.observedAt)}；选择理由：${text(binding.reason)}`)
     if(!item.resolvedDataBindings.length)lines.push('- 本条未记录运行时数据绑定；不代表已验证数据来源。')
+    for(const fixture of item.usedFixtures??[])lines.push(`- 尝试上传附件：${text(fixture.name)} · ${fixture.size} 字节 · 附件 ID ${text(fixture.id)} · SHA256 ${text(fixture.sha256)}。这是当时使用的附件快照，不证明上传或业务处理成功。`)
     for(const download of item.downloads??[])lines.push(`- 实际下载 ${text(download.downloadId)}：${text(download.name)} · ${download.size} 字节 · SHA256 ${text(download.sha256)}。文件接收完成不等于业务内容断言通过。`)
     lines.push(`- 已通过断言 ID：${item.passedAssertions.length?item.passedAssertions.map(text).join('、'):'无'}`,'','### 操作与观察记录','')
     for(const turn of item.trajectory){

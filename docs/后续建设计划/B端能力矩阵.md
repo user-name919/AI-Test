@@ -38,7 +38,7 @@
 | 业务用例失败 | 记录并继续后续用例，同一 Page 保留现场 | `execution-story.test.ts`、`playwright-runner.test.ts`；会话整体失效仍需停止 |
 | 断言完整性 | 动态 assertionId、固定 assertionIndex 关联契约预期；未全部完成不能当通过 | `test-policy.ts`、`fixed-assertion-coverage.ts`；映射存在不等于自然语言语义必然正确 |
 | 页面和动作范围 | goto 同 Origin、快照引用、动作白名单、次数/时长预算 | `test-policy.ts`；仍缺通用破坏性写操作授权和“已提交则不重复”确认协议，不能称为安全完成任意表单提交 |
-| 报告、实时预览 | 后台任务、逐用例记录、截图/Trace、下载文件证据、画面流和可重开历史 | `api/src/modules/executions/`、`web/src/features/executions/`；新增文件证据的独立页面浏览器验收待补 |
+| 报告、实时预览 | 后台任务、逐用例记录、截图/Trace、下载文件证据、画面流和可重开历史 | `api/src/modules/executions/`、`web/src/features/executions/`；真实报告API及浏览器验证上传快照、失败文件下载、中文文件名、缺失提示、重试和刷新恢复；公司环境未验收 |
 
 ## 可重现的聚焦检查
 
