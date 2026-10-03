@@ -103,6 +103,11 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
       caseResults.push(checkpoint)
       let chunkStarted = false
       try {
+        if(casePlan.preparationError){
+          checkpoint.status='blocked'
+          checkpoint.error=casePlan.preparationError
+          continue
+        }
         if(casePlan.contract){
           try{validateFixedAssertionCoverage(casePlan.steps,casePlan.contract)}
           catch(error){checkpoint.status='blocked';checkpoint.error=error instanceof Error?error.message:String(error);continue}

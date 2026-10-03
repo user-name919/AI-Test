@@ -135,9 +135,18 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
         const casePlans = []
         for (const snapshot of job.snapshots) {
           controller.signal.throwIfAborted()
-          const generated = await generateFixedPlan(job.targetUrl,snapshot.resolved,controller.signal)
-          controller.signal.throwIfAborted()
-          casePlans.push({caseKey:snapshot.resolved.caseKey,title:snapshot.resolved.title,contractFingerprint:snapshot.resolved.contractFingerprint,contract:snapshot.resolved.contract,steps:generated.steps})
+          const identity = {caseKey:snapshot.resolved.caseKey,title:snapshot.resolved.title,contractFingerprint:snapshot.resolved.contractFingerprint,contract:snapshot.resolved.contract}
+          try {
+            const generated = await generateFixedPlan(job.targetUrl,snapshot.resolved,controller.signal)
+            controller.signal.throwIfAborted()
+            casePlans.push({...identity,steps:generated.steps})
+          } catch (error) {
+            controller.signal.throwIfAborted()
+            const preparationError = `固定计划生成受阻：${error instanceof Error ? error.message : String(error)}`
+            casePlans.push({...identity,steps:[],preparationError})
+            onEvent({type:'activity',executionId:job.id,caseKey:identity.caseKey,caseTitle:identity.title,
+              activity:{id:`${identity.caseKey}:plan-blocked`,phase:'observing',title:'该用例计划生成受阻',purpose:'保留原因，继续其余用例；未执行该用例的业务操作',status:'info',message:preparationError}})
+          }
         }
         plan = automationPlanSchema.parse({name:`${job.snapshots[0]!.resolved.title} · ${casePlans.length} 条用例`,targetUrl:job.targetUrl,steps:casePlans[0]!.steps,casePlans})
       }

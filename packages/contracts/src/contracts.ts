@@ -312,15 +312,17 @@ export const automationStepSchema = z.discriminatedUnion('action', [
 export const automationPlanSchema = z.object({
   name: z.string().min(1),
   targetUrl: z.string().url(),
-  steps: z.array(automationStepSchema).min(1).max(50),
+  steps: z.array(automationStepSchema).max(50),
   casePlans: z.array(z.object({
     caseKey: z.string().regex(/^(?:\d+-TC-\d+|published:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+|regression:[a-f0-9-]{36}:[1-9]\d*:\d+)$/),
     title: z.string().min(1),
     contractFingerprint: z.string().min(1),
     contract: caseExecutionContractSchema.optional(),
-    steps: z.array(automationStepSchema).min(1).max(50),
-  })).min(1).max(20).optional(),
-})
+    steps: z.array(automationStepSchema).max(50),
+    preparationError: z.string().min(1).optional(),
+  }).refine(plan => plan.preparationError ? plan.steps.length === 0 : plan.steps.length > 0,
+    '受阻计划不能包含动作，可执行计划必须包含动作')).min(1).max(20).optional(),
+}).refine(plan => Boolean(plan.casePlans?.length) || plan.steps.length > 0, '计划必须包含动作或逐用例计划')
 
 export type AutomationPlan = z.infer<typeof automationPlanSchema>
 
