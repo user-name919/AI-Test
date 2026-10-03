@@ -56,6 +56,7 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
       }
       const payload: Record<string, unknown> = {
         '/api/health': { configured: true }, '/api/analyses/latest': { analysis }, '/api/analyses': { analyses: [] },
+        [`/api/analyses/${analysis.id}`]: { analysis },
         '/api/executions/latest': { execution: null }, '/api/executions': { executions: [] },
         '/api/environments/latest': { environment: { id: 'env', name: '合成环境', targetUrl: 'https://example.test/exams' } },
         '/api/projects': { projects: [{ id: 'project', name: '合成项目', connected: true, targetOrigins: ['https://example.test'] }] },
@@ -90,6 +91,27 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
     assert.equal(await agent.isEnabled(), true)
     assert.equal(await page.getByRole('button', { name: '生成固定计划', exact: true }).isDisabled(), true)
     assert.match(await page.locator('.target-config').innerText(), /生成固定计划/)
+    await page.getByRole('button', { name: '需求中心', exact: true }).click()
+    await page.waitForURL('**/#/requirements?**')
+    await page.getByRole('button', { name: '用例资产', exact: true }).click()
+    await page.waitForURL('**/#/cases?**')
+    await page.goBack()
+    await page.getByRole('heading', { name: '需求中心', exact: true }).waitFor()
+    await page.goForward()
+    await page.getByRole('heading', { name: '用例资产', exact: true }).waitFor()
+    await page.goto(`http://127.0.0.1:${address.port}/#/cases?sourceId=${analysis.id}&caseId=fixture-case&caseStatus=ready`)
+    await page.getByRole('heading', { name: '部分关键词搜索', exact: true }).waitFor()
+    await page.reload()
+    await page.getByRole('heading', { name: '部分关键词搜索', exact: true }).waitFor()
+    assert.equal(await page.getByLabel('筛选', { exact: true }).inputValue(), 'ready')
+    await page.goto(`http://127.0.0.1:${address.port}/#/executions/missing?sourceId=${analysis.id}`)
+    await page.getByText('执行记录不存在或尚未加载，未自动替换为其他报告。', { exact: false }).waitFor()
+    await page.goto(`http://127.0.0.1:${address.port}/#/cases?sourceId=missing`)
+    await page.getByRole('heading', { name: '记录无法打开' }).waitFor()
+    await page.getByRole('button', { name: '返回版本中心', exact: true }).click()
+    await page.getByRole('heading', { name: '测试平台 · 合成演示' }).waitFor()
+    await page.goto(`http://127.0.0.1:${address.port}/#/not-found`)
+    await page.getByRole('heading', { name: '页面不存在' }).waitFor()
     assert.deepEqual(errors, [])
   } finally { await browser?.close(); await server.close() }
 })

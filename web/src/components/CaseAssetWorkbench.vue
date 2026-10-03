@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { caseExecutionContractSchema, type CaseExecutionContract } from '@quality-ai/contracts'
 import type { CaseAsset } from '@quality-ai/contracts/cases'
 import CaseContractDetails from './CaseContractDetails.vue'
 
 const props = defineProps<{ analysisId: string; selected: Record<string, boolean> }>()
+const route = useRoute()
+const router = useRouter()
 const emit = defineEmits<{ saved: []; toggle: [key: string]; execute: [requirementIndex: number] }>()
 type Draft = { revision: number; contract: CaseExecutionContract }
 const assets = ref<CaseAsset[]>([])
@@ -17,7 +20,10 @@ const notice = ref('')
 const busy = ref(false)
 const loading = ref(false)
 const retry = ref(0)
-const filter = ref('all')
+const filter = computed({
+  get: () => ['ready', 'blocked'].includes(String(route.query.caseStatus)) ? String(route.query.caseStatus) : 'all',
+  set: value => { void router.push({ query: { ...route.query, caseStatus: value === 'all' ? undefined : value } }) },
+})
 const visible = computed(() => assets.value.filter(asset => filter.value === 'all' || asset.resolved.readiness.agent.executable === (filter.value === 'ready')))
 const conflict = ref<CaseAsset | null>(null)
 const listFields = [
@@ -40,7 +46,8 @@ watch([() => props.analysisId, retry], async ([id]) => {
     if (!response.ok) throw new Error(body.error || '读取用例失败')
     if (sequence !== requestSequence) return
     assets.value = body.cases
-    activeId.value = assets.value[0]?.id ?? ''
+    activeId.value = typeof route.query.caseId === 'string' ? route.query.caseId : assets.value[0]?.id ?? ''
+    if (activeId.value && !active.value) error.value = '用例记录不存在，请从左侧重新选择。'
   } catch (cause) { if (sequence === requestSequence) error.value = cause instanceof Error ? cause.message : '读取失败' }
   finally { if (sequence === requestSequence) loading.value = false }
 }, { immediate: true })
@@ -48,7 +55,14 @@ watch(drafts, value => {
   try { sessionStorage.setItem(`case-drafts:${props.analysisId}`, JSON.stringify(value)) }
   catch { error.value = '浏览器无法保存草稿。请保持页面打开并尽快保存到服务端。' }
 }, { deep: true, flush: 'sync' })
-function select(id: string) { activeId.value = id; conflict.value = null; notice.value = ''; error.value = '' }
+watch(() => route.query.caseId, id => {
+  activeId.value = typeof id === 'string' ? id : assets.value[0]?.id ?? ''
+  conflict.value = null
+})
+function select(id: string) {
+  activeId.value = id; conflict.value = null; notice.value = ''; error.value = ''
+  void router.push({ query: { ...route.query, caseId: id } })
+}
 function edit() {
   if (!active.value) return
   drafts.value[active.value.id] = { revision: active.value.revision, contract: clone(active.value.finalContract) }
@@ -111,7 +125,7 @@ function rebase() {
     <p v-if="notice" class="message" role="status">{{ notice }}</p>
     <div class="master-detail">
       <nav aria-label="用例列表">
-        <label>筛选 <select v-model="filter"><option value="all">全部用例</option><option value="ready">Agent 就绪</option><option value="blocked">未就绪</option></select></label>
+        <label>筛选 <select v-model="filter" aria-label="筛选"><option value="all">全部用例</option><option value="ready">Agent 就绪</option><option value="blocked">未就绪</option></select></label>
         <div v-for="asset in visible" :key="asset.id" class="case-row" :class="{ chosen: activeId === asset.id }">
           <input type="checkbox" :aria-label="`选择执行 ${asset.title}`" :checked="selected[key(asset)]" @change="emit('toggle', key(asset))" />
           <button :disabled="busy" @click="select(asset.id)"><strong>{{ asset.title }}</strong><small>{{ key(asset) }} · v{{ asset.revision }} · {{ asset.reviewStatus === 'confirmed' ? '已确认' : asset.reviewStatus === 'legacy_unreviewed' ? '历史待复核' : '待确认' }}{{ drafts[asset.id] ? ' · 有本地草稿' : '' }}</small></button>
