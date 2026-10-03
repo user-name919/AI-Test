@@ -84,6 +84,7 @@ async function start(){
     <template v-else>
       <h3>执行发布 v{{ publication.version }}（不会使用未发布的编辑）</h3>
       <p>先选择用例和环境，再预览服务端执行口径。发布后的设计版本不会因后续人工编辑而改变。</p>
+      <RouterLink to="/projects">检查源码软链、分支与提交</RouterLink>
       <p v-if="error" role="alert" class="error">{{ error }}</p>
       <button :disabled="loading||busy" @click="configure">重新读取配置</button>
       <fieldset :disabled="busy||loading"><legend>选择本次用例</legend><label v-for="asset in assets" :key="asset.id" class="case-choice"><input v-model="selected" type="checkbox" :value="asset.id" />{{ asset.title }}<span>{{ asset.resolved.readiness[mode].executable?'可执行':asset.resolved.readiness[mode].reason }}</span></label></fieldset>

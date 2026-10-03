@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import type { ProjectInfo } from '@quality-ai/contracts'
+export type { ProjectInfo } from '@quality-ai/contracts'
 
 export const projectConfigSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
@@ -29,18 +31,6 @@ export const projectConfigFileSchema = z.object({
 })
 
 export type ProjectConfig = z.infer<typeof projectConfigSchema>
-
-export interface ProjectInfo {
-  id: string
-  name: string
-  configuredRoot: string
-  resolvedRoot?: string
-  connected: boolean
-  targetOrigins: string[]
-  branch?: string
-  commit?: string
-  error?: string
-}
 
 export interface RouteKnowledge {
   url: string

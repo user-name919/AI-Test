@@ -1,5 +1,17 @@
 import { z } from 'zod'
 
+export interface ProjectInfo {
+  id:string
+  name:string
+  configuredRoot:string
+  resolvedRoot?:string
+  connected:boolean
+  targetOrigins:string[]
+  branch?:string
+  commit?:string
+  error?:string
+}
+
 export const riskSchema = z.enum(['高风险', '中风险', '低风险'])
 export const prioritySchema = z.enum(['P0', 'P1', 'P2'])
 
