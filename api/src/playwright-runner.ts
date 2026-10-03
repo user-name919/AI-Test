@@ -11,6 +11,7 @@ import { PageObserver } from './page-observer'
 import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-runner'
 
 interface AutomationRunnerOptions {
+  signal?: AbortSignal
   executionId?: string
   artifactRoot?: string
   launchBrowser?: () => Promise<Browser>
@@ -44,6 +45,9 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
   let infrastructureError: string | undefined
   let livePageStream: Awaited<ReturnType<typeof startLivePageStream>> | undefined
   let currentCase: CaseExecutionResult | undefined
+  let cancellationPage: Page | undefined
+  const stopPage = () => { void cancellationPage?.close().catch(() => undefined) }
+  options.signal?.addEventListener('abort',stopPage,{once:true})
   const emit = (event: LiveExecutionEvent) => {
     try { options.onEvent?.(event) } catch { /* disconnected live viewers must not stop the test */ }
   }
@@ -51,11 +55,15 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
     cases: plan.casePlans?.map(item => ({ key: item.caseKey, title: item.title })) ?? options.cases })
 
   try {
+    options.signal?.throwIfAborted()
     browser = await (options.launchBrowser?.() ?? chromium.launch({ headless: true }))
+    options.signal?.throwIfAborted()
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, storageState: storageStatePath })
     await context.tracing.start({ screenshots: true, snapshots: true })
     traceStarted = true
     const page = await context.newPage()
+    cancellationPage = page
+    options.signal?.throwIfAborted()
     const sessionFailure = observeSessionFailure(browser, page)
     try {
       livePageStream = await startLivePageStream(context, page, frame => {
@@ -74,6 +82,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
     }
     const checkpoints = plan.casePlans ?? [{ caseKey: '', title: plan.name, contractFingerprint: '', steps: plan.steps }]
     for (const [caseIndex, casePlan] of checkpoints.entries()) {
+      options.signal?.throwIfAborted()
       const caseDirectory = plan.casePlans
         ? resolve(artifactDirectory, `${String(caseIndex + 1).padStart(2, '0')}-${casePlan.caseKey}`)
         : artifactDirectory
@@ -99,6 +108,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
           const activityEvent = { type: 'activity' as const, executionId: id, caseKey: casePlan.caseKey || undefined, caseTitle: casePlan.title }
           emit({ ...activityEvent, activity })
           try {
+            options.signal?.throwIfAborted()
             if (sessionFailure()) throw new Error(sessionFailure())
             if (step.action === 'goto') {
               const destination = new URL(step.path, baseUrl)
@@ -132,7 +142,10 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
         checkpoint.status = 'failed'
         checkpoint.error = error instanceof Error ? error.message : String(error)
       } finally {
-        if (sessionFailure()) {
+        if (options.signal?.aborted) {
+          checkpoint.status = 'cancelled'
+          checkpoint.error = '用户取消执行；已提交的业务操作不会回滚'
+        } else if (sessionFailure()) {
           infrastructureError = sessionFailure()
           checkpoint.status = 'infrastructure_failed'
           checkpoint.error = infrastructureError
@@ -145,11 +158,12 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
         if (chunkStarted) await context.tracing.stopChunk({ path: tracePath }).catch(() => undefined)
         if (existsSync(tracePath)) checkpoint.tracePath = tracePath
       }
-      if (infrastructureError) break
+      if (infrastructureError || options.signal?.aborted) break
     }
   } catch (error) {
     infrastructureError = error instanceof Error ? error.message : String(error)
   } finally {
+    options.signal?.removeEventListener('abort',stopPage)
     await livePageStream?.stop().catch(() => undefined)
     if (context && traceStarted) await context.tracing.stop().catch(() => undefined)
     await context?.close().catch(() => undefined)
@@ -159,14 +173,14 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
   const finishedAt = new Date()
   return {
     id, name: plan.name, targetUrl: plan.targetUrl,
-    status: infrastructureError ? 'infrastructure_failed' : aggregateExecutionStatus(caseResults),
+    status: options.signal?.aborted ? 'cancelled' : infrastructureError ? 'infrastructure_failed' : aggregateExecutionStatus(caseResults),
     mode: 'plan',
     startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     steps: caseResults.flatMap(result => result.steps).map((step, index) => ({ ...step, index })),
     screenshots: caseResults.flatMap(result => result.screenshots),
     tracePath: caseResults.find(result => result.tracePath)?.tracePath,
-    error: infrastructureError ?? caseResults.find(result => result.error)?.error,
+    error: options.signal?.aborted ? '用户取消执行；已提交的业务操作不会回滚' : infrastructureError ?? caseResults.find(result => result.error)?.error,
     caseResults: plan.casePlans ? caseResults : undefined,
   }
 }

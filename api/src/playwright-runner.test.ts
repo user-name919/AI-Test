@@ -7,6 +7,26 @@ import test from 'node:test'
 import type { LiveExecutionEvent } from '@quality-ai/contracts'
 import { runAutomationPlan } from './playwright-runner'
 
+test('固定计划取消保留已完成步骤但禁止后续操作',async t=>{
+  const artifactRoot=await mkdtemp(join(tmpdir(),'quality-ai-plan-cancel-'))
+  t.after(()=>rm(artifactRoot,{recursive:true,force:true}))
+  const web=createServer((_request,response)=>response.end('<button>不得点击</button>'))
+  await new Promise<void>(resolve=>web.listen(0,'127.0.0.1',resolve))
+  t.after(()=>new Promise<void>(resolve=>web.close(()=>resolve())))
+  const address=web.address()
+  if(!address||typeof address==='string')throw new Error('fixture unavailable')
+  const controller=new AbortController()
+  const result=await runAutomationPlan({name:'取消测试',targetUrl:`http://127.0.0.1:${address.port}`,steps:[
+    {action:'goto',path:'/'},{action:'click',locator:{by:'text',value:'不得点击'}},{action:'screenshot',name:'不应运行'},
+  ]},undefined,{artifactRoot,signal:controller.signal,onEvent(event){
+    if(event.type==='activity'&&event.activity.status==='running'&&event.activity.technicalAction?.startsWith('click'))controller.abort()
+  }})
+  assert.equal(result.status,'cancelled')
+  assert.equal(result.steps[0]?.status,'passed')
+  assert.equal(result.steps.length,2)
+  assert.equal(result.steps[1]?.status,'failed')
+})
+
 test('streams the same Playwright page and readable fixed-plan activities', async testContext => {
   const artifactRoot = await mkdtemp(join(tmpdir(), 'quality-ai-plan-runner-'))
   testContext.after(() => rm(artifactRoot, { recursive: true, force: true }))

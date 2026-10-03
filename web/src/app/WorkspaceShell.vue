@@ -303,8 +303,8 @@ function rerunDisabledReason(execution: ExecutionRecord) {
 }
 function formatVersionTime(value: string) { return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) }
 function targetHost(value: string) { try { return new URL(value).host } catch { return value } }
-function executionStatusText(status: ExecutionRecord['status']) { return status === 'passed' ? '执行通过' : status === 'blocked' ? '执行受阻' : '执行失败' }
-function executionStatusIcon(status: ExecutionRecord['status']) { return status === 'passed' ? '✓' : status === 'blocked' ? '!' : '×' }
+function executionStatusText(status: ExecutionRecord['status']) { return status === 'cancelled' ? '已取消' : status === 'passed' ? '执行通过' : status === 'blocked' ? '执行受阻' : '执行失败' }
+function executionStatusIcon(status: ExecutionRecord['status']) { return status === 'cancelled' ? '■' : status === 'passed' ? '✓' : status === 'blocked' ? '!' : '×' }
 function liveStatusText() {
   if (liveExecution.value.status === 'running') return '实时执行中'
   if (liveExecution.value.status === 'passed') return '执行通过'

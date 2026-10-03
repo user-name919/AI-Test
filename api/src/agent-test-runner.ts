@@ -14,6 +14,7 @@ import { TestAgent } from './test-agent'
 import { startLivePageStream } from './live-page-stream'
 
 export interface AgentTestRunnerOptions {
+  signal?: AbortSignal
   executionId?: string
   projectProvider: ProjectKnowledgeProvider
   decisionProvider?: AgentDecisionProvider
@@ -42,7 +43,7 @@ export function observeSessionFailure(browser: Browser, page: Page) {
 }
 
 export function aggregateExecutionStatus(results: CaseExecutionResult[]): ExecutionResult['status'] {
-  for (const status of ['infrastructure_failed', 'failed', 'blocked'] as const) {
+  for (const status of ['cancelled', 'infrastructure_failed', 'failed', 'blocked'] as const) {
     if (results.some(result => result.status === status)) return status
   }
   return 'passed'
@@ -91,15 +92,22 @@ export async function runAgentTest(
   let livePageStream: Awaited<ReturnType<typeof startLivePageStream>> | undefined
   let infrastructureError: string | undefined
   let currentCase: CaseExecutionResult | undefined
+  let cancellationPage: Page | undefined
+  const stopPage = () => { void cancellationPage?.close().catch(() => undefined) }
+  options.signal?.addEventListener('abort',stopPage,{once:true})
   const caseResults: CaseExecutionResult[] = []
   const previousCaseSummaries: NonNullable<AgentTestGoal['previousCaseSummaries']> = []
 
   try {
+    options.signal?.throwIfAborted()
     browser = await (options.launchBrowser?.() ?? chromium.launch({ headless: true }))
+    options.signal?.throwIfAborted()
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, storageState: storageStatePath })
     await context.tracing.start({ screenshots: true, snapshots: true })
     traceStarted = true
     const page = await context.newPage()
+    cancellationPage = page
+    options.signal?.throwIfAborted()
     const sessionFailure = observeSessionFailure(browser, page)
     await page.goto(target.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
     if (sessionFailure()) throw new Error(sessionFailure())
@@ -116,6 +124,7 @@ export async function runAgentTest(
     }
     const decisionProvider = options.decisionProvider ?? new ResponsesDecisionProvider()
     for (const [index, goal] of goals.entries()) {
+      options.signal?.throwIfAborted()
       const contract = goal.executionContract!
       const caseDirectory = resolve(artifactDirectory, `${String(index + 1).padStart(2, '0')}-${contract.caseKey}`)
       await mkdir(caseDirectory, { recursive: true })
@@ -142,10 +151,13 @@ export async function runAgentTest(
         }
         const result = await new TestAgent(caseGoal, observer, executor, {
           async decide(input) {
+            options.signal?.throwIfAborted()
             checkpoint.startedFromSnapshotId ??= input.snapshot.snapshotId
             checkpoint.trajectory = input.trajectory
             if (sessionFailure()) throw new Error(sessionFailure())
-            return decisionProvider.decide(input)
+            const decision = await decisionProvider.decide(input)
+            options.signal?.throwIfAborted()
+            return decision
           },
         }, {
           projectProvider: options.projectProvider,
@@ -168,7 +180,10 @@ export async function runAgentTest(
             ? [item.decision.action.assertionId] : [])
       } finally {
         const failure = sessionFailure()
-        if (failure) {
+        if (options.signal?.aborted) {
+          checkpoint.status = 'cancelled'
+          summary = '用户取消执行；已提交的业务操作不会回滚'
+        } else if (failure) {
           infrastructureError = failure
           checkpoint.status = 'infrastructure_failed'
           summary = failure
@@ -190,11 +205,12 @@ export async function runAgentTest(
         actions: checkpoint.trajectory.filter(item => item.decision.type === 'action').slice(-3)
           .map(item => item.decision.type === 'action' ? `${item.decision.action.action}: ${item.decision.reason.slice(0, 120)} (${item.result?.ok ? '成功' : '失败'})` : ''),
       })
-      if (infrastructureError) break
+      if (infrastructureError || options.signal?.aborted) break
     }
   } catch (error) {
     infrastructureError = error instanceof Error ? error.message : String(error)
   } finally {
+    options.signal?.removeEventListener('abort',stopPage)
     await livePageStream?.stop().catch(() => undefined)
     if (context && traceStarted) await context.tracing.stop().catch(() => undefined)
     await context?.close().catch(() => undefined)
@@ -202,16 +218,16 @@ export async function runAgentTest(
   }
 
   const finishedAt = new Date()
-  const summary = infrastructureError ?? previousCaseSummaries.map(item => `[${item.caseKey}] ${item.status}：${item.summary}`).join('\n')
+  const summary = options.signal?.aborted ? '用户取消执行；已提交的业务操作不会回滚' : infrastructureError ?? previousCaseSummaries.map(item => `[${item.caseKey}] ${item.status}：${item.summary}`).join('\n')
   return {
     id, name, targetUrl: target.href, mode: 'agent',
-    status: infrastructureError ? 'infrastructure_failed' : aggregateExecutionStatus(caseResults),
+    status: options.signal?.aborted ? 'cancelled' : infrastructureError ? 'infrastructure_failed' : aggregateExecutionStatus(caseResults),
     startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     steps: caseResults.flatMap(result => result.steps).map((step, index) => ({ ...step, index })),
     screenshots: caseResults.flatMap(result => result.screenshots),
     tracePath: caseResults.find(result => result.tracePath)?.tracePath,
-    error: infrastructureError ?? (caseResults.some(result => result.status !== 'passed') ? summary : undefined),
+    error: options.signal?.aborted ? summary : infrastructureError ?? (caseResults.some(result => result.status !== 'passed') ? summary : undefined),
     caseResults,
     agent: {
       summary,

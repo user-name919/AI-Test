@@ -153,7 +153,7 @@ export interface ResolvedCaseExecutionContract {
   contractFingerprint: string
 }
 
-export type ExecutionStatus = 'passed' | 'failed' | 'blocked' | 'infrastructure_failed'
+export type ExecutionStatus = 'passed' | 'failed' | 'blocked' | 'infrastructure_failed' | 'cancelled'
 
 export const reviewExecutionContractSchema = z.object({
   objective: z.string().min(1),
@@ -524,7 +524,7 @@ export const agentTestGoalSchema = z.object({
     uncertainties: z.array(z.string()), confidence: z.enum(['high', 'medium', 'low']).optional(),
   })).optional(),
   previousCaseSummaries: z.array(z.object({
-    caseKey: z.string(), title: z.string(), status: z.enum(['passed', 'failed', 'blocked', 'infrastructure_failed']),
+    caseKey: z.string(), title: z.string(), status: z.enum(['passed', 'failed', 'blocked', 'infrastructure_failed', 'cancelled']),
     summary: z.string(), actions: z.array(z.string()),
   })).optional(),
   sessionContinuation: z.string().optional(),

@@ -13,13 +13,14 @@ import { saveExecution } from './repository'
 let initialized = false
 let working = false
 const queue: Array<() => Promise<void>> = []
+const active = new Map<string,{job:ExecutionJob;controller:AbortController}>()
 
 export function initializeExecutionJobs() {
   if (initialized) return
   database.exec(`CREATE TABLE IF NOT EXISTS execution_jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL, job_json TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS execution_job_events (job_id TEXT NOT NULL, sequence INTEGER NOT NULL, event_json TEXT NOT NULL, PRIMARY KEY(job_id,sequence));
     CREATE TABLE IF NOT EXISTS execution_job_frames (job_id TEXT PRIMARY KEY, event_json TEXT NOT NULL);`)
-  const stale = database.prepare("SELECT job_json FROM execution_jobs WHERE status IN ('queued','running')").all() as Array<{job_json:string}>
+  const stale = database.prepare("SELECT job_json FROM execution_jobs WHERE status IN ('queued','running','cancelling')").all() as Array<{job_json:string}>
   for (const row of stale) {
     const job = JSON.parse(row.job_json) as ExecutionJob
     job.status = 'interrupted'
@@ -49,10 +50,19 @@ export function executionJobEvents(id: string, after: number) {
   return { events, nextCursor: events.at(-1)?.sequence ?? after, frame: frame ? JSON.parse(frame.event_json) : null }
 }
 
-export function cancelQueuedExecutionJob(id: string) {
+export function cancelExecutionJob(id: string) {
   const job = getExecutionJob(id)
   if (!job) throw new Error('执行任务不存在')
-  if (job.status !== 'queued') throw new Error('仅排队任务支持此取消入口，运行中取消尚未接入')
+  if (job.status === 'cancelled' || job.status === 'cancelling') return job
+  const running = active.get(id)
+  if (running) {
+    running.job.status = 'cancelling'
+    running.job.error = '已请求取消，正在停止浏览器并等待当前请求收尾；已提交的业务操作不会回滚'
+    writeJob(running.job)
+    running.controller.abort(new Error('用户取消执行'))
+    return structuredClone(running.job)
+  }
+  if (job.status !== 'queued') throw new Error('任务已经结束，不能取消')
   job.status = 'cancelled'
   writeJob(job)
   return job
@@ -86,6 +96,8 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
   queue.push(async () => {
     if (getExecutionJob(job.id)?.status !== 'queued') return
     job.status = 'running'
+    const controller = new AbortController()
+    active.set(job.id,{job,controller})
     writeJob(job)
     let sequence = 0
     const onEvent = (event: LiveExecutionEvent) => {
@@ -102,24 +114,29 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
       if (request.mode === 'plan') {
         const casePlans = []
         for (const snapshot of job.snapshots) {
+          controller.signal.throwIfAborted()
           const generated = await generateAutomationPlan(job.targetUrl,snapshot.resolved)
+          controller.signal.throwIfAborted()
           casePlans.push({caseKey:snapshot.resolved.caseKey,title:snapshot.resolved.title,contractFingerprint:snapshot.resolved.contractFingerprint,contract:snapshot.resolved.contract,steps:generated.steps})
         }
         plan = automationPlanSchema.parse({name:`${job.snapshots[0]!.resolved.title} · ${casePlans.length} 条用例`,targetUrl:job.targetUrl,steps:casePlans[0]!.steps,casePlans})
       }
+      controller.signal.throwIfAborted()
       const result = request.mode === 'agent'
-        ? await runAgentTest(preparation.goals,environment?.storageStatePath,{projectProvider:provider!,executionId:job.id,onEvent})
-        : await runAutomationPlan(plan,environment?.storageStatePath,{executionId:job.id,onEvent})
+        ? await runAgentTest(preparation.goals,environment?.storageStatePath,{projectProvider:provider!,executionId:job.id,onEvent,signal:controller.signal})
+        : await runAutomationPlan(plan,environment?.storageStatePath,{executionId:job.id,onEvent,signal:controller.signal})
       result.caseSnapshots = job.snapshots
       if (project) result.sourceProject = {id:project.id,branch:project.branch,commit:project.commit}
       saveExecution(result,{environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
       job.executionId = result.id
-      job.status = 'completed' // 完成任务不等于用例通过；通过/失败见实际报告。
+      job.status = controller.signal.aborted ? 'cancelled' : 'completed' // 完成任务不等于用例通过。
       writeJob(job)
     } catch (error) {
-      job.status = 'failed'
+      job.status = controller.signal.aborted ? 'cancelled' : 'failed'
       job.error = error instanceof Error ? error.message : String(error)
       writeJob(job)
+    } finally {
+      active.delete(job.id)
     }
   })
   setImmediate(() => { void drainQueue() })

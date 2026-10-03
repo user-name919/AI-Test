@@ -238,3 +238,17 @@ test('records launch failures as batch infrastructure failures', async () => {
   assert.equal(result.status, 'infrastructure_failed')
   assert.match(result.error!, /browser unavailable/)
 })
+
+test('取消后拒绝迟到模型决策并停止后续用例', async t => {
+  const fixture = await sessionFixture(t)
+  const controller = new AbortController()
+  let decisions = 0
+  const result = await runAgentTest([caseGoal(fixture.targetUrl,0),caseGoal(fixture.targetUrl,1)],undefined,{
+    projectProvider:emptyProject,artifactRoot:fixture.artifactRoot,signal:controller.signal,
+    decisionProvider:{async decide(){ decisions++; controller.abort(); return {type:'finish',summary:'迟到的通过建议'} }},
+  })
+  assert.equal(decisions,1)
+  assert.equal(result.status,'cancelled')
+  assert.deepEqual(result.caseResults?.map(item=>item.status),['cancelled'])
+  assert.deepEqual(result.caseResults?.[0]?.passedAssertions,[])
+})

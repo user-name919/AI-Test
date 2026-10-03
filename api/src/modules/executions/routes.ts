@@ -16,7 +16,7 @@ import { openNdjsonResponse } from '../../ndjson-response'
 import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { getRuntimePaths } from '../../config/paths'
 import { captureExecutionCases } from '../cases/repository'
-import { createExecutionJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelQueuedExecutionJob } from './jobs'
+import { createExecutionJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelExecutionJob } from './jobs'
 
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
@@ -41,7 +41,7 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
       return json(response,200,{job})
     }
     if (request.method === 'POST' && jobMatch[2] === 'cancel') {
-      try { return json(response,200,{job:cancelQueuedExecutionJob(job.id)}) }
+      try { return json(response,200,{job:cancelExecutionJob(job.id)}) }
       catch (error) { return json(response,409,{error:error instanceof Error ? error.message : '取消失败'}) }
     }
   }

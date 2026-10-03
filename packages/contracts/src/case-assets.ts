@@ -48,7 +48,7 @@ export const executionJobRequestSchema = executionPreparationSchema.extend({
 
 export interface ExecutionJob {
   id: string
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled'
+  status: 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'interrupted' | 'cancelled'
   mode: 'agent' | 'plan'
   targetUrl: string
   snapshots: import('./contracts').ExecutionCaseSnapshot[]

@@ -19,7 +19,7 @@ const {listCaseAssets}=await import('./modules/cases/repository')
 test('持久任务先返回ID，断开创建请求后实际浏览器执行，游标可补取且重启不重放',async t=>{
   const modelRequests:string[]=[]
   let releaseModel:()=>void=()=>{}
-  const gate=new Promise<void>(resolve=>{releaseModel=resolve})
+  let gate=new Promise<void>(resolve=>{releaseModel=resolve})
   const site=createServer(async(request,response)=>{
     if(request.method==='POST'){
       const chunks:Buffer[]=[]
@@ -85,6 +85,23 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   const later=await(await fetch(url+`/api/execution-jobs/${job.id}/events?after=${history.nextCursor}`)).json()
   assert.deepEqual(later.events,[])
   assert.equal((await fetch(url+`/api/execution-jobs/${job.id}/events?after=-1`)).status,400)
+  gate=new Promise<void>(resolve=>{releaseModel=resolve})
+  const running=(await(await post('/api/execution-jobs',input)).json()).job as ExecutionJob
+  for(let i=0;i<100 && modelRequests.length<2;i++)await new Promise(resolve=>setTimeout(resolve,10))
+  assert.equal(modelRequests.length,2)
+  const cancelRunning=await post(`/api/execution-jobs/${running.id}/cancel`,{})
+  assert.equal((await cancelRunning.json()).job.status,'cancelling')
+  assert.equal((await(await post(`/api/execution-jobs/${running.id}/cancel`,{})).json()).job.status,'cancelling')
+  releaseModel()
+  let stopped:ExecutionJob=running
+  for(let i=0;i<100;i++){
+    stopped=(await(await fetch(url+`/api/execution-jobs/${running.id}`)).json()).job
+    if(stopped.status==='cancelled')break
+    await new Promise(resolve=>setTimeout(resolve,10))
+  }
+  assert.equal(stopped.status,'cancelled')
+  assert.equal(stopped.executionId,undefined,'计划生成期间取消不得启动浏览器或创建假执行报告')
+  assert.deepEqual((await(await fetch(url+`/api/execution-jobs/${running.id}/events`)).json()).events,[])
   const orphan={...job,id:'orphan',status:'running'}
   database.prepare('INSERT INTO execution_jobs VALUES (?,?,?)').run('orphan','running',JSON.stringify(orphan))
   const restart=execFileSync(process.execPath,['--import','tsx','--input-type=module','-e',"const m=await import('./src/modules/executions/jobs.ts');m.initializeExecutionJobs();console.log(JSON.stringify(m.getExecutionJob('orphan')));"],{cwd:import.meta.dirname+'/..',env:process.env,encoding:'utf8'})
