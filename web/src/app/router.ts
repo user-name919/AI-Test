@@ -3,6 +3,7 @@ import WorkspaceShell from './WorkspaceShell.vue'
 import NotFoundPage from './NotFoundPage.vue'
 import CaseDesignPage from '../features/case-design/CaseDesignPage.vue'
 import ExecutionJobsPage from '../features/executions/ExecutionJobsPage.vue'
+import RegressionPage from '../features/regressions/RegressionPage.vue'
 
 export const router = createRouter({
   // Hash 模式保留现有 Vite/静态托管，无需额外部署服务端回退规则。
@@ -16,6 +17,7 @@ export const router = createRouter({
     { path: '/case-designs/:id?', name: 'case-designs', component: CaseDesignPage },
     { path: '/executions/:id?', name: 'executions', component: WorkspaceShell },
     { path: '/execution-jobs/:id?', name: 'execution-jobs', component: ExecutionJobsPage },
+    { path: '/regressions/:id?', name: 'regressions', component: RegressionPage },
     { path: '/memory', name: 'memory', component: WorkspaceShell },
     { path: '/:pathMatch(.*)*', component: NotFoundPage },
   ],

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { changeComparisonSchema, type GitCommitFact, type GitDiffFact, type GitFileChange, type LocalChangeFacts } from '@quality-ai/contracts/regressions'
+import { changeComparisonSchema, type GitCommitFact, type GitDiffFact, type GitFileChange, type LocalChangeFacts, type LocalGitRefs } from '@quality-ai/contracts/regressions'
 
 const execute = promisify(execFile)
 // 禁止 shell、外部 diff/textconv 和按需拉取；超限直接失败，不将截断文本当完整事实。
@@ -23,6 +23,14 @@ async function resolveCommit(root: string, ref: string): Promise<string> {
   const sha = (await git(root, ['rev-parse', '--verify', '--end-of-options', `${name}^{commit}`])).trim()
   if (!/^[a-f0-9]{40,64}$/.test(sha)) throw new Error('无法解析本地提交')
   return sha
+}
+
+export async function listLocalGitRefs(root: string): Promise<LocalGitRefs> {
+  const lines = (await git(root, ['for-each-ref', '--count=501', '--sort=refname', '--format=%(refname)%09%(objectname)', 'refs/heads/'])).trim().split('\n').filter(Boolean)
+  return { branches: lines.slice(0, 500).map(line => {
+    const [name, sha] = line.split('\t')
+    return { name: name!.slice('refs/heads/'.length), sha: sha! }
+  }), truncated: lines.length > 500 }
 }
 
 async function commitFact(root: string, sha: string): Promise<GitCommitFact> {

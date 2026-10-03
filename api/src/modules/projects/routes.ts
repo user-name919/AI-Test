@@ -2,10 +2,20 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { json, readJson } from '../../http/response'
 import { getProjectProvider, getProjectProviderRegistry } from '../../project-knowledge/registry'
 import type { SourceScope } from '../../project-knowledge/types'
+import { listLocalGitRefs } from '../../integrations/git/local-git'
 
 const sourceScopes = new Set<SourceScope>(['route', 'page', 'component', 'api'])
 
 export async function handleProjectRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const refsMatch = new URL(request.url ?? '/', 'http://localhost').pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/git\/refs$/)
+  if (request.method === 'GET' && refsMatch) {
+    const provider = (await getProjectProviderRegistry()).get(refsMatch[1]!)
+    if (!provider) return json(response, 404, { error: '源码项目不存在' })
+    const project = await provider.getProjectInfo()
+    if (!project.connected || !project.resolvedRoot) return json(response, 422, { error: '源码项目未连接' })
+    try { return json(response, 200, await listLocalGitRefs(project.resolvedRoot)) }
+    catch (error) { return json(response, 422, { error: error instanceof Error ? error.message : '本地分支读取失败' }) }
+  }
   if (request.method === 'GET' && request.url === '/api/projects') {
     const providers = [...(await getProjectProviderRegistry()).values()]
     return json(response, 200, { projects: await Promise.all(providers.map(provider => provider.getProjectInfo())) })

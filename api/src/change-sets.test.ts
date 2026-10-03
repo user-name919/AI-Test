@@ -30,6 +30,8 @@ test('实际 API 预览与冻结使用服务端事实，刷新与分支移动不
   const url = `http://127.0.0.1:${(api.address() as AddressInfo).port}`
   t.after(async () => { await new Promise<void>(resolve => api.close(() => resolve())); database.close(); rmSync(directory, { recursive: true, force: true }) })
   const post = (path: string, body: unknown) => fetch(url + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  assert.deepEqual(await (await fetch(`${url}/api/projects/fixture/git/refs`)).json(), { branches: [{ name: 'main', sha: target }], truncated: false })
+  assert.equal((await fetch(`${url}/api/projects/missing/git/refs`)).status, 404)
   const previewResponse = await post('/api/change-sets/preview', { projectId: 'fixture', comparison: { mode: 'endpoints', baseRef: base, targetRef: 'main' } })
   assert.equal(previewResponse.status, 201)
   const preview = (await previewResponse.json() as { changeSet: ChangeSet }).changeSet

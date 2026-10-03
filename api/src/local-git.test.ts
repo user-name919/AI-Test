@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { collectLocalChangeFacts } from './integrations/git/local-git'
+import { collectLocalChangeFacts, listLocalGitRefs } from './integrations/git/local-git'
 
 test('本地三次提交固定 SHA、非连续 patch、重命名与 dirty 保护', async t => {
   const root = mkdtempSync(join(tmpdir(), 'quality-ai-local-git-'))
@@ -24,6 +24,8 @@ test('本地三次提交固定 SHA、非连续 patch、重命名与 dirty 保护
   const third = commit('重命名与二进制资源')
   writeFileSync(join(root, '页面.txt'), '用户尚未提交的编辑\n')
   const status = git('status', '--porcelain')
+  git('update-ref', 'refs/remotes/origin/remote-only', third)
+  assert.deepEqual(await listLocalGitRefs(root), { branches: [{ name: 'baseline', sha: base }, { name: 'main', sha: third }], truncated: false })
   const endpoints = await collectLocalChangeFacts(root, { mode: 'endpoints', baseRef: 'baseline', targetRef: 'main' })
   assert.equal(endpoints.targetSha, third)
   assert.equal(endpoints.effectiveBaseSha, base)
