@@ -19,6 +19,7 @@ interface ResponsesPayload {
 interface GenerateTextInput {
   messages: ModelMessage[]
   maxOutputTokens: number
+  signal?: AbortSignal
 }
 
 function outputText(payload: ResponsesPayload) {
@@ -74,7 +75,7 @@ export class ResponsesModelClient {
         max_output_tokens: input.maxOutputTokens,
         store: false,
       }),
-      signal: AbortSignal.timeout(this.timeoutMs),
+      signal: input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(this.timeoutMs)]) : AbortSignal.timeout(this.timeoutMs),
     })
     const payload = await response.json() as ResponsesPayload
     if (!response.ok) throw new Error(payload.error?.message ?? `模型请求失败（HTTP ${response.status}）`)

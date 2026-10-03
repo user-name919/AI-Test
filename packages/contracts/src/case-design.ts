@@ -29,3 +29,28 @@ export type DesignDocument = z.infer<typeof designDocumentSchema>
 export type DocumentBlock = z.infer<typeof documentBlockSchema>
 export type EvidenceRef = z.infer<typeof evidenceRefSchema>
 export type RequirementFact = z.infer<typeof requirementFactSchema>
+
+export const factExtractionSchema = z.object({
+  facts: z.array(requirementFactSchema),
+  questions: z.array(z.object({ id: z.string().min(1), question: z.string().min(1), evidence: z.array(evidenceRefSchema) })),
+})
+export type FactExtraction = z.infer<typeof factExtractionSchema>
+export interface DesignRun {
+  id: string
+  designId: string
+  attempt: number
+  stage: 'extracting' | 'modeling' | 'planning' | 'generating' | 'checking'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+  inputRevision: number
+  inputHash: string
+  model: string
+  modelConfigHash: string
+  protocol: string
+  promptVersion: string
+  skills: Array<{ id: string; version: string; hash: string }>
+  createdAt: string
+  updatedAt: string
+  error?: string
+  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[] }
+  statistics: { calls: number; inputCharacters: number; outputCharacters: number }
+}

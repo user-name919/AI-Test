@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import type { CaseDesign, DesignDocument } from '@quality-ai/contracts/case-design'
+import type { CaseDesign, DesignDocument, DesignRun } from '@quality-ai/contracts/case-design'
 import { database } from '../../storage/database'
 
 export function createCaseDesign(name: string, documents: DesignDocument[]): CaseDesign {
@@ -20,4 +20,20 @@ export function listCaseDesigns() {
     const design = getCaseDesign(row.id)!
     return { id: design.id, name: design.name, revision: design.revision, documentCount: design.documents.length, createdAt: design.createdAt, updatedAt: design.updatedAt }
   })
+}
+
+export function saveDesignRun(run: DesignRun) {
+  database.prepare('INSERT INTO case_design_runs (id,design_id,status,run_json) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,run_json=excluded.run_json')
+    .run(run.id, run.designId, run.status, JSON.stringify(run))
+}
+export function listDesignRuns(designId: string): DesignRun[] {
+  return (database.prepare('SELECT run_json FROM case_design_runs WHERE design_id=? ORDER BY rowid DESC').all(designId) as Array<{run_json: string}>).map(row => JSON.parse(row.run_json))
+}
+export function recoverInterruptedDesignRuns() {
+  const rows = database.prepare("SELECT run_json FROM case_design_runs WHERE status IN ('queued','running')").all() as Array<{run_json: string}>
+  for (const row of rows) {
+    const run: DesignRun = JSON.parse(row.run_json)
+    saveDesignRun({ ...run, status: 'interrupted', error: '服务进程中断，请重试创建新 attempt；已有阶段输出保留', updatedAt: new Date().toISOString() })
+  }
+  return rows.length
 }
