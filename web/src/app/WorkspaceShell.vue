@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { AgentDecision, AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, QuestionReview, ReviewExecutionContract, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '@quality-ai/contracts'
+import type { AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, QuestionReview, ReviewExecutionContract, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '@quality-ai/contracts'
 import { consumeNdjsonChunk, createLiveExecutionState, reduceLiveExecutionState } from '@quality-ai/contracts/live-execution'
 import { useCaseContracts } from '../composables/useCaseContracts'
 import CaseContractDetails from '../components/CaseContractDetails.vue'
@@ -192,10 +192,6 @@ const caseAssets = computed(() => requirements.value.flatMap((item, requirementI
   key: `${requirementIndex}-TC-${caseIndex}`,
   code: `${requirementCode(requirementIndex)} / TC-${String(caseIndex + 1).padStart(3, '0')}`,
 }))))
-const memoryRules = computed(() => requirements.value.flatMap((item, requirementIndex) => item.businessRules.map(rule => ({ ...rule, requirementTitle: item.title, requirementIndex }))))
-const memoryFailures = computed(() => executionHistory.value.filter(item => item.status !== 'passed' && item.error).slice(0, 20))
-const memorySourceUses = computed(() => executionHistory.value.flatMap(execution => execution.agent?.trajectory.flatMap(item => item.decision.type === 'need_project_context' ? [{ execution, item }] : []) ?? []).slice(0, 20))
-const memoryCount = computed(() => memoryRules.value.length + memoryFailures.value.length + memorySourceUses.value.length)
 const workspaceLabel = computed(() => ({ version: '版本中心', requirements: '需求中心', cases: '用例资产', executions: '执行中心', memory: '质量记忆' })[workspaceView.value])
 const currentGuide = computed(() => workspaceGuides[workspaceView.value])
 const agentRunDisabledReason = computed(() => {
@@ -237,7 +233,6 @@ function openRequirement(index: number) {
   void router.push({ name: 'requirement-detail', params: { id: savedAnalysis.value.id }, query: { sourceId: savedAnalysis.value.id, requirement: String(index) } })
 }
 function openCaseAsset(requirementIndex: number) { activeRequirement.value = requirementIndex; activeTab.value = 'cases'; workspaceView.value = 'version' }
-function openExecution(id: string) { selectedExecutionId.value = id; workspaceView.value = 'executions' }
 function questionDraft(index: number) {
   const key = questionKey(index)
   return questionDrafts.value[key] ?? questions.value[index]?.suggestion ?? ''
@@ -313,20 +308,6 @@ function markLiveExecutionFailed(error: unknown) {
   })
   return message
 }
-function decisionTitle(decision: AgentDecision) {
-  if (decision.type === 'action') return `执行 ${decision.action.action}`
-  if (decision.type === 'need_project_context') return `读取源码 · ${decision.request.operation}`
-  if (decision.type === 'finish') return '完成测试'
-  return '停止执行'
-}
-function projectContextSummary(value: unknown) {
-  if (Array.isArray(value)) return `命中 ${value.length} 处源码${value.length ? ` · ${value.slice(0, 3).map(item => typeof item === 'object' && item && 'path' in item ? String(item.path) : '').filter(Boolean).join('、')}` : ''}`
-  if (!value || typeof value !== 'object') return '未返回源码上下文'
-  if ('routeFile' in value) return `路由文件：${String(value.routeFile)}${'componentFile' in value && value.componentFile ? ` · 页面：${String(value.componentFile)}` : ''}`
-  if ('files' in value && Array.isArray(value.files)) return `读取 ${value.files.length} 个局部文件 · ${value.files.map(file => typeof file === 'object' && file && 'path' in file ? String(file.path) : '').filter(Boolean).join('、')}`
-  return '已返回项目上下文'
-}
-
 async function streamExecution(url: string, body: unknown, fallbackName: string, fallbackTargetUrl: string) {
   liveExecution.value = {
     ...createLiveExecutionState(),
@@ -752,7 +733,7 @@ onMounted(loadSavedAnalysis)
       <RouterLink to="/regressions" style="color:#d8d2ff;padding:12px 20px;font-size:16px">代码变更回归</RouterLink>
       <div class="brand"><span>知</span><div><strong>知测 AI</strong><small>测试工作台</small></div></div>
       <nav>
-        <button aria-label="版本中心" title="版本中心" :class="{active:workspaceView==='version'}" @click="workspaceView='version'"><i>版</i><span>版本中心</span></button><button aria-label="需求中心" title="需求中心" :class="{active:workspaceView==='requirements'}" @click="workspaceView='requirements'"><i>需</i><span>需求中心</span><em>{{ requirements.length }}</em></button><button aria-label="用例资产" title="用例资产" :class="{active:workspaceView==='cases'}" @click="workspaceView='cases'"><i>例</i><span>用例资产</span><em>{{ totalCases }}</em></button><button aria-label="执行中心" title="执行中心" :class="{active:workspaceView==='executions'}" @click="workspaceView='executions'"><i>执</i><span>执行中心</span><em>{{ executionHistory.length }}</em></button><button aria-label="质量记忆" title="质量记忆" :class="{active:workspaceView==='memory'}" @click="workspaceView='memory'"><i>忆</i><span>质量记忆</span><em>{{ memoryCount }}</em></button>
+        <button aria-label="版本中心" title="版本中心" :class="{active:workspaceView==='version'}" @click="workspaceView='version'"><i>版</i><span>版本中心</span></button><button aria-label="需求中心" title="需求中心" :class="{active:workspaceView==='requirements'}" @click="workspaceView='requirements'"><i>需</i><span>需求中心</span><em>{{ requirements.length }}</em></button><button aria-label="用例资产" title="用例资产" :class="{active:workspaceView==='cases'}" @click="workspaceView='cases'"><i>例</i><span>用例资产</span><em>{{ totalCases }}</em></button><button aria-label="执行中心" title="执行中心" :class="{active:workspaceView==='executions'}" @click="workspaceView='executions'"><i>执</i><span>执行中心</span><em>{{ executionHistory.length }}</em></button><button aria-label="质量记忆" title="质量记忆" :class="{active:workspaceView==='memory'}" @click="workspaceView='memory'"><i>忆</i><span>质量记忆</span></button>
       </nav>
       <div class="side-bottom"><div class="memory"><b :class="{offline:!apiConfigured}"></b><p><strong>{{ apiConfigured ? '公司模型已连接' : '模型服务未连接' }}</strong><small>{{ savedAnalysis ? `${savedAnalysis.model} · 已持久化` : '当前显示示例数据' }}</small></p></div><div class="user"><span>TX</span><p><strong>测试小组</strong><small>前端质量空间</small></p></div></div>
     </aside>
@@ -791,11 +772,6 @@ onMounted(loadSavedAnalysis)
           <section class="metrics"><article><i class="purple">例</i><p><span>用例总数</span><strong>{{ caseAssets.length }}</strong><small>当前版本</small></p></article><article><i class="green">✓</i><p><span>Agent 用例就绪</span><strong>{{ readyCases }}</strong><small>不代表已执行通过</small></p></article><article><i class="amber">?</i><p><span>未就绪</span><strong>{{ caseAssets.length - readyCases }}</strong><small>暂不进入 Agent</small></p></article><article><i class="blue">选</i><p><span>已选择</span><strong>{{ selectedCaseKeys.length }}</strong><small>将用于自动化</small></p></article></section>
           <CaseAssetWorkbench v-if="savedAnalysis" :analysis-id="savedAnalysis.id" :selected="selectedCases" @toggle="toggleCaseAsset" @execute="openCaseAsset" @saved="reloadCaseContracts" />
           <p v-else class="empty">请先导入并保存需求分析，示例内容不能作为真实用例审核。</p>
-        </template>
-        <template v-else>
-          <section class="heading hub-heading"><div><small><i></i>由真实评审与执行自动沉淀</small><h1>质量记忆</h1><p>汇总已提取业务规则、历史失败和 Agent 使用过的源码线索，避免后续测试重复摸索。</p></div></section>
-          <section class="metrics"><article><i class="purple">规</i><p><span>规则记忆</span><strong>{{ memoryRules.length }}</strong><small>来源于当前 PRD</small></p></article><article><i class="amber">!</i><p><span>失败记忆</span><strong>{{ memoryFailures.length }}</strong><small>失败与受阻记录</small></p></article><article><i class="blue">源</i><p><span>源码线索</span><strong>{{ memorySourceUses.length }}</strong><small>Agent 按需读取</small></p></article><article><i class="green">版</i><p><span>历史版本</span><strong>{{ analysisHistory.length }}</strong><small>已持久化分析</small></p></article></section>
-          <section class="memory-grid"><article><header><h2>业务规则</h2><span>{{ memoryRules.length }}</span></header><button v-for="(rule,index) in memoryRules" :key="`${rule.requirementIndex}-${index}`" @click="openRequirement(rule.requirementIndex)"><i>规</i><p><strong>{{ rule.description }}</strong><small>{{ rule.requirementTitle }} · {{ rule.evidence }}</small></p></button><div v-if="!memoryRules.length" class="empty">导入 PRD 后自动沉淀业务规则</div></article><article><header><h2>失败与受阻</h2><span>{{ memoryFailures.length }}</span></header><button v-for="failure in memoryFailures" :key="failure.id" @click="openExecution(failure.id)"><i class="warning">!</i><p><strong>{{ failure.name }}</strong><small>{{ executionStatusText(failure.status) }} · {{ failure.error }}</small></p></button><div v-if="!memoryFailures.length" class="empty">暂无失败或受阻经验</div></article><article><header><h2>源码使用线索</h2><span>{{ memorySourceUses.length }}</span></header><button v-for="(source,index) in memorySourceUses" :key="`${source.execution.id}-${index}`" @click="openExecution(source.execution.id)"><i class="source">源</i><p><strong>{{ decisionTitle(source.item.decision) }}</strong><small>{{ source.execution.name }} · {{ projectContextSummary(source.item.projectContext) }}</small></p></button><div v-if="!memorySourceUses.length" class="empty">Agent 请求源码后会记录在这里</div></article></section>
         </template>
       </div>
     </main>
