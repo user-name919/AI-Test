@@ -7,6 +7,17 @@ export const changeComparisonSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('selected_commits'), targetRef: localRef, commits: z.array(localRef).min(1).max(50) }).strict(),
 ])
 export type ChangeComparison = z.infer<typeof changeComparisonSchema>
+export const changeSetPreviewSchema = z.object({ projectId: z.string().regex(/^[a-z0-9][a-z0-9-]*$/), comparison: changeComparisonSchema }).strict()
+export const freezeChangeSetSchema = z.object({ expectedHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
+export interface ChangeSet {
+  id: string
+  projectId: string
+  status: 'preview' | 'frozen'
+  factsHash: string
+  facts: LocalChangeFacts
+  createdAt: string
+  frozenAt?: string
+}
 export interface GitCommitFact { sha: string; parents: string[]; subject: string }
 export interface GitFileChange { status: string; path: string; oldPath?: string }
 export interface GitDiffFact { baseSha: string; targetSha: string; files: GitFileChange[]; patch: string }
