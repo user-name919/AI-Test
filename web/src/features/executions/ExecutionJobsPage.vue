@@ -97,6 +97,14 @@ onUnmounted(()=>{generation++;clearTimeout(timer)})
     </section>
     <template v-else-if="job">
       <section class="panel"><h2>{{ job.snapshots[0]?.resolved.title }} · {{ job.snapshots.length }} 条用例</h2><p>{{ names[job.status] }} · {{ job.mode==='agent'?'动态 Agent':'固定计划' }} · 最近更新 {{ job.updatedAt }}</p><p>{{ job.targetUrl }}</p><p>源码：{{ job.sourceProject ? `${job.sourceProject.id} / ${job.sourceProject.branch??'未知分支'} / ${job.sourceProject.commit??'未记录 SHA'}`:'未关联源码' }}</p><p v-if="job.error" class="error">{{ job.error }}</p><button :disabled="cancelling||!['queued','running'].includes(job.status)" @click="cancel">取消执行</button><span v-if="job.status==='cancelling'"> 已请求取消，等待执行器及当前请求收尾。</span></section>
+      <section v-if="job.deploymentConfirmation" class="panel" aria-label="回归版本对应">
+        <h2>回归版本对应 · 人工审核 v{{ job.deploymentConfirmation.reviewRevision }}</h2>
+        <p :class="{error:job.deploymentConfirmation.status!=='matched'}">{{ job.deploymentConfirmation.status==='matched'?'人工登记匹配（非自动探测证明）':job.deploymentConfirmation.status==='unverified'?'部署版本未核实：本次结果不能证明目标版本已经部署':'部署版本不匹配' }}</p>
+        <p>冻结源码 SHA：{{ job.deploymentConfirmation.targetSha }}<br />人工登记部署 SHA：{{ job.deploymentConfirmation.deployedSha??'未提供' }}</p>
+        <p>确认人：{{ job.deploymentConfirmation.confirmedBy }} · {{ job.deploymentConfirmation.createdAt }}<br />依据：{{ job.deploymentConfirmation.note }}</p>
+        <p>回归任务：{{ job.deploymentConfirmation.regressionId }}<br />变更范围：{{ job.deploymentConfirmation.changeSetId }}</p>
+        <p>以下信息保留创建任务时的记录，不随新部署确认更新。失败关联此变更范围，不代表已确定由某个提交引入。</p>
+      </section>
       <div class="execution-columns">
         <div class="operation-panel panel"><h2>完整操作历史（{{ activities.length }} 步）</h2><p v-if="!activities.length">尚无浏览器操作。任务可能正在排队或生成计划。</p><ol><li v-for="item in activities" :key="`${item.caseKey}:${item.activity.id}`"><strong>{{ item.caseTitle??'执行准备' }} · {{ item.activity.title }}</strong><p>{{ item.activity.purpose }}</p><p>{{ item.activity.status==='running'&&['completed','cancelled','failed','interrupted'].includes(job.status)?'未收到该操作的完成事件':item.activity.status }} · {{ item.activity.message }}</p><details><summary>技术动作与定位依据</summary><code>{{ item.activity.technicalAction }}</code><p>DOM 快照：{{ item.activity.snapshotId??'未记录' }}</p></details></li></ol></div>
         <aside class="panel preview-panel"><h2>Playwright 画面</h2><button @click="preview=!preview">{{ preview?'关闭预览':'重新打开预览' }}</button><template v-if="preview"><p>最近采集：{{ frame?.capturedAt??'尚未收到画面' }}</p><img v-if="frame" :src="frame.dataUrl" alt="Playwright 最近页面画面" /><p>画面连接与执行状态相互独立；关闭预览不会取消任务。</p></template></aside>

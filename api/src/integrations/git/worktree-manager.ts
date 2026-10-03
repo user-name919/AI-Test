@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { mkdir, realpath, lstat } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { join, dirname, relative, isAbsolute } from 'node:path'
 import { database } from '../../storage/database'
 import { getRuntimePaths } from '../../config/paths'
 import { getChangeSet } from '../../modules/regressions/change-sets'
@@ -80,9 +80,16 @@ export async function acquireChangeSetWorktree(changeSetId: string, owner: strin
     }
     if (row.state !== 'ready') throw new Error('源码快照未就绪或上次操作中断；保留现场，不自动重试创建')
     await validateSnapshot(row)
+    // 配置可以指向仓库中的子项目；Provider 的相对 sourceRoots 不能被提升到仓库根。
+    const repositoryRoot = await realpath(await git(row.source_root, ['rev-parse', '--show-toplevel']))
+    const projectOffset = relative(repositoryRoot, row.source_root)
+    if (isAbsolute(projectOffset) || projectOffset === '..' || projectOffset.startsWith('../')) throw new Error('源码项目不在原仓库内')
+    const projectPath = await realpath(join(row.path, projectOffset))
+    const snapshotOffset = relative(row.path, projectPath)
+    if (isAbsolute(snapshotOffset) || snapshotOffset === '..' || snapshotOffset.startsWith('../')) throw new Error('目标版本的源码项目指向快照外部')
     const token = randomUUID()
     database.prepare('INSERT INTO regression_worktree_leases (token,change_set_id,owner,created_at) VALUES (?,?,?,?)').run(token, changeSetId, owner, new Date().toISOString())
-    return { token, path: row.path, sha: row.sha, changeSetId }
+    return { token, path: row.path, projectPath, sha: row.sha, changeSetId }
   })
 }
 

@@ -9,6 +9,10 @@ import { runAgentTest } from '../../agent-test-runner'
 import { runAutomationPlan } from '../../playwright-runner'
 import { generateAutomationPlan } from '../../model'
 import { saveExecution } from './repository'
+import { validateDeploymentForExecution } from '../regressions/deployments'
+import { acquireChangeSetWorktree, releaseChangeSetWorktree } from '../../integrations/git/worktree-manager'
+import { loadProjectConfigs } from '../../project-knowledge/config'
+import { LocalProjectKnowledgeProvider } from '../../project-knowledge/local-project-provider'
 
 let initialized = false
 let working = false
@@ -87,11 +91,16 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
   const project = await provider?.getProjectInfo()
   if (project && (!project.connected || (project.targetOrigins.length && !project.targetOrigins.includes(target.origin)))) throw new Error('源码未连接或测试地址不属于该项目')
   // 所有异步配置查询之后重新固定资产，不接受客户端准备接口返回的快照。
-  const preparation = prepareAssetExecution({ mode:request.mode,targetUrl:request.targetUrl,cases:request.cases })
+  const preparation = prepareAssetExecution({ mode:request.mode,targetUrl:request.targetUrl,cases:request.cases,environmentId:request.environmentId,deploymentConfirmationId:request.deploymentConfirmationId })
+  const deployment = preparation.deploymentConfirmation
+  if (deployment && request.projectId !== deployment.projectId) throw new Error('回归执行必须选择变更范围对应的源码项目')
+  const regressionProjectConfig = deployment ? (await loadProjectConfigs()).find(config => config.id === deployment.projectId) : undefined
+  if (deployment && !regressionProjectConfig) throw new Error('回归源码项目配置不存在')
   if (queue.length >= 20) throw new Error('执行队列已满，请等待当前任务完成')
   const now = new Date().toISOString()
   const job: ExecutionJob = {id:randomUUID(),status:'queued',mode:request.mode,targetUrl:request.targetUrl,snapshots:preparation.snapshots,createdAt:now,updatedAt:now,
-    environmentId:request.environmentId,projectId:request.projectId,sourceProject:project ? {id:project.id,branch:project.branch,commit:project.commit} : undefined}
+    environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,
+    sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit} : undefined}
   writeJob(job)
   queue.push(async () => {
     if (getExecutionJob(job.id)?.status !== 'queued') return
@@ -100,13 +109,24 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
     active.set(job.id,{job,controller})
     writeJob(job)
     let sequence = 0
+    let sourceLease: Awaited<ReturnType<typeof acquireChangeSetWorktree>> | undefined
+    let executionProvider = provider
+    const checkDeployment = () => {
+      if (deployment) validateDeploymentForExecution(deployment.id, { regressionId:deployment.regressionId,reviewRevision:deployment.reviewRevision,environmentId:deployment.environmentId,targetUrl:job.targetUrl })
+    }
     const onEvent = (event: LiveExecutionEvent) => {
       if (event.type === 'browser_frame') database.prepare('INSERT OR REPLACE INTO execution_job_frames (job_id,event_json) VALUES (?,?)').run(job.id,JSON.stringify(event))
       else database.prepare('INSERT INTO execution_job_events (job_id,sequence,event_json) VALUES (?,?,?)').run(job.id,++sequence,JSON.stringify(event))
       writeJob(job)
     }
     try {
-      if (provider && project) {
+      checkDeployment()
+      if (deployment && regressionProjectConfig) {
+        sourceLease = await acquireChangeSetWorktree(deployment.changeSetId, job.id)
+        executionProvider = new LocalProjectKnowledgeProvider({ ...regressionProjectConfig, root: sourceLease.projectPath })
+        const snapshotInfo = await executionProvider.getProjectInfo()
+        if (!snapshotInfo.connected || snapshotInfo.commit !== deployment.targetSha) throw new Error('回归源码快照与固定目标 SHA 不一致')
+      } else if (provider && project) {
         const current = await provider.getProjectInfo()
         if (!current.connected || current.commit !== project.commit || current.branch !== project.branch) throw new Error('排队期间源码版本已变化，请重新确认项目版本再执行')
       }
@@ -122,11 +142,13 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
         plan = automationPlanSchema.parse({name:`${job.snapshots[0]!.resolved.title} · ${casePlans.length} 条用例`,targetUrl:job.targetUrl,steps:casePlans[0]!.steps,casePlans})
       }
       controller.signal.throwIfAborted()
+      checkDeployment()
       const result = request.mode === 'agent'
-        ? await runAgentTest(preparation.goals,environment?.storageStatePath,{projectProvider:provider!,executionId:job.id,onEvent,signal:controller.signal})
+        ? await runAgentTest(preparation.goals,environment?.storageStatePath,{projectProvider:executionProvider!,executionId:job.id,onEvent,signal:controller.signal})
         : await runAutomationPlan(plan,environment?.storageStatePath,{executionId:job.id,onEvent,signal:controller.signal})
       result.caseSnapshots = job.snapshots
-      if (project) result.sourceProject = {id:project.id,branch:project.branch,commit:project.commit}
+      result.sourceProject = job.sourceProject
+      result.deploymentConfirmation = deployment
       saveExecution(result,{environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
       job.executionId = result.id
       job.status = controller.signal.aborted ? 'cancelled' : 'completed' // 完成任务不等于用例通过。
@@ -136,6 +158,7 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
       job.error = error instanceof Error ? error.message : String(error)
       writeJob(job)
     } finally {
+      if (sourceLease) releaseChangeSetWorktree(sourceLease.token)
       active.delete(job.id)
     }
   })

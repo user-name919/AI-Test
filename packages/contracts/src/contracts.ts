@@ -307,7 +307,7 @@ export const automationPlanSchema = z.object({
   targetUrl: z.string().url(),
   steps: z.array(automationStepSchema).min(1).max(50),
   casePlans: z.array(z.object({
-    caseKey: z.string().regex(/^(?:\d+-TC-\d+|published:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+)$/),
+    caseKey: z.string().regex(/^(?:\d+-TC-\d+|published:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+|regression:[a-f0-9-]{36}:[1-9]\d*:\d+)$/),
     title: z.string().min(1),
     contractFingerprint: z.string().min(1),
     contract: caseExecutionContractSchema.optional(),
@@ -356,6 +356,7 @@ export interface ExecutionCaseSnapshot {
 }
 
 export interface ExecutionResult {
+  deploymentConfirmation?: import('./regressions').DeploymentConfirmation
   id: string
   name: string
   targetUrl: string
@@ -513,7 +514,7 @@ export const agentTestGoalSchema = z.object({
     description: z.string().min(1),
   })).min(1).max(20),
   executionContract: z.object({
-    caseKey: z.string().regex(/^(?:\d+-TC-\d+|published:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+)$/),
+    caseKey: z.string().regex(/^(?:\d+-TC-\d+|published:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+|regression:[a-f0-9-]{36}:[1-9]\d*:\d+)$/),
     contract: caseExecutionContractSchema,
     contractFingerprint: z.string().min(1),
   }).optional(),

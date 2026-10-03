@@ -12,6 +12,14 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
   const lines=[`# ${text(execution.name)} · 执行报告`,'',`- 执行 ID：${text(execution.id)}`,`- 批次状态：${labels[execution.status]}`,`- 测试地址：${text(execution.targetUrl)}`,`- 执行模式：${execution.mode==='agent'?'动态 Agent':execution.mode==='plan'?'固定计划':'历史未记录'}`,`- 开始：${text(execution.startedAt)}；结束：${text(execution.finishedAt)}；耗时 ${execution.durationMs} ms`,'', '本报告来自当次保存的契约和运行事实，不重新调用模型评判。失败不直接等同于产品缺陷，需结合证据定位。','']
   if(execution.sourceProject)lines.push(`源码参考：${text(execution.sourceProject.id)} / 分支 ${text(execution.sourceProject.branch)} / SHA ${text(execution.sourceProject.commit)}`,'源码版本不是测试环境部署版本证明。','')
   else lines.push('源码参考：本次未记录。','')
+  if(execution.deploymentConfirmation){
+    const confirmation=execution.deploymentConfirmation
+    lines.push('## 回归版本对应','',`回归任务：${text(confirmation.regressionId)}；ChangeSet：${text(confirmation.changeSetId)}；人工审核 v${confirmation.reviewRevision}`,
+      `目标 SHA：${text(confirmation.targetSha)}；人工登记部署 SHA：${text(confirmation.deployedSha)}`,
+      `对应状态：${confirmation.status==='matched'?'人工登记匹配':confirmation.status==='unverified'?'未核实，不得作为版本匹配证明':'不匹配'}`,
+      `确认人：${text(confirmation.confirmedBy)}；时间：${text(confirmation.createdAt)}；依据：${text(confirmation.note)}`,
+      '这是人工登记，不是平台自动探测证明；失败与变更相关联，不代表已确定由某个提交引入。','')
+  }
   if(execution.error)lines.push(`批次说明：${text(execution.error)}`,'')
   if(!execution.caseResults)lines.push('历史记录未采集逐用例结果；不能用步骤成功数推算用例通过率。','')
   else{

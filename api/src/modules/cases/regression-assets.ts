@@ -6,7 +6,7 @@ import { getRegression } from '../regressions/jobs'
 import { getRegressionReviews, regressionReviewItems } from '../regressions/review'
 import { containsUnprovenDataLiteral } from '../../review-execution-context'
 
-function assets(review: RegressionReview): CaseAsset[] {
+function assets(review: RegressionReview, deploymentVerified = false): CaseAsset[] {
   if (review.content.status !== 'confirmed') return []
   const analysis = getRegression(review.regressionId)
   if (!analysis) throw new Error('回归原始建议不存在，不能构造来源不明的资产')
@@ -20,9 +20,10 @@ function assets(review: RegressionReview): CaseAsset[] {
     const reason = item.verification !== 'browser' ? `该用例要求${item.verification === 'api' ? '接口' : '人工'}验证，不能由当前浏览器执行器替代`
       : contract.uncertainties.length ? '最终口径仍有未确定事项'
         : containsUnprovenDataLiteral(contract) ? '测试数据来源尚待确认'
-          : '回归执行需要部署版本确认；请从回归任务配置执行，当前部署校验接入中'
-    // 部署校验入口完成前，不能从通用执行接口绕过版本核对。
-    const readiness = { agent: { executable: false, reason }, plan: { executable: false, reason } }
+          : deploymentVerified ? undefined : '回归执行需要部署版本确认；请从回归任务配置执行'
+    const agent = reason ? { executable: false, reason } : { executable: true }
+    const plan = reason ? agent : contract.dataBindings.some(binding => binding.mode === 'runtime_dom') ? { executable: false, reason: '固定计划尚需运行时数据预检，请使用动态 Agent' } : agent
+    const readiness = { agent, plan }
     const resolved = { caseKey: id, requirementIndex: -1, caseIndex: index, title: item.title, contract,
       questionAssociation: { mode: 'explicit' as const, questionKeys: [] }, resolvedQuestions: [], readiness,
       contractFingerprint: createHash('sha256').update(JSON.stringify({ regressionId: review.regressionId, revision: review.revision, analysisHash: review.analysisHash, key: item.key, contract, verification: item.verification })).digest('hex') }
@@ -44,9 +45,9 @@ export function listRegressionCaseAssets(regressionId?: string): CaseAsset[] {
   })
 }
 
-export function getRegressionCaseAsset(id: string): CaseAsset | null {
+export function getRegressionCaseAsset(id: string, deploymentVerified = false): CaseAsset | null {
   const match = id.match(/^regression:([a-f0-9-]{36}):([1-9]\d*):(\d+)$/i)
   if (!match) return null
   const review = getRegressionReviews(match[1]!).find(item => item.revision === Number(match[2]))
-  return review ? assets(review).find(item => item.id === id) ?? null : null
+  return review ? assets(review, deploymentVerified).find(item => item.id === id) ?? null : null
 }

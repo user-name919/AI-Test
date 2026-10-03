@@ -32,6 +32,8 @@ export const caseAssetReviewRequestSchema = z.object({
 })
 
 export const executionPreparationSchema = z.object({
+  environmentId: z.string().uuid().optional(),
+  deploymentConfirmationId: z.string().uuid().optional(),
   mode: z.enum(['agent', 'plan']),
   targetUrl: z.string().url().refine(value => ['http:', 'https:'].includes(new URL(value).protocol), '测试地址必须使用 HTTP(S)'),
   cases: z.array(z.object({
@@ -47,6 +49,7 @@ export const executionJobRequestSchema = executionPreparationSchema.extend({
 })
 
 export interface ExecutionJob {
+  deploymentConfirmation?: import('./regressions').DeploymentConfirmation
   id: string
   status: 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'interrupted' | 'cancelled'
   mode: 'agent' | 'plan'

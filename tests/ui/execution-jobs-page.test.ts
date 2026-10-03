@@ -16,24 +16,27 @@ test('后台任务刷新找回、关闭重开预览、历史合并及完整用�
     const snapshots=[0,1].map(index=>({caseId:`c${index}`,revision:1,capturedAt:'now',resolved:{caseKey:`0-TC-${index}`,title:index?'后续验证':'部分搜索',contract,contractFingerprint:'frozen'}}))
     let status='running'
     let executionId:string|undefined
+    const deploymentConfirmation={status:'unverified',reviewRevision:2,targetSha:'a'.repeat(40),confirmedBy:'合成审核人',createdAt:'2026-10-04',note:'尚未核实环境版本',regressionId:'regression-fixture',changeSetId:'change-fixture'}
     const history=[{sequence:1,event:{type:'activity',executionId:'job',caseKey:'0-TC-0',caseTitle:'部分搜索',activity:{id:'same',title:'点击搜索框',purpose:'准备筛选',status:'running',technicalAction:'click e10'}}},{sequence:2,event:{type:'activity',executionId:'job',caseKey:'0-TC-0',caseTitle:'部分搜索',activity:{id:'same',title:'点击搜索框',purpose:'准备筛选',status:'passed',message:'点击完成',technicalAction:'click e10'}}}]
     await page.route('**/api/**',async route=>{
       const url=new URL(route.request().url())
       if(url.pathname.endsWith('/cancel')){status='cancelled';executionId='job';await route.fulfill({json:{job:{id:'job',status,mode:'agent',snapshots,targetUrl:'https://example.test',executionId}}});return}
       if(url.pathname.endsWith('/events')){const events=Number(url.searchParams.get('after'))?[]:history;await route.fulfill({json:{events,nextCursor:2,frame:{type:'browser_frame',capturedAt:'2026-10-04T00:00:00Z',dataUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='}}});return}
       if(url.pathname==='/api/executions/job'){await route.fulfill({json:{execution:{id:'job',status:'cancelled',caseResults:snapshots.map((item,index)=>({caseKey:item.resolved.caseKey,status:index?'not_run':'passed',passedAssertions:index?[]:['verified'],error:index?'批次取消，尚未开始':undefined,startedFromUrl:index?'':'https://example.test',resolvedDataBindings:[],steps:[],trajectory:[]}))}}});return}
-      const job={id:'job',status,mode:'agent',snapshots,targetUrl:'https://example.test',executionId,updatedAt:'now'}
+      const job={id:'job',status,mode:'agent',snapshots,targetUrl:'https://example.test',executionId,updatedAt:'now',deploymentConfirmation}
       await route.fulfill({json:url.pathname==='/api/execution-jobs'?{jobs:[job]}:{job}})
     })
     await page.goto(`http://127.0.0.1:${address.port}/#/execution-jobs/job`)
     await page.getByText('完整操作历史（1 步）').waitFor()
     await page.getByText('点击完成',{exact:false}).waitFor()
+    await page.getByText('部署版本未核实：本次结果不能证明目标版本已经部署',{exact:true}).waitFor()
     await page.getByRole('button',{name:'关闭预览'}).click()
     assert.equal(await page.getByAltText('Playwright 最近页面画面').count(),0)
     await page.getByRole('button',{name:'重新打开预览'}).click()
     assert.equal(await page.getByAltText('Playwright 最近页面画面').count(),1)
     await page.reload()
     await page.getByText('完整操作历史（1 步）').waitFor()
+    await page.getByText('部署版本未核实：本次结果不能证明目标版本已经部署',{exact:true}).waitFor()
     page.once('dialog',dialog=>dialog.accept())
     await page.getByRole('button',{name:'取消执行',exact:true}).click()
     await page.getByText('通过 / 选中总数：1 / 2',{exact:false}).waitFor()
