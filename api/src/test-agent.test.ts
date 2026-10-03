@@ -141,7 +141,21 @@ test('re-observes and continues after a retryable technical action failure', asy
     assert.equal(result.status, 'passed')
     assert.equal(result.executedSteps, 2)
     assert.equal(result.trajectory[0].result?.retryable, true)
+    assert.equal(result.trajectory[0].recovery?.status,'reobserved')
     assert.deepEqual(result.passedAssertions, ['opened'])
+    let failedCalls=0
+    const technicalExecutor={async execute(){failedCalls++;return {ok:false,code:'technical_action_failed',retryable:true,message:'timeout',durationMs:1,pageChanged:false}}} as unknown as SingleActionExecutor
+    const alternating:AgentDecisionProvider={async decide({snapshot}){return {type:'action',snapshotId:snapshot.snapshotId,action:{action:failedCalls%2?'hover':'click',elementRef:'e1'},reason:'基于新快照定位'}}}
+    const exhausted=await new TestAgent(goal,new PageObserver(),technicalExecutor,alternating).run(page)
+    assert.equal(exhausted.status,'blocked')
+    assert.equal(failedCalls,3)
+    assert.deepEqual(exhausted.trajectory.map(item=>item.recovery?.status),['reobserved','reobserved','exhausted'])
+    failedCalls=0
+    const assertionProvider:AgentDecisionProvider={async decide({snapshot}){return {type:'action',snapshotId:snapshot.snapshotId,action:{action:'expectText',text:'下拉框已展开',assertionId:'opened'},reason:'验证业务预期'}}}
+    const assertionFailure=await new TestAgent(goal,new PageObserver(),technicalExecutor,assertionProvider).run(page)
+    assert.equal(assertionFailure.status,'failed')
+    assert.equal(failedCalls,1)
+    assert.equal(assertionFailure.trajectory[0].recovery,undefined)
   } finally {
     await browser.close()
   }

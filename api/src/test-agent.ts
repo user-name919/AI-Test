@@ -29,6 +29,7 @@ export interface AgentTrajectoryItem {
   result?: ToolResult
   projectContext?: unknown
   resolvedDataBinding?: ResolvedDataBinding
+  recovery?: { attempt: number; limit: number; status: 'reobserved' | 'exhausted'; reason: string }
 }
 
 export interface AgentDecisionInput {
@@ -103,6 +104,8 @@ export class TestAgent {
     const trajectory: AgentTrajectoryItem[] = []
     const projectContexts: unknown[] = []
     const screenshots: string[] = []
+    let recoveries=0
+    const recoveryLimit=2
     let snapshot = await this.observer.observe(page)
     const maxIterations = this.policy.maxSteps + 5
 
@@ -205,8 +208,15 @@ export class TestAgent {
       if (result.screenshotPath) screenshots.push(result.screenshotPath)
       trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot), result })
       if (!result.ok) {
-        if (!result.retryable) return this.result('failed', result.message, state, trajectory, screenshots)
+        if (!result.retryable || assertionId) return this.result('failed', result.message, state, trajectory, screenshots)
+        const item=trajectory[trajectory.length-1]
+        if(recoveries>=recoveryLimit){
+          item.recovery={attempt:recoveries,limit:recoveryLimit,status:'exhausted',reason:result.message}
+          return this.result('blocked', `技术操作恢复预算已用尽（${recoveryLimit} 次）：${result.message}`, state, trajectory, screenshots)
+        }
+        recoveries++
         snapshot = await this.observer.observe(page)
+        item.recovery={attempt:recoveries,limit:recoveryLimit,status:'reobserved',reason:result.message}
         continue
       }
       snapshot = await this.observer.observe(page)

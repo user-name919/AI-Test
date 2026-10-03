@@ -390,6 +390,7 @@ export interface ExecutionResult {
       result?: ToolResult
       projectContext?: unknown
       resolvedDataBinding?: ResolvedDataBinding
+      recovery?: { attempt: number; limit: number; status: 'reobserved' | 'exhausted'; reason: string }
     }>
   }
 }
