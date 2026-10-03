@@ -4,6 +4,10 @@ import type { Locator, Page } from 'playwright'
 import { toolResultSchema, type AgentAction, type ResolvedDataBinding, type ToolResult } from '@quality-ai/contracts'
 import type { ElementRegistry } from './element-registry'
 import { readCheckedState } from './checked-state'
+import type { CaseExecutionContract } from '@quality-ai/contracts'
+import type { TestFixture } from '@quality-ai/contracts/test-fixtures'
+import { loadTestFixture, validateFixtureReference } from './modules/test-fixtures/store'
+import { RuntimeDataBindingBlockedError } from './test-data-binding'
 
 function safeArtifactName(value: string) {
   return value.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 80) || 'screenshot'
@@ -47,6 +51,7 @@ export class SingleActionExecutor {
     private readonly registry: ElementRegistry,
     private readonly baseUrl: string,
     private readonly artifactDirectory: string,
+    private readonly contract?: CaseExecutionContract,
   ) {}
 
   async execute(
@@ -56,9 +61,18 @@ export class SingleActionExecutor {
   ): Promise<ToolResult> {
     const startedAt = Date.now()
     const previousUrl = this.page.url()
+    let usedFixture: TestFixture | undefined
     try {
       let screenshotPath: string | undefined
-      if (action.action === 'goto') {
+      if (action.action === 'uploadFile') {
+        validateFixtureReference(action.fixtureId, this.contract)
+        const locator = this.registry.resolve(snapshotId, action.elementRef)
+        let fixture
+        try { fixture = await loadTestFixture(action.fixtureId) }
+        catch { throw new RuntimeDataBindingBlockedError('已登记附件缺失、已改变或不可读取，请回到测试附件检查') }
+        usedFixture = fixture.metadata
+        await locator.setInputFiles({ name: fixture.metadata.name, mimeType: fixture.metadata.mimeType, buffer: fixture.buffer }, { timeout: 10000 })
+      } else if (action.action === 'goto') {
         const destination = new URL(action.path, this.baseUrl)
         const initialTarget = new URL(this.baseUrl)
         if (destination.origin === initialTarget.origin && !destination.search && initialTarget.search) {
@@ -143,7 +157,7 @@ export class SingleActionExecutor {
         await this.page.screenshot({ path: screenshotPath, fullPage: true })
       }
       const pageChanged = previousUrl !== this.page.url()
-        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll'].includes(action.action)
+        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile'].includes(action.action)
       return toolResultSchema.parse({
         ok: true,
         code: 'ok',
@@ -152,12 +166,14 @@ export class SingleActionExecutor {
         durationMs: Date.now() - startedAt,
         pageChanged,
         screenshotPath,
+        usedFixture,
       })
     } catch (error) {
       const classified = classifyError(error)
       return toolResultSchema.parse({
         ok: false,
         ...classified,
+        ...(action.action === 'uploadFile' ? { retryable: false, code: error instanceof RuntimeDataBindingBlockedError ? 'fixture_unavailable' : 'upload_failed', usedFixture } : {}),
         durationMs: Date.now() - startedAt,
         pageChanged: previousUrl !== this.page.url(),
       })

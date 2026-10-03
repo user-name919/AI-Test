@@ -138,7 +138,7 @@ export class TestAgent {
       try {
         this.policy.validate(decision, snapshot, state)
       } catch (error) {
-        if (decision.type === 'resolve_test_data') {
+        if (decision.type === 'resolve_test_data' || error instanceof RuntimeDataBindingBlockedError) {
           return this.result('blocked', `当前环境不满足测试数据前置条件：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
         }
         return this.result('failed', error instanceof Error ? error.message : String(error), state, trajectory, screenshots)
@@ -208,6 +208,7 @@ export class TestAgent {
       if (result.screenshotPath) screenshots.push(result.screenshotPath)
       trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot), result })
       if (!result.ok) {
+        if (result.code === 'fixture_unavailable') return this.result('blocked', result.message, state, trajectory, screenshots)
         if (!result.retryable || assertionId) return this.result('failed', result.message, state, trajectory, screenshots)
         const item=trajectory[trajectory.length-1]
         if(recoveries>=recoveryLimit){

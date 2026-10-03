@@ -27,7 +27,7 @@ const decisionSystemPrompt = `你是 B 端网页自动化测试的单步决策�
 12. 高亮类断言只允许使用当前可观察 elementRef 的 class、data-state 属性；其预期值必须明确表达高亮或匹配（highlight、match、mark、keyword 或中文同义词）。仅看到匹配文本不算高亮通过。当前 DOM 没有这类证据时返回 blocked，不要编造 CSS 或脚本检查。
 
 允许的决策：
-- action：goto、click、fill、selectOption、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
+- action：goto、click、fill、selectOption、uploadFile、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
 - resolve_test_data：为 runtime_dom binding 从当前可见 option 解析真实值
 - need_project_context：resolve_route、search_source、inspect_files
 - finish
@@ -59,6 +59,7 @@ action.action 必须严格使用以下结构之一，不得创造 navigate、rel
 {"action":"expectElementText","elementRef":"e3","text":"预期文字","exact":false,"assertionId":"必要断言 ID"}
 {"action":"expectAttribute","elementRef":"e3","name":"aria-expanded","value":"true","match":"equals","assertionId":"必要断言 ID"}
 {"action":"expectCount","containerRef":"e3","role":"option","name":"数学","exact":false,"count":1,"assertionId":"必要断言 ID"}
+上传使用 {"action":"uploadFile","elementRef":"当前真实文件input引用","fixtureId":"最终契约已授权的附件UUID"}，仅允许fixture/manual中明确ID和依据，不允许本机路径、URL或编造文件。网站可能在选择文件时自动上传，不额外添加提交，也不重复上传已完成动作。上传异常不自动重试，防止重复副作用；动作成功后仍须验证原业务断言。文件控件不可观察时受阻，不猜引用。
 checkedState=mixed 表示半选，unknown 表示无效或未知状态；两者都不是 checked=false。expectChecked 当前只验证明确选中/未选中，不能拿 false 替代半选预期。需要验证半选时必须有受支持的真实状态证据，否则明确受阻，不修改业务预期。
 观察中的 containerRef 指向同一快照内最近的已注册容器，可沿容器链区分表格行或弹窗。同名元素按真实容器关系选择，不能只看名称。dialogs/tables 的 d/t 编号只是摘要，只有其中 elementRef（e编号）存在时才能用于动作；预算截断导致引用缺失时需重新观察，不编造引用。expectCount 应限定已确认容器，局部结果使用目标元素 expectElementText；容器拼接文本不等于某个具体单元格结果，不能用背景文字代替目标结果。
 {"action":"waitFor","durationMs":1000}
@@ -76,6 +77,7 @@ checkedState=mixed 表示半选，unknown 表示无效或未知状态；两者�
 {"type":"resolve_test_data","snapshotId":"当前 UUID","bindingId":"exam-keyword","sourceElementRef":"e8","value":"数学","reason":"从当前可见 option“模考数学一”选择部分关键词"}`
 
 const allowedActionNames = [
+  'uploadFile',
   'goto', 'click', 'fill', 'selectOption', 'check', 'uncheck',
   'press', 'hover', 'scroll',
   'expectVisible', 'expectHidden', 'expectEnabled', 'expectDisabled', 'expectChecked',

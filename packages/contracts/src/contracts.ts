@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { TestFixture } from './test-fixtures'
+import { fixtureMetadataSchema, type TestFixture } from './test-fixtures'
 
 export interface ProjectInfo {
   id:string
@@ -629,6 +629,7 @@ function requireExactlyOneValueReference(
 }
 
 export const agentActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('uploadFile'), ...elementActionBase, fixtureId: z.string().uuid() }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
   z.object({ action: z.literal('click'), ...elementActionBase }),
   z.object({ action: z.literal('fill'), ...elementActionBase, ...valueReferenceFields }).superRefine(requireExactlyOneValueReference),
@@ -717,6 +718,7 @@ export const toolResultSchema = z.object({
   durationMs: z.number().int().nonnegative(),
   pageChanged: z.boolean(),
   screenshotPath: z.string().optional(),
+  usedFixture: fixtureMetadataSchema.optional(),
 })
 
 export type AgentTestGoal = z.infer<typeof agentTestGoalSchema>

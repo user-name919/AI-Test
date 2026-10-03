@@ -1,4 +1,5 @@
 import type { AgentAction, AgentDecision, AgentTestGoal, PageSnapshot, ResolvedDataBinding } from '@quality-ai/contracts'
+import { validateFixtureReference } from './modules/test-fixtures/store'
 
 export interface AgentRuntimeState {
   startedAt: number
@@ -17,13 +18,13 @@ interface TestPolicyOptions {
 }
 
 const elementActions = new Set<AgentAction['action']>([
-  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll',
+  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile',
   'expectVisible', 'expectEnabled', 'expectDisabled', 'expectChecked', 'expectValue',
   'expectElementText', 'expectAttribute',
 ])
 
 const enabledElementActions = new Set<AgentAction['action']>([
-  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press',
+  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'uploadFile',
 ])
 
 export class TestPolicy {
@@ -59,6 +60,7 @@ export class TestPolicy {
     if (state.executedSteps >= this.maxSteps) throw new Error(`测试步骤超过上限 ${this.maxSteps}`)
     if (decision.snapshotId !== snapshot.snapshotId) throw new Error(`动作引用了过期页面快照：${decision.snapshotId}`)
     const action = decision.action
+    if (action.action === 'uploadFile') validateFixtureReference(action.fixtureId, this.goal.executionContract?.contract)
     if (this.isValueReferenceAction(action) && action.valueRef) {
       if (!this.runtimeBinding(action.valueRef) || !state.resolvedDataBindings?.has(action.valueRef)) {
         throw new Error(`未知或未解析的数据引用：${action.valueRef}`)

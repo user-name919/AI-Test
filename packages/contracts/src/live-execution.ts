@@ -107,6 +107,7 @@ function rawAgentAction(action: AgentAction) {
   }
   if (action.action === 'scroll') return `scroll ${action.elementRef ?? 'page'} x=${action.deltaX} y=${action.deltaY}`
   if ('elementRef' in action) {
+    if (action.action === 'uploadFile') return `uploadFile ${action.elementRef} fixtureId=${action.fixtureId}`
     if (action.action === 'fill' || action.action === 'selectOption' || action.action === 'expectValue') return `${action.action} ${action.elementRef} ${action.value !== undefined ? quoted(action.value) : `valueRef=${action.valueRef}`}`
     if (action.action === 'press') return `press ${action.elementRef} ${action.key}`
     if (action.action === 'expectChecked') return `expectChecked ${action.elementRef} ${action.checked}`
@@ -123,6 +124,7 @@ function readableAgentAction(action: AgentAction, snapshot: PageSnapshot) {
   const value = 'value' in action && action.value !== undefined ? quoted(action.value) : 'valueRef' in action ? `已解析数据“${action.valueRef}”` : ''
   if (action.action === 'goto') return `打开页面 ${quoted(action.path)}`
   if (action.action === 'click') return `点击${quoted(name)}`
+  if (action.action === 'uploadFile') return `向${quoted(name)}上传已确认附件 ${action.fixtureId}`
   if (action.action === 'fill') return `在${quoted(name)}中输入${value}`
   if (action.action === 'selectOption') return `在${quoted(name)}中选择${value}`
   if (action.action === 'check') return `选中${quoted(name)}`

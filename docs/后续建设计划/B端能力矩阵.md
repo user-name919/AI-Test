@@ -21,7 +21,7 @@
 | 禁用/启用、输入值、错误提示 | 已支持 | 已支持 | `expectEnabled/expectDisabled/expectValue` 和文本/属性断言；两模式有局部 `expectElementText`。固定旧 expectText 仍是页面范围，局部结果需使用带范围的元素断言 |
 | 匹配关键词高亮 | 部分支持 | 部分支持 | 验证明确 class/data-state 等属性；固定 token 匹配、动态属性匹配规则不同。文本出现不能代替高亮，也未验证像素颜色或视觉规范 |
 | 容器中 option 数量为 0 | 部分支持 | 缺失 | 动态 `expectCount` 可带 containerRef；容器必须可被观察/引用。固定无计数动作 |
-| 选择已配置附件并上传 | 缺失 | 部分支持 | `/#/test-fixtures` 页面登记不可覆盖附件，固定 uploadFile 仅接受契约已授权的附件 UUID；校验内容指纹，报告保存附件元数据。动态上传未接入；真实input上传不等于业务服务端处理成功 |
+| 选择已配置附件并上传 | 部分支持 | 部分支持 | `/#/test-fixtures` 登记不可覆盖附件，两模式 uploadFile 只接受契约授权UUID并保存指纹。动态只操作当前快照中的文件控件，上传异常不自动恢复重试；隐藏输入/文件选择对话框/多文件待扩展，真实input上传不等于业务处理成功 |
 | 点击导出，等待下载并验证文件 | 缺失 | 缺失 | 没有受控 download 监听、文件完成/内容验证及逐用例产物关联。页面出现“下载成功”不是文件已正确生成的证据 |
 | iframe 内控件操作 | 缺失 | 缺失 | observer 使用主 Page 的 document；registry 未记录 frame 上下文；固定定位也以 Page 为根。不能用主页面引用代替 frame 内元素 |
 | 新标签页打开、切回原页面 | 缺失 | 缺失 | 没有 page ID/切换动作、弹出页面生命周期或跨页引用失效规则 |
@@ -48,6 +48,7 @@ node --import tsx --test api/src/fixed-form-actions.test.ts api/src/fixed-locato
 node --import tsx --test api/src/fixed-select-option.test.ts
 node --import tsx --test api/src/fixed-scope.test.ts
 node --import tsx --test api/src/modules/test-fixtures/store.test.ts
+node --import tsx --test api/src/agent-upload.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。
@@ -56,7 +57,7 @@ node --import tsx --test api/src/modules/test-fixtures/store.test.ts
 
 1. 表单动作对齐：固定键盘/勾选/悬停与选中断言已接入；原生 selectOption 已接入有依据的单值选择，运行时原生选项采集仍待扩展。保持人工契约和可读历史；每项验证成功及失败继续。
 2. 表格/弹窗作用域：固定 scope 与局部文本、动态容器引用/父链已接入并验证背景反例；仍需局部重采集与复杂列表验证，不宣称所有表格场景完成。
-3. 受控上传下载：附件登记API和固定上传已接入，继续管理UI、动态动作及下载产物；模型只选择获准附件 ID，不接受任意本机路径。下载完成与内容验证分开，失败保留证据。
+3. 受控上传下载：附件登记API/UI及两模式单文件上传已接入，继续下载产物与上传控件覆盖；模型只选择获准附件 ID，不接受任意本机路径。下载完成与内容验证分开，失败保留证据。
 4. 页面/框架上下文：先完善引用身份和生命周期，再支持 iframe/新页；切换后旧引用拒绝，不静默操作原页面。
 5. 有副作用动作：执行前明确授权与预期，技术超时后核对实际状态，不盲目重复提交。
 

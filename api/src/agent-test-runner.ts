@@ -145,7 +145,7 @@ export async function runAgentTest(
         await context.tracing.startChunk({ title: `${contract.caseKey} ${goal.name}` })
         chunkStarted = true
         const observer = new PageObserver()
-        const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, caseDirectory)
+        const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, caseDirectory, goal.executionContract?.contract)
         const caseGoal: AgentTestGoal = {
           ...goal,
           previousCaseSummaries: structuredClone(previousCaseSummaries),
@@ -181,6 +181,7 @@ export async function runAgentTest(
           item.result?.ok && item.decision.type === 'action' && 'assertionId' in item.decision.action
             ? [item.decision.action.assertionId] : [])
       } finally {
+        checkpoint.usedFixtures = checkpoint.trajectory.flatMap(item => item.result?.usedFixture ? [item.result.usedFixture] : [])
         const failure = sessionFailure()
         if (options.signal?.aborted) {
           checkpoint.status = 'cancelled'
