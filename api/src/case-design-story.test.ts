@@ -140,6 +140,8 @@ test('故事 A 后端：冲突材料到三类搜索、人工口径、局部重�
     const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message))
     await page.goto(`http://127.0.0.1:${(web.httpServer!.address() as AddressInfo).port}/#/case-designs/${design.id}?runId=${rechecked.id}&caseId=${unchanged.id}&publicationId=${second.id}`)
     await page.getByRole('heading',{name:'发布 v2 · 只读快照',exact:true}).waitFor()
+    await page.getByRole('heading',{name:'原文审查范围',exact:true}).waitFor()
+    await page.getByText('已审查 2 块 · 未完成 0 块。',{exact:false}).waitFor()
     assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'人工修改的完整搜索目标')
     await page.getByLabel('测试目标',{exact:true}).fill('浏览器保存的最终完整搜索目标')
     await page.getByRole('button',{name:'保存人工审核',exact:true}).click()
