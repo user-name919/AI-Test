@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { designReviewContentSchema, type DesignReview, type DesignReviewContent, type DesignRun, type EvidenceRef } from '@quality-ai/contracts/case-design'
 import ContractEditor from './ContractEditor.vue'
+import ContractView from './ContractView.vue'
+import PublicationPanel from './PublicationPanel.vue'
 import { designRequest } from './useCaseDesign'
 const props=defineProps<{designId:string;run:DesignRun}>()
 const emit=defineEmits<{locate:[value:EvidenceRef]}>()
@@ -76,7 +78,7 @@ function issueStatus(id:string,event:Event){const status=(event.target as HTMLSe
       <nav aria-label="审核用例列表"><button v-for="item in run.output.cases" :key="item.id" :class="{selected:item.id===activeId}" @click="router.replace({query:{...route.query,caseId:item.id}})">{{ content.cases[item.id]?.title || item.title }}<small>{{ {draft:'待审核草稿',confirmed:'人工已确认',excluded:'已排除'}[content.cases[item.id]?.status??'draft'] }}</small></button></nav>
       <div v-if="current" class="case-detail"><fieldset :disabled="busy"><legend>完整人工口径</legend><label>用例标题<input v-model="current.title" /></label><label>审核状态<select aria-label="审核状态" v-model="current.status"><option value="draft">草稿，尚未确认</option><option value="confirmed">人工确认</option><option value="excluded">本次排除</option></select></label><label v-if="current.status==='excluded'">排除理由<textarea v-model="current.exclusionReason" /></label><label>验证方式<select aria-label="验证方式" v-model="current.verification"><option value="browser">浏览器</option><option value="api">接口</option><option value="manual">人工</option></select></label><label>验证方式依据<input v-model="current.verificationReason" /></label><ContractEditor v-model="current.contract" /></fieldset>
         <h3>此用例原文依据</h3><div v-for="fact in relatedFacts" :key="fact.id"><p>{{ fact.statement }}（{{ fact.kind }}）</p><button v-for="(reference,index) in fact.evidence" :key="index" @click="emit('locate',reference)">定位依据：{{ reference.quote }}</button></div>
-        <details><summary>AI 原始建议（只读，不是人工最终口径）</summary><pre>{{ JSON.stringify(original?.contract,null,2) }}</pre></details>
+        <details><summary>AI 原始建议（只读，不是人工最终口径）</summary><ContractView v-if="original" :contract="original.contract" /></details>
       </div><p v-else>指定用例不存在，请从列表选择。</p>
     </div>
     <fieldset v-if="ready" :disabled="busy"><legend>问题决定、质量处置与范围</legend>
@@ -85,6 +87,7 @@ function issueStatus(id:string,event:Event){const status=(event.target as HTMLSe
       <article v-for="fact in run.output.factModel?.consolidatedFacts" :key="fact.id"><label><input type="checkbox" :checked="fact.id in content.excludedFacts" @change="($event.target as HTMLInputElement).checked ? content.excludedFacts[fact.id]='' : delete content.excludedFacts[fact.id]" />排除规则：{{ fact.statement }}</label><label v-if="fact.id in content.excludedFacts">排除规则理由<input v-model="content.excludedFacts[fact.id]" /></label></article>
     </fieldset>
     <details><summary>历史审核记录（{{ history.length }}）</summary><details v-for="item in history" :key="item.id"><summary>v{{ item.revision }} · {{ item.createdAt }}</summary><pre>{{ JSON.stringify(item.content,null,2) }}</pre></details></details>
+    <PublicationPanel :design-id="designId" :review="history[0]?.runId===run.id?history[0]:undefined" :dirty="dirty" :disabled="!ready||busy||!!conflict" />
   </section>
 </template>
 <style scoped>

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { createServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
-import type { CaseDesign, DesignRun, DesignReview } from '@quality-ai/contracts/case-design'
+import type { CaseDesign, DesignRun, DesignReview, DesignPublication } from '@quality-ai/contracts/case-design'
 import { createEvidenceDocuments } from '../../api/src/modules/case-design/documents'
 
 test('独立设计页面导入、阶段条件、原文定位与刷新，无需环境', async () => {
@@ -15,6 +15,9 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
   let failedOnce=true
   let reviews:DesignReview[]=[]
   let reviewConflict=true
+  const publications:DesignPublication[]=[]
+  let publishBlocked=true
+  let invalidDownload=true
   const server=await createServer({root:new URL('../../web',import.meta.url).pathname,configFile:false,plugins:[vue()],server:{host:'127.0.0.1',port:0}})
   let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined
   try {
@@ -25,6 +28,18 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     const errors:string[]=[]; page.on('pageerror',error=>errors.push(error.message))
     await page.route('**/api/**',async route=> {
       const path=new URL(route.request().url()).pathname
+      if(path.endsWith('/publications')){await route.fulfill({json:{publications}});return}
+      if(path.endsWith('/publish')) {
+        assert.equal(route.request().postDataJSON().expectedRevision,2)
+        if(publishBlocked){publishBlocked=false;await route.fulfill({status:409,json:{error:'发布条件尚未满足',reasons:['合成阻塞：请先确认范围']}});return}
+        const item=reviews[0].content.cases['case-1']
+        const publication:DesignPublication={id:'published',designId:design.id,version:1,createdAt:design.createdAt,contentHash:'fixture-hash',snapshot:{design:structuredClone(design),run:structuredClone(runs[0]),review:structuredClone(reviews[0]),cases:[{id:'case-1',scenarioId:'s1',factIds:['f1'],questionIds:[],title:item.title,contract:structuredClone(item.contract),verification:item.verification,verificationReason:item.verificationReason}]}}
+        publications.push(publication);await route.fulfill({status:201,json:{publication}});return
+      }
+      if(path.endsWith('/markdown')) {
+        if(invalidDownload){invalidDownload=false;await route.fulfill({contentType:'text/html',body:'<h1>服务暂不可用</h1>'});return}
+        await route.fulfill({contentType:'text/markdown',headers:{'content-disposition':'attachment; filename="case-design-v1.md"'},body:'# 合成人工版本\n人工修改后的目标'});return
+      }
       if(path.endsWith('/reviews')) {
         if(route.request().method()==='GET'){await route.fulfill({json:{reviews}});return}
         const body=route.request().postDataJSON()
@@ -73,6 +88,7 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.getByLabel('测试目标',{exact:true}).fill('人工修改后的目标')
     await page.getByLabel('预期断言（每行一项）',{exact:true}).fill('匹配部分高亮\n来源选项仍存在')
     await page.getByLabel('审核状态',{exact:true}).selectOption('confirmed')
+    assert.equal(await page.getByRole('button',{name:/发布已保存审核/}).isDisabled(),true)
     await page.reload()
     await page.getByText('已恢复当前标签页未保存草稿；保存时仍会校验服务端版本。',{exact:true}).waitFor()
     assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'人工修改后的目标')
@@ -86,8 +102,35 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     assert.ok((await page.getByRole('button',{name:'保存人工审核',exact:true}).boundingBox())!.width>100)
     assert.deepEqual(reviews[0].content.cases['case-1'].contract.expectedAssertions,['匹配部分高亮','来源选项仍存在'])
     assert.equal(runs[0].output.cases![0].contract.objective,'AI建议目标')
+    await page.getByRole('button',{name:'发布已保存审核 v2',exact:true}).click()
+    await page.getByRole('alert').filter({hasText:'合成阻塞：请先确认范围'}).waitFor()
+    await page.getByRole('button',{name:'发布已保存审核 v2',exact:true}).click()
+    await page.getByRole('heading',{name:'发布 v1 · 只读快照',exact:true}).waitFor()
+    assert.equal(await page.locator('.publication-preview').getByText('人工修改后的目标',{exact:true}).count(),1)
+    await page.getByLabel('测试目标',{exact:true}).fill('尚未保存的新目标')
+    assert.equal(await page.getByRole('button',{name:/发布已保存审核/}).isDisabled(),true)
+    assert.equal(await page.locator('.publication-preview').getByText('人工修改后的目标',{exact:true}).count(),1)
+    let downloads=0
+    page.on('download',()=>downloads++)
+    await page.getByRole('link',{name:'下载此版本 Markdown',exact:true}).click()
+    await page.getByRole('alert').filter({hasText:'服务器未返回 Markdown 文件'}).waitFor()
+    assert.equal(downloads,0)
+    const downloadPromise=page.waitForEvent('download')
+    await page.getByRole('link',{name:'下载此版本 Markdown',exact:true}).click()
+    const downloaded=await downloadPromise
+    assert.equal(downloaded.suggestedFilename(),'case-design-v1.md')
+    const stream=await downloaded.createReadStream()
+    assert.ok(stream)
+    const chunks:Buffer[]=[]
+    for await(const chunk of stream)chunks.push(Buffer.from(chunk))
+    assert.equal(Buffer.concat(chunks).toString(),'# 合成人工版本\n人工修改后的目标')
+    await page.reload()
+    await page.getByRole('heading',{name:'发布 v1 · 只读快照',exact:true}).waitFor()
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'尚未保存的新目标')
+    assert.match(page.url(),/publicationId=published/)
     assert.ok((await page.locator('main').boundingBox())!.x<200)
     if(process.env.UI_DESIGN_SCREENSHOT_PATH) await page.screenshot({path:process.env.UI_DESIGN_SCREENSHOT_PATH,fullPage:true})
+    if(process.env.UI_PUBLICATION_SCREENSHOT_PATH) await page.locator('.design-publications').screenshot({path:process.env.UI_PUBLICATION_SCREENSHOT_PATH})
     await page.setViewportSize({width:390,height:844})
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
     assert.deepEqual(errors,[])
