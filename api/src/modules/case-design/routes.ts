@@ -6,8 +6,30 @@ import { createCaseDesign, getCaseDesign, listCaseDesigns, listDesignRuns } from
 import { cancelDesignRun, startDesignRun } from './jobs'
 import { designReviewRequestSchema } from '@quality-ai/contracts/case-design'
 import { listDesignReviews, saveDesignReview } from './review'
+import { exportPublicationMarkdown, listDesignPublications, publishDesign } from './publisher'
 
 export async function handleCaseDesignRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const publishMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/publish$/)
+  if (publishMatch && request.method === 'POST') {
+    const id = decodeURIComponent(publishMatch[1])
+    if (!getCaseDesign(id)) return json(response, 404, { error: '用例设计任务不存在' })
+    const body = await readJson(request)
+    if (!Number.isInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) return json(response, 400, { error: '请提供当前人工审核 expectedRevision' })
+    const result = publishDesign(id, Number(body.expectedRevision))
+    return 'errors' in result ? json(response, 409, { error: '发布条件尚未满足', reasons: result.errors }) : json(response, 201, result)
+  }
+  const publicationMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/publications(?:\/([^/?]+)(\/markdown)?)?$/)
+  if (publicationMatch && request.method === 'GET') {
+    const id = decodeURIComponent(publicationMatch[1])
+    if (!getCaseDesign(id)) return json(response, 404, { error: '用例设计任务不存在' })
+    const publications = listDesignPublications(id)
+    if (!publicationMatch[2]) return json(response, 200, { publications })
+    const publication = publications.find(item => item.id === decodeURIComponent(publicationMatch[2]))
+    if (!publication) return json(response, 404, { error: '发布版本不存在或不属于当前任务' })
+    if (!publicationMatch[3]) return json(response, 200, { publication })
+    response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8', 'content-disposition': `attachment; filename="case-design-v${publication.version}.md"` })
+    response.end(exportPublicationMarkdown(publication)); return true
+  }
   const reviewMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/reviews$/)
   if (reviewMatch && (request.method === 'GET' || request.method === 'POST')) {
     const id = decodeURIComponent(reviewMatch[1])

@@ -88,6 +88,19 @@ export interface DesignReview {
   createdAt: string
   content: DesignReviewContent
 }
+export interface DesignPublication {
+  id: string
+  designId: string
+  version: number
+  createdAt: string
+  contentHash: string
+  snapshot: {
+    design: CaseDesign
+    run: DesignRun
+    review: DesignReview
+    cases: Array<Omit<CaseDesignDraft, 'requiresReview'>>
+  }
+}
 export type CaseDesignDraft = z.infer<typeof generatedCaseSchema> & {
   id: string
   scenarioId: string
