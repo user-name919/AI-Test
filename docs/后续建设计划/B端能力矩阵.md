@@ -21,7 +21,7 @@
 | 禁用/启用、输入值、错误提示 | 已支持 | 已支持 | `expectEnabled/expectDisabled/expectValue` 和文本/属性断言；两模式有局部 `expectElementText`。固定旧 expectText 仍是页面范围，局部结果需使用带范围的元素断言 |
 | 匹配关键词高亮 | 部分支持 | 部分支持 | 验证明确 class/data-state 等属性；固定 token 匹配、动态属性匹配规则不同。文本出现不能代替高亮，也未验证像素颜色或视觉规范 |
 | 容器中 option 数量为 0 | 部分支持 | 缺失 | 动态 `expectCount` 可带 containerRef；容器必须可被观察/引用。固定无计数动作 |
-| 选择已配置附件并上传 | 缺失 | 部分支持 | `/api/test-fixtures` 登记不可覆盖附件，固定 uploadFile 仅接受契约已授权的附件 UUID；校验内容指纹，报告保存附件元数据。当前需API登记，管理UI及动态上传未接入；真实input上传不等于业务服务端处理成功 |
+| 选择已配置附件并上传 | 缺失 | 部分支持 | `/#/test-fixtures` 页面登记不可覆盖附件，固定 uploadFile 仅接受契约已授权的附件 UUID；校验内容指纹，报告保存附件元数据。动态上传未接入；真实input上传不等于业务服务端处理成功 |
 | 点击导出，等待下载并验证文件 | 缺失 | 缺失 | 没有受控 download 监听、文件完成/内容验证及逐用例产物关联。页面出现“下载成功”不是文件已正确生成的证据 |
 | iframe 内控件操作 | 缺失 | 缺失 | observer 使用主 Page 的 document；registry 未记录 frame 上下文；固定定位也以 Page 为根。不能用主页面引用代替 frame 内元素 |
 | 新标签页打开、切回原页面 | 缺失 | 缺失 | 没有 page ID/切换动作、弹出页面生命周期或跨页引用失效规则 |
