@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import test from 'node:test'
 import type { ChangeSet } from '@quality-ai/contracts/regressions'
+import { createServer } from 'node:http'
+import { randomUUID } from 'node:crypto'
 
 const directory = mkdtempSync(join(tmpdir(), 'quality-ai-change-sets-'))
 process.env.QUALITY_AI_DATA_ROOT = directory
@@ -50,4 +52,50 @@ test('实际 API 预览与冻结使用服务端事实，刷新与分支移动不
   assert.equal((await post('/api/change-sets/preview', { projectId: 'fixture', root: '/arbitrary', comparison: { mode: 'endpoints', baseRef: base, targetRef: 'main' } })).status, 400)
   const persisted = JSON.parse(execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `const {getChangeSet}=await import('./api/src/modules/regressions/change-sets.ts'); process.stdout.write(JSON.stringify(getChangeSet('${preview.id}')))`], { cwd: process.cwd().endsWith('/api') ? join(process.cwd(), '..') : process.cwd(), env: process.env, encoding: 'utf8' }))
   assert.deepEqual(persisted, frozen, '新进程读取仍是相同冻结事实')
+
+  let calls = 0
+  let hold = false
+  let release = () => {}
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const model = createServer(async (_request, response) => {
+    calls++
+    if (hold) await gate
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ output_text: JSON.stringify({ risks: [], cases: [], limitations: ['夹具未提出风险，不表示业务通过'] }) }))
+  })
+  await new Promise<void>(resolve => model.listen(0, '127.0.0.1', resolve))
+  t.after(async () => { release(); model.closeAllConnections(); await new Promise<void>(resolve => model.close(() => resolve())) })
+  process.env.MODEL_API_KEY = 'synthetic-only'
+  process.env.MODEL_BASE_URL = `http://127.0.0.1:${(model.address() as AddressInfo).port}`
+  const input = { changeSetId: frozen.id, expectedHash: frozen.factsHash, requestId: randomUUID() }
+  const createdResponse = await post('/api/regressions', input)
+  assert.equal(createdResponse.status, 202)
+  const created = (await createdResponse.json()).regression
+  assert.equal(created.status, 'queued')
+  assert.equal((await (await post('/api/regressions', input)).json()).regression.id, created.id)
+  const waitFor = async (check: () => Promise<boolean>) => {
+    for (let index = 0; index < 300; index++) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 10)) }
+    throw new Error('后台任务未及时达到预期状态')
+  }
+  const detail = async (id: string) => (await (await fetch(`${url}/api/regressions/${id}`)).json()).regression
+  await waitFor(async () => (await detail(created.id)).status === 'completed')
+  const completed = await detail(created.id)
+  assert.equal(completed.targetSha, target)
+  assert.equal(completed.generation.reviewStatus, 'pending')
+  assert.equal(completed.generation.batches.length, 1)
+  assert.ok(completed.sourceImpact.trees.length >= 2)
+  assert.equal(calls, 1)
+  hold = true
+  const cancelling = (await (await post('/api/regressions', { ...input, requestId: randomUUID() })).json()).regression
+  await waitFor(async () => calls === 2)
+  assert.equal((await (await post(`/api/regressions/${cancelling.id}/cancel`, {})).json()).regression.status, 'cancelled')
+  release()
+  await new Promise(resolve => setTimeout(resolve, 50))
+  assert.equal((await detail(cancelling.id)).status, 'cancelled', '迟到模型结果不覆盖取消')
+  assert.equal((await detail(cancelling.id)).generation.batches.length, 0)
+  const orphan = { ...completed, id: randomUUID(), status: 'running' }
+  database.prepare('INSERT INTO regression_analyses (id,request_id,record_json) VALUES (?,?,?)').run(orphan.id, randomUUID(), JSON.stringify(orphan))
+  const restarted = JSON.parse(execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `const m=await import('./api/src/modules/regressions/jobs.ts');m.initializeRegressionJobs();process.stdout.write(JSON.stringify(m.getRegression('${orphan.id}')))`], { cwd: process.cwd().endsWith('/api') ? join(process.cwd(), '..') : process.cwd(), env: process.env, encoding: 'utf8' }))
+  assert.equal(restarted.status, 'interrupted')
+  assert.deepEqual(restarted.generation, completed.generation)
 })

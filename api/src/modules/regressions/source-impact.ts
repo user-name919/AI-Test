@@ -10,16 +10,16 @@ const extensions = ['.vue', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json
 const sourcePattern = /\.(vue|[cm]?[jt]sx?)$/
 interface ImpactBudget { maxFiles: number; maxBytes: number; maxTrees: number }
 
-async function readGit(root: string, args: string[]) {
+async function readGit(root: string, args: string[], signal?: AbortSignal) {
   const { stdout } = await execute('git', ['--no-optional-locks', ...args], {
-    cwd: root, encoding: 'utf8', timeout: 15_000, maxBuffer: 4 * 1024 * 1024,
+    cwd: root, encoding: 'utf8', timeout: 15_000, maxBuffer: 4 * 1024 * 1024, signal,
     env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))), GIT_NO_LAZY_FETCH: '1', GIT_TERMINAL_PROMPT: '0' },
   })
   return stdout
 }
 
 /** 词法候选图，不执行源码/构建配置，不承诺识别运行时注入或完整调用图。 */
-export async function collectSourceImpact(root: string, facts: LocalChangeFacts, budget: ImpactBudget = { maxFiles: 400, maxBytes: 2 * 1024 * 1024, maxTrees: 8 }): Promise<SourceImpact> {
+export async function collectSourceImpact(root: string, facts: LocalChangeFacts, budget: ImpactBudget = { maxFiles: 400, maxBytes: 2 * 1024 * 1024, maxTrees: 8 }, signal?: AbortSignal): Promise<SourceImpact> {
   if (![budget.maxFiles, budget.maxBytes, budget.maxTrees].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('源码读取预算必须为正整数')
   const changes = new Map<string, Set<string>>()
   const add = (sha: string, paths: string[]) => { if (!changes.has(sha)) changes.set(sha, new Set()); for (const path of paths) changes.get(sha)!.add(path) }
@@ -36,11 +36,12 @@ export async function collectSourceImpact(root: string, facts: LocalChangeFacts,
   let filesRead = 0
   let bytesRead = 0
   for (const [sha, changed] of changes) {
+    signal?.throwIfAborted()
     if (!/^[a-f0-9]{40,64}$/.test(sha)) throw new Error('源码分析只接受已固定 SHA')
     if (result.trees.length >= budget.maxTrees) { result.skippedShas.push(sha); continue }
     const tree: SourceImpact['trees'][number] = { sha, changedFiles: [...changed], scannedFiles: [], skippedFiles: [], edges: [], affectedFiles: [], unresolved: [] }
     result.trees.push(tree)
-    const entries = (await readGit(root, ['ls-tree', '-r', '-z', '-l', sha])).split('\0').filter(Boolean).map(record => {
+    const entries = (await readGit(root, ['ls-tree', '-r', '-z', '-l', sha], signal)).split('\0').filter(Boolean).map(record => {
       const tab = record.indexOf('\t')
       const [mode, type, oid, size] = record.slice(0, tab).trim().split(/\s+/)
       return { path: record.slice(tab + 1), mode, type, oid: oid!, size: Number(size) }
@@ -48,13 +49,14 @@ export async function collectSourceImpact(root: string, facts: LocalChangeFacts,
     const paths = new Set(entries.filter(entry => entry.type === 'blob' && entry.mode !== '120000').map(entry => entry.path))
     entries.sort((left, right) => Number(changed.has(right.path)) - Number(changed.has(left.path)) || left.path.localeCompare(right.path))
     for (const entry of entries) {
+      signal?.throwIfAborted()
       const skip = (reason: string) => tree.skippedFiles.push({ path: entry.path, reason })
       if (entry.mode === '120000' || entry.type !== 'blob') { skip('软链或子模块，不跟随读取'); continue }
       if (!sourcePattern.test(entry.path)) { skip('非脚本文件，未进行依赖分析'); continue }
       if (entry.path.split('/').some(part => ['node_modules', 'dist', 'vendor'].includes(part))) { skip('生成物或第三方目录'); continue }
       if (entry.size > 128 * 1024) { skip('单文件超过 128 KiB'); continue }
       if (filesRead >= budget.maxFiles || bytesRead + entry.size > budget.maxBytes) { skip('本次文件数或字节预算已用尽'); continue }
-      const content = await readGit(root, ['cat-file', 'blob', entry.oid])
+      const content = await readGit(root, ['cat-file', 'blob', entry.oid], signal)
       filesRead++; bytesRead += entry.size
       if (content.includes('\0') || content.startsWith('version https://git-lfs.github.com/spec/')) { skip('二进制或 LFS 指针，未展开'); continue }
       tree.scannedFiles.push(entry.path)
@@ -87,10 +89,10 @@ export async function collectSourceImpact(root: string, facts: LocalChangeFacts,
   return result
 }
 
-export async function analyzeChangeSetSource(changeSetId: string, owner: string): Promise<SourceImpact> {
+export async function analyzeChangeSetSource(changeSetId: string, owner: string, signal?: AbortSignal): Promise<SourceImpact> {
   const changeSet = getChangeSet(changeSetId)
   if (!changeSet || changeSet.status !== 'frozen') throw new Error('必须先冻结变更范围')
   const lease = await acquireChangeSetWorktree(changeSetId, owner)
-  try { return await collectSourceImpact(lease.path, changeSet.facts) }
+  try { signal?.throwIfAborted(); return await collectSourceImpact(lease.path, changeSet.facts, undefined, signal) }
   finally { releaseChangeSetWorktree(lease.token) }
 }

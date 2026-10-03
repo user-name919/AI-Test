@@ -90,3 +90,18 @@ export interface RegressionGeneration {
   omittedEvidenceIds: string[]
   limitations: string[]
 }
+export const createRegressionSchema = z.object({ changeSetId: z.string().uuid(), expectedHash: z.string().regex(/^[a-f0-9]{64}$/), requestId: z.string().uuid() }).strict()
+export interface RegressionAnalysis {
+  id: string
+  changeSetId: string
+  factsHash: string
+  targetSha: string
+  projectId: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+  stage: 'source' | 'generating' | 'finished'
+  createdAt: string
+  updatedAt: string
+  sourceImpact?: SourceImpact
+  generation?: RegressionGeneration
+  error?: string
+}
