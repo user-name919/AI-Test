@@ -39,6 +39,7 @@ yarn-error.log*
 /api/dist/
 /.wrangler/
 /outputs/
+/.promptfoo/
 /work/
 /data/
 

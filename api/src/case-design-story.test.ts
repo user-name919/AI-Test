@@ -9,6 +9,9 @@ import { createServer as createViteServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
 import type { CaseDesign, DesignRun, DesignReviewDraft, DesignPublication, RequirementFact } from '@quality-ai/contracts/case-design'
+import CaseDesignProvider from '../../evals/case-design/provider'
+import evaluationTests from '../../evals/case-design/samples'
+import checkEvaluation from '../../evals/case-design/assertions'
 
 test('故事 A 后端：冲突材料到三类搜索、人工口径、局部重生成、不可变发布导出',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'quality-ai-story-a-'))
@@ -99,6 +102,28 @@ test('故事 A 后端：冲突材料到三类搜索、人工口径、局部重�
     assert.deepEqual(new Set([extracted,modeled,planned,generated,checked].flatMap(run=>run.skills.map(skill=>skill.id))),new Set(['requirement-facts','test-data-design','case-quality-review']))
     assert.equal(calls.filter(stage=>stage==='generating').length,4)
     assert.equal(JSON.stringify(second).includes('synthetic-story-key'),false)
+    assert.equal(evaluationTests().length,12)
+    assert.throws(()=>new CaseDesignProvider({config:{variant:'legacy',legacySourceHash:'changed'}}),/基线发生变化/)
+    process.env.QUALITY_AI_EVAL_MODE='stub'
+    const evalInput=JSON.stringify({sampleId:'story-smoke',documents:design.documents.map(document=>({fileName:document.fileName,role:document.role,content:document.blocks.map(block=>block.text).join('\n')}))})
+    const providerOutputs=[]
+    for(const variant of ['pipeline','skills'] as const){
+      const result=await new CaseDesignProvider({config:{variant}}).callApi(evalInput)
+      assert.equal(result.error,undefined)
+      const output=JSON.parse(result.output!)
+      assert.equal(output.evidenceMode,'stub')
+      assert.equal(output.humanReview,'pending')
+      assert.equal(output.stages.length,5)
+      assert.equal(output.output.cases.length,3)
+      assert.equal(output.stages.flatMap((run:DesignRun)=>run.skills).length>0,variant==='skills')
+      assert.equal(result.output!.includes('synthetic-story-key'),false)
+      assert.equal(checkEvaluation(result.output!).pass,true)
+      const invalid=structuredClone(output);invalid.stages[0].inputHash='wrong-version'
+      assert.equal(checkEvaluation(JSON.stringify(invalid)).pass,false)
+      providerOutputs.push(output)
+    }
+    assert.equal(providerOutputs[0].inputHash,providerOutputs[1].inputHash)
+    assert.equal(providerOutputs[0].modelConfigHash,providerOutputs[1].modelConfigHash)
     // No page.route mocks: browser -> Vite proxy -> real HTTP API -> temporary SQLite.
     web=await createViteServer({root:new URL('../../web',import.meta.url).pathname,configFile:false,plugins:[vue()],server:{host:'127.0.0.1',port:0,proxy:{'/api':origin}}})
     await web.listen()

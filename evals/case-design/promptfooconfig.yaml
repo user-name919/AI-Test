@@ -1,0 +1,29 @@
+description: 知测 AI 用例生成评估（所有语义期望待人工审核）
+prompts:
+  - '{{payload}}'
+providers:
+  - id: file://./provider.ts
+    label: 旧单次生成
+    config:
+      variant: legacy
+      legacySourceHash: 0c6858149151ffedb68980b359c72fe9e11c3c2aeaa54972fe171ddb95b65150
+  - id: file://./provider.ts
+    label: 五阶段无技能
+    config:
+      variant: pipeline
+  - id: file://./provider.ts
+    label: 五阶段加技能
+    config:
+      variant: skills
+tests: file://./samples.ts
+defaultTest:
+  assert:
+    - type: javascript
+      value: file://./assertions.ts
+      metric: 机器结构检查_非质量通过
+evaluateOptions:
+  maxConcurrency: 1
+  repeat: 3
+  cache: false
+  timeoutMs: 1200000
+sharing: false
