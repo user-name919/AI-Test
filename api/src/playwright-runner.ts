@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { chromium, type Browser, type Locator, type Page } from 'playwright'
 import { automationPlanSchema, type AutomationPlan, type CaseExecutionResult, type ExecutionResult, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
+import { validateFixedSelectData } from './fixed-select-option'
 import { startLivePageStream } from './live-page-stream'
 import { PageObserver } from './page-observer'
 import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-runner'
@@ -135,6 +136,12 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               await locatorFor(page, step.locator)[step.action]({ timeout: 10_000 })
             } else if (step.action === 'press') {
               await locatorFor(page, step.locator).press(step.key, { timeout: 10_000 })
+            } else if (step.action === 'selectOption') {
+              validateFixedSelectData(step.value, casePlan.contract)
+              await locatorFor(page, step.locator).selectOption(
+                step.optionBy === 'label' ? { label: step.value } : { value: step.value },
+                { timeout: 10_000 },
+              )
             } else if (step.action === 'fill') {
               const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`输入引用尚未解析：${step.valueRef}`)

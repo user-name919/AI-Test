@@ -24,6 +24,8 @@ test('固定规划使用最终契约，拒绝异地地址和未解析引用，�
   try{
     const result=await generateFixedPlan('http://example.test',item,undefined,config)
     assert.equal(result.steps[0].action,'expectText')
+    output={name:'计划',targetUrl:'http://example.test',steps:[{action:'selectOption',locator:{by:'label',value:'状态'},value:'guessed',optionBy:'value'},{action:'expectText',assertionIndex:0,text:'人工最终预期'}]}
+    await assert.rejects(generateFixedPlan('http://example.test',item,undefined,config),/不得猜测/)
     output={name:'计划',targetUrl:'http://other.test',steps:[{action:'expectText',assertionIndex:0,text:'不应执行'}]}
     await assert.rejects(generateFixedPlan('http://example.test',item,undefined,config),/地址/)
     output={name:'计划',targetUrl:'http://example.test',steps:[{action:'fill',locator:{by:'label',value:'查询'},valueRef:'missing'}]}
