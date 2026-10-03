@@ -2,6 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { designReviewContentSchema, type DesignReview, type DesignReviewContent } from '@quality-ai/contracts/case-design'
 import { database } from '../../storage/database'
 import { getCaseDesign, listDesignRuns } from './repository'
+import { buildReviewDraft, findBaselineReview } from './review-draft'
+
+export function getDesignReviewDraft(designId: string, runId: string) {
+  const design = getCaseDesign(designId)
+  const runs = listDesignRuns(designId)
+  const run = runs.find(item => item.id === runId)
+  if (!design || !run || run.stage !== 'checking' || run.status !== 'completed' || !run.output.modelReviewCompleted || run.inputHash !== design.inputHash || run.inputRevision !== design.revision) return null
+  return buildReviewDraft(run, runs, listDesignReviews(designId))
+}
 
 export function listDesignReviews(designId: string): DesignReview[] {
   const rows = database.prepare('SELECT review_json FROM case_design_reviews WHERE design_id=? ORDER BY revision DESC').all(designId) as Array<{ review_json: string }>
@@ -14,7 +23,7 @@ export function getRegenerationComparison(designId: string, runId: string) {
   if (!run?.regeneration) return null
   const base = runs.find(item => item.id === run.regeneration!.baseRunId)
   if (!base) return null
-  const review = listDesignReviews(designId).find(item => item.inputHash === run.inputHash && item.inputRevision === run.inputRevision)
+  const review = findBaselineReview(run, runs, listDesignReviews(designId))
   return {
     runId: run.id, status: run.status, baseRunId: base.id, reviewId: review?.id ?? null, reviewRevision: review?.revision ?? 0,
     scenarios: run.regeneration.scenarioIds.map(id => {

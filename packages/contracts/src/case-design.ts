@@ -92,6 +92,14 @@ export interface DesignReview {
   createdAt: string
   content: DesignReviewContent
 }
+export interface DesignReviewDraft {
+  content: DesignReviewContent
+  expectedRevision: number
+  savedReviewId: string | null
+  sourceReviewId: string | null
+  sourceReviewRevision: number | null
+  inheritedCaseIds: string[]
+}
 export interface DesignPublication {
   id: string
   designId: string

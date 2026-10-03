@@ -30,6 +30,11 @@ test('人工审核历史与AI产物隔离，过期编辑拒绝并返回最新版
   const first=await post(path,{runId:run.id,expectedRevision:0,review:content})
   assert.equal(first.status,201)
   assert.equal((await first.json()).review.revision,1)
+  const draftPath=`/api/case-designs/${design.id}/runs/${run.id}/review-draft`
+  const savedDraft=(await (await fetch(url+draftPath)).json()).draft
+  assert.equal(savedDraft.expectedRevision,1)
+  assert.equal(savedDraft.content.cases.c1.contract.objective,'人工最终目标')
+  assert.ok(savedDraft.savedReviewId)
   const released=await post(publishPath,{expectedRevision:1})
   assert.equal(released.status,201)
   const publication=(await released.json()).publication
@@ -81,6 +86,7 @@ test('人工审核历史与AI产物隔离，过期编辑拒绝并返回最新版
   assert.equal((await post(path,{runId:run.id,expectedRevision:3,review:content})).status,400)
   delete content.questionDecisions.foreign
   saveDesignRun({...run,id:'unfinished',status:'failed',output:{...run.output,modelReviewCompleted:false}})
+  assert.equal((await fetch(url+`/api/case-designs/${design.id}/runs/unfinished/review-draft`)).status,404)
   assert.equal((await post(path,{runId:'unfinished',expectedRevision:3,review:content})).status,400)
   saveDesignRun({...run,id:'stale',inputHash:'old-input'})
   assert.equal((await post(path,{runId:'stale',expectedRevision:3,review:content})).status,400)

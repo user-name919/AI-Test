@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
-import { designReviewContentSchema, type DesignReview, type DesignReviewContent, type DesignRun, type EvidenceRef } from '@quality-ai/contracts/case-design'
+import { designReviewContentSchema, type DesignReview, type DesignReviewContent, type DesignReviewDraft, type DesignRun, type EvidenceRef } from '@quality-ai/contracts/case-design'
 import ContractEditor from './ContractEditor.vue'
 import ContractView from './ContractView.vue'
 import PublicationPanel from './PublicationPanel.vue'
@@ -21,15 +21,14 @@ const copy=<T,>(value:T):T=>JSON.parse(JSON.stringify(value))
 async function load() {
   ready.value=false;error.value=''
   try {
-    const result=await designRequest<{reviews:DesignReview[]}>(`/api/case-designs/${props.designId}/reviews`)
+    const [result,{draft}]=await Promise.all([
+      designRequest<{reviews:DesignReview[]}>(`/api/case-designs/${props.designId}/reviews`),
+      designRequest<{draft:DesignReviewDraft}>(`/api/case-designs/${props.designId}/runs/${props.run.id}/review-draft`),
+    ])
     if(disposed)return
-    history.value=result.reviews;revision.value=result.reviews[0]?.revision??0
-    const saved=result.reviews.find(item=>item.runId===props.run.id)
-    const defaults:DesignReviewContent={cases:{},questionDecisions:{},issueDecisions:{},excludedFacts:{}}
-    for(const item of props.run.output.cases??[]) defaults.cases[item.id]={title:item.title,contract:copy(item.contract),verification:item.verification,verificationReason:item.verificationReason,status:'draft'}
-    content.value=saved?copy(saved.content):defaults
-    // A saved full snapshot may omit cases; omitted cases remain explicitly unreviewed.
-    for(const [id,item] of Object.entries(defaults.cases)) content.value.cases[id]??=item
+    history.value=result.reviews;revision.value=draft.expectedRevision
+    content.value=copy(draft.content)
+    if(draft.sourceReviewId){dirty.value=true;notice.value=`参考审核 v${draft.sourceReviewRevision}，保留 ${draft.inheritedCaseIds.length} 条未变化用例的人工口径；重生成用例仍是待审核草稿，质量问题需重新处置。请检查后保存。`}
     const local=sessionStorage.getItem(storageKey.value)
     if(local){const parsed=JSON.parse(local);content.value=parsed.content;revision.value=parsed.revision;dirty.value=true;notice.value='已恢复当前标签页未保存草稿；保存时仍会校验服务端版本。'}
   } catch(cause){error.value=cause instanceof Error?cause.message:'读取审核失败';return}

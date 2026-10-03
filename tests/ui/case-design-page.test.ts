@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
 import type { CaseDesign, DesignRun, DesignReview, DesignPublication } from '@quality-ai/contracts/case-design'
 import { createEvidenceDocuments } from '../../api/src/modules/case-design/documents'
+import { buildReviewDraft } from '../../api/src/modules/case-design/review-draft'
 
 test('独立设计页面导入、阶段条件、原文定位与刷新，无需环境', async () => {
   const documents=createEvidenceDocuments([{fileName:'需求.md',role:'prd',content:'# 搜索规则\n\n支持部分关键词搜索。'}])
@@ -28,6 +29,7 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     const errors:string[]=[]; page.on('pageerror',error=>errors.push(error.message))
     await page.route('**/api/**',async route=> {
       const path=new URL(route.request().url()).pathname
+      if(path.endsWith('/review-draft')){const run=runs.find(item=>path.includes(`/runs/${item.id}/`))!;await route.fulfill({json:{draft:buildReviewDraft(run,runs,reviews)}});return}
       if(path.endsWith('/publications')){await route.fulfill({json:{publications}});return}
       if(path.endsWith('/publish')) {
         assert.equal(route.request().postDataJSON().expectedRevision,2)
@@ -133,6 +135,24 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     if(process.env.UI_PUBLICATION_SCREENSHOT_PATH) await page.locator('.design-publications').screenshot({path:process.env.UI_PUBLICATION_SCREENSHOT_PATH})
     await page.setViewportSize({width:390,height:844})
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
+    runs[0].output.cases!.push({...structuredClone(runs[0].output.cases![0]),id:'old-second',scenarioId:'s2',title:'另一个场景'})
+    const regenerated=structuredClone(runs[0])
+    regenerated.id='regenerated';regenerated.attempt=3
+    regenerated.regeneration={baseRunId:'checked',scenarioIds:['s2']}
+    regenerated.output.cases![1].id='new-second'
+    regenerated.output.cases![1].contract.objective='新场景建议，尚未人工确认'
+    runs.unshift(regenerated)
+    await page.reload()
+    await page.getByLabel('查看阶段产物',{exact:true}).waitFor()
+    page.once('dialog',dialog=>dialog.accept())
+    await page.getByLabel('查看阶段产物',{exact:true}).selectOption('regenerated')
+    await page.getByRole('status').filter({hasText:'保留 1 条未变化用例的人工口径'}).waitFor()
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'人工修改后的目标')
+    assert.equal(await page.getByLabel('审核状态',{exact:true}).inputValue(),'confirmed')
+    await page.getByRole('navigation',{name:'审核用例列表'}).getByRole('button',{name:/另一个场景/}).click()
+    assert.equal(await page.getByLabel('审核状态',{exact:true}).inputValue(),'draft')
+    assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'新场景建议，尚未人工确认')
+    assert.equal(reviews[0].content.cases['new-second'],undefined)
     assert.deepEqual(errors,[])
   } finally {await browser?.close();await server.close()}
 })

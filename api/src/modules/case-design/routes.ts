@@ -5,10 +5,15 @@ import { createEvidenceDocuments } from './documents'
 import { createCaseDesign, getCaseDesign, listCaseDesigns, listDesignRuns } from './repository'
 import { cancelDesignRun, startDesignRun } from './jobs'
 import { designReviewRequestSchema, regenerationRequestSchema } from '@quality-ai/contracts/case-design'
-import { getRegenerationComparison, listDesignReviews, saveDesignReview } from './review'
+import { getDesignReviewDraft, getRegenerationComparison, listDesignReviews, saveDesignReview } from './review'
 import { exportPublicationMarkdown, listDesignPublications, publishDesign } from './publisher'
 
 export async function handleCaseDesignRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const draftMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/runs\/([^/?]+)\/review-draft$/)
+  if (draftMatch && request.method === 'GET') {
+    const draft = getDesignReviewDraft(decodeURIComponent(draftMatch[1]), decodeURIComponent(draftMatch[2]))
+    return draft ? json(response, 200, { draft }) : json(response, 404, { error: '当前材料尚无已完成审查的审核草稿' })
+  }
   const comparisonMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/runs\/([^/?]+)\/comparison$/)
   if (comparisonMatch && request.method === 'GET') {
     const comparison = getRegenerationComparison(decodeURIComponent(comparisonMatch[1]), decodeURIComponent(comparisonMatch[2]))
