@@ -78,6 +78,10 @@ test('故事 A 后端：冲突材料到三类搜索、人工口径、局部重�
     draft.content.cases[unchanged.id].contract.objective='人工修改的完整搜索目标'
     await request(root+'/reviews',{runId:checked.id,expectedRevision:0,review:draft.content})
     const first:DesignPublication=(await request(root+'/publish',{expectedRevision:1})).publication
+    const assets=(await request(`/api/cases?sourceType=case_design&sourceId=${design.id}`)).cases
+    assert.equal(assets.length,3)
+    assert.ok(assets.every((asset:{resolved:{readiness:{agent:{executable:boolean};plan:{executable:boolean}}}})=>asset.resolved.readiness.agent.executable&&!asset.resolved.readiness.plan.executable))
+    assert.deepEqual(assets.map((asset:{finalContract:unknown})=>asset.finalContract),first.snapshot.cases.map(item=>item.contract))
     const markdown=await (await fetch(origin+root+`/publications/${first.id}/markdown`)).text()
     assert.match(markdown,/人工修改的完整搜索目标/)
     assert.match(markdown,/区分大小写/)

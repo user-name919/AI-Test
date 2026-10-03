@@ -40,6 +40,16 @@ test('人工审核历史与AI产物隔离，过期编辑拒绝并返回最新版
   const publication=(await released.json()).publication
   assert.equal(publication.snapshot.cases[0].contract.objective,'人工最终目标')
   assert.equal(publication.snapshot.run.output.cases[0].contract.objective,'AI原始目标')
+  const assetList=await(await fetch(url+`/api/cases?sourceType=case_design&sourceId=${design.id}`)).json()
+  assert.equal(assetList.cases.length,1)
+  const asset=assetList.cases[0]
+  assert.equal(asset.source.publicationId,publication.id)
+  assert.equal(asset.finalContract.objective,'人工最终目标')
+  assert.equal(asset.originalSuggestion.objective,'AI原始目标')
+  assert.equal(asset.resolved.resolvedQuestions[0].finalStatement,'按原文大小写匹配')
+  const assetPath=`/api/cases/${encodeURIComponent(asset.id)}`
+  assert.deepEqual((await(await fetch(url+assetPath+'/contract')).json()).asset,asset)
+  assert.equal((await fetch(url+assetPath+'/review',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({})})).status,409)
   assert.match(publication.contentHash,/^[a-f0-9]{64}$/)
   const snapshot=publication.snapshot
   for (const mutate of [
@@ -64,6 +74,7 @@ test('人工审核历史与AI产物隔离，过期编辑拒绝并返回最新版
   assert.equal(conflict.status,409)
   assert.equal((await conflict.json()).review.content.cases.c1.contract.objective,'人工最终目标')
   content.cases.c1.contract.objective='第二版人工目标'
+  content.cases.c1.verification='api'
   assert.equal((await post(path,{runId:run.id,expectedRevision:1,review:content})).status,201)
   assert.equal((await post(publishPath,{expectedRevision:1})).status,409)
   assert.deepEqual((await (await fetch(url+publicationPath)).json()).publication,publication)
@@ -71,6 +82,14 @@ test('人工审核历史与AI产物隔离，过期编辑拒绝并返回最新版
   const nextPublication=(await (await post(publishPath,{expectedRevision:2})).json()).publication
   assert.equal(nextPublication.version,2)
   assert.equal(nextPublication.snapshot.cases[0].contract.objective,'第二版人工目标')
+  const currentAssets=(await(await fetch(url+`/api/cases?sourceType=case_design&sourceId=${design.id}`)).json()).cases
+  assert.equal(currentAssets.length,1)
+  assert.equal(currentAssets[0].source.publicationVersion,2)
+  assert.notEqual(currentAssets[0].id,asset.id)
+  assert.equal(currentAssets[0].resolved.readiness.agent.executable,false)
+  assert.match(currentAssets[0].resolved.readiness.plan.reason,/接口/)
+  assert.deepEqual((await(await fetch(url+assetPath+'/contract')).json()).asset,asset)
+  assert.equal((await(await fetch(url+assetPath+'/history')).json()).revisions[0].resolved.contract.objective,'人工最终目标')
   const history=(await (await fetch(url+path)).json()).reviews
   assert.deepEqual(history.map((item:{revision:number})=>item.revision),[2,1])
   assert.equal(history[1].content.cases.c1.contract.objective,'人工最终目标')

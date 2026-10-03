@@ -7,27 +7,31 @@ import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { generateCasePlans } from './plan-generation'
 import { caseAssetReviewRequestSchema } from '@quality-ai/contracts/cases'
 import { getCaseAsset, listCaseAssetRevisions, listCaseAssets, saveCaseAssetReview } from './repository'
+import { getPublishedCaseAsset, listPublishedCaseAssets } from './published-assets'
 
 
 export async function handleCaseRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const url = new URL(request.url ?? '/', 'http://localhost')
   if (request.method === 'GET' && url.pathname === '/api/cases') {
     const sourceType = url.searchParams.get('sourceType')
-    if (sourceType && sourceType !== 'requirement') return json(response, 400, { error: '当前资产入口仅支持 requirement，其他来源将在对应模块接入' })
+    if(sourceType==='case_design')return json(response,200,{cases:listPublishedCaseAssets(url.searchParams.get('sourceId')??undefined)})
+    if (sourceType && sourceType !== 'requirement') return json(response, 400, { error: '当前资产入口支持 requirement 与 case_design，变更回归来源尚未接入' })
     return json(response, 200, { cases: listCaseAssets(url.searchParams.get('sourceId') ?? undefined) })
   }
   const assetMatch = url.pathname.match(/^\/api\/cases\/([^/]+)\/(contract|review|history)$/)
   if (assetMatch) {
     const id = decodeURIComponent(assetMatch[1])
     if (request.method === 'GET' && assetMatch[2] === 'contract') {
-      const asset = getCaseAsset(id)
+      const asset = id.startsWith('published:')?getPublishedCaseAsset(id):getCaseAsset(id)
       return asset ? json(response, 200, { asset, caseContract: asset.resolved }) : json(response, 404, { error: '用例资产不存在' })
     }
     if (request.method === 'GET' && assetMatch[2] === 'history') {
+      if(id.startsWith('published:')){const asset=getPublishedCaseAsset(id);return asset?json(response,200,{revisions:[{revision:asset.revision,resolved:asset.resolved,review:{status:'confirmed',finalContract:asset.finalContract,updatedAt:asset.updatedAt},createdAt:asset.createdAt}]}):json(response,404,{error:'发布用例不存在'})}
       const revisions = listCaseAssetRevisions(id)
       return revisions ? json(response, 200, { revisions }) : json(response, 404, { error: '用例资产不存在' })
     }
     if (request.method === 'PATCH' && assetMatch[2] === 'review') {
+      if(id.startsWith('published:'))return json(response,409,{error:'已发布用例只读，请回到设计工作台修改审核并发布新版本'})
       const parsed = caseAssetReviewRequestSchema.safeParse(await readJson(request))
       if (!parsed.success) return json(response, 400, { error: '审核内容或预期版本不合法', issues: parsed.error.issues })
       const result = saveCaseAssetReview(id, parsed.data.expectedRevision, parsed.data.review)

@@ -60,7 +60,7 @@ function legacyContract(testCase: SavedAnalysis['result']['requirements'][number
   }
 }
 
-function containsUnprovenDataLiteral(contract: CaseExecutionContract) {
+export function containsUnprovenDataLiteral(contract: CaseExecutionContract) {
   const dataOperation = /(?:输入|搜索|筛选|填写|选择|设置为|设为|使用)[^“”"'‘’]{0,20}[“"'‘]([^“”"'‘’]+)[”"'’]/g
   const quotedLiteral = /[“"'‘]([^“”"'‘’]+)[”"'’]/g
   const operationLiterals = new Set(

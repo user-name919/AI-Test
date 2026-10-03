@@ -4,7 +4,7 @@ import { caseReviewSchema, type CaseExecutionContract, type CaseReview, type Res
 export type CaseSource =
   | { type: 'requirement'; analysisId: string; caseKey: string }
   | { type: 'change_regression'; regressionId: string; suggestionId: string }
-  | { type: 'case_design'; designId: string; draftId: string }
+  | { type: 'case_design'; designId: string; draftId: string; publicationId: string; publicationVersion: number }
 
 export interface CaseAsset {
   id: string
