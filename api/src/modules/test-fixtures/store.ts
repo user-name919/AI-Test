@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { fixtureMetadataSchema, fixtureUploadSchema, maxFixtureBytes, type TestFixture } from '@quality-ai/contracts/test-fixtures'
 import { getRuntimePaths } from '../../config/paths'
 import type { CaseExecutionContract } from '@quality-ai/contracts'
-import { RuntimeDataBindingBlockedError } from '../../test-data-binding'
+import { RuntimeDataBindingBlockedError } from '../../automation/test-data-binding'
 
 const root = () => resolve(getRuntimePaths().dataRoot, 'test-fixtures')
 const fingerprint = (buffer: Buffer) => createHash('sha256').update(buffer).digest('hex')

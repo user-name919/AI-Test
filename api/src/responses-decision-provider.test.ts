@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { agentTestGoalSchema, pageSnapshotSchema } from '@quality-ai/contracts'
-import { ResponsesDecisionProvider } from './responses-decision-provider'
-import { RuntimeDataBindingBlockedError } from './test-data-binding'
+import { ResponsesDecisionProvider } from './automation/responses-decision-provider'
+import { RuntimeDataBindingBlockedError } from './automation/test-data-binding'
 
 function decisionInput() {
   return {

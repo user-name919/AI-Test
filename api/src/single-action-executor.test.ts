@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { chromium } from 'playwright'
 import { agentActionSchema, type ResolvedDataBinding } from '@quality-ai/contracts'
-import { PageObserver } from './page-observer'
-import { SingleActionExecutor } from './single-action-executor'
+import { PageObserver } from './automation/page-observer'
+import { SingleActionExecutor } from './automation/single-action-executor'
 
 test('executes B-end keyboard, hover, scroll and precise assertion actions', async testContext => {
   const artifactDirectory = await mkdtemp(join(tmpdir(), 'quality-ai-actions-'))

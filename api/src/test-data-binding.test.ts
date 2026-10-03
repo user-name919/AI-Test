@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { testDataBindingSchema, type PageSnapshot, type TestDataBinding } from '@quality-ai/contracts'
-import { RuntimeDataBindingBlockedError, resolveRuntimeDataBinding } from './test-data-binding'
+import { RuntimeDataBindingBlockedError, resolveRuntimeDataBinding } from './automation/test-data-binding'
 
 const snapshot: PageSnapshot = {
   snapshotId: '5b2bc1ac-188b-46c4-a96f-4ecb2ce70d50',

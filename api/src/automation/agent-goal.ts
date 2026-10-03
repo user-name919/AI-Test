@@ -1,5 +1,5 @@
 import { agentTestGoalSchema, type AgentTestGoal, type SavedAnalysis, type ResolvedCaseExecutionContract } from '@quality-ai/contracts'
-import { resolveCaseExecutionContract } from './review-execution-context'
+import { resolveCaseExecutionContract } from '../review-execution-context'
 
 export function buildAgentTestGoal(analysis: SavedAnalysis, caseKey: string, targetUrl: string): AgentTestGoal {
   const resolved = resolveCaseExecutionContract(analysis, caseKey)

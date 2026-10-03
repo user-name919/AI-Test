@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { automationStepSchema, type AutomationPlan } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
-import { runAutomationPlan } from './playwright-runner'
+import { runAutomationPlan } from './automation/playwright-runner'
 
 test('固定范围定位不点击背景同名按钮，局部文本不借背景通过，失败继续表格行验证', async t => {
   const artifactRoot = await mkdtemp(join(tmpdir(), 'quality-ai-fixed-scope-'))

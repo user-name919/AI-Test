@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os'
 import { chromium } from 'playwright'
 import type { AgentTestGoal } from '@quality-ai/contracts'
 import { saveTestFixture } from './modules/test-fixtures/store'
-import { runAgentTest } from './agent-test-runner'
-import { PageObserver } from './page-observer'
-import { SingleActionExecutor } from './single-action-executor'
+import { runAgentTest } from './automation/agent-test-runner'
+import { PageObserver } from './automation/page-observer'
+import { SingleActionExecutor } from './automation/single-action-executor'
 
 test('动态上传拒绝未授权数据，操作失败不恢复，后续用例保留附件指纹并验证业务', async t => {
   const root = await mkdtemp(join(tmpdir(), 'quality-ai-agent-upload-')), previous = process.env.QUALITY_AI_DATA_ROOT

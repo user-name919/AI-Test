@@ -7,7 +7,7 @@ import { readCheckedState } from './checked-state'
 import type { CaseExecutionContract, DownloadEvidence } from '@quality-ai/contracts'
 import { captureDownload, assertDownload } from './download-capture'
 import type { TestFixture } from '@quality-ai/contracts/test-fixtures'
-import { loadTestFixture, validateFixtureReference } from './modules/test-fixtures/store'
+import { loadTestFixture, validateFixtureReference } from '../modules/test-fixtures/store'
 import { RuntimeDataBindingBlockedError } from './test-data-binding'
 
 function safeArtifactName(value: string) {

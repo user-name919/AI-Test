@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import type { AgentTestGoal } from '@quality-ai/contracts'
-import { PageObserver } from './page-observer'
-import { SingleActionExecutor } from './single-action-executor'
-import { runAgentTest } from './agent-test-runner'
+import { PageObserver } from './automation/page-observer'
+import { SingleActionExecutor } from './automation/single-action-executor'
+import { runAgentTest } from './automation/agent-test-runner'
 import { executionMarkdown } from './modules/executions/report'
 
 test('动态框架观察与执行同域，切换失效旧引用，错误断言继续后续用例', async t => {

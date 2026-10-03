@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { runAutomationPlan } from './playwright-runner'
+import { runAutomationPlan } from './automation/playwright-runner'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
 import { automationStepSchema } from '@quality-ai/contracts'
 

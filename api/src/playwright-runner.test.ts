@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import type { LiveExecutionEvent } from '@quality-ai/contracts'
-import { runAutomationPlan } from './playwright-runner'
+import { runAutomationPlan } from './automation/playwright-runner'
 
 test('固定执行器运行时取真实option，失败绑定不污染后续同会话用例',async t=>{
   const artifactRoot=await mkdtemp(join(tmpdir(),'quality-ai-fixed-data-'))

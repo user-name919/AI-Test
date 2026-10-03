@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import type { ResolvedCaseExecutionContract, TestDataBinding, PageSnapshot } from '@quality-ai/contracts'
 import { generateFixedPlan, proposeFixedPlanData } from './modules/cases/fixed-plan-model'
 import { getModelConfig } from './model-config'
-import { runAutomationPlan } from './playwright-runner'
+import { runAutomationPlan } from './automation/playwright-runner'
 
 test('固定规划与运行时模型提议串联三策略，首条错误预期失败后同页面继续',async t=>{
   const artifactRoot=await mkdtemp(join(tmpdir(),'quality-ai-fixed-runtime-story-'))

@@ -7,8 +7,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { automationStepSchema, type AutomationPlan, type CaseExecutionContract } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
-import { validateFixedSelectData } from './fixed-select-option'
-import { runAutomationPlan } from './playwright-runner'
+import { validateFixedSelectData } from './automation/fixed-select-option'
+import { runAutomationPlan } from './automation/playwright-runner'
 
 test('固定原生下拉区分显示名与值，未确认数据受阻、不存在选项失败后继续', async t => {
   const artifactRoot = await mkdtemp(join(tmpdir(), 'quality-ai-native-select-'))

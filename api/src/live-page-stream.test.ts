@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BrowserContext, Page } from 'playwright'
-import { startLivePageStream } from './live-page-stream'
+import { startLivePageStream } from './automation/live-page-stream'
 
 test('starts a throttled Chromium screencast, acknowledges frames and stops cleanly', async () => {
   const calls: Array<{ method: string; params?: unknown }> = []

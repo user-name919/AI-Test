@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { completeCaseResults } from './complete-case-results'
-import { aggregateExecutionStatus } from './agent-test-runner'
+import { completeCaseResults } from './automation/complete-case-results'
+import { aggregateExecutionStatus } from './automation/agent-test-runner'
 import type { CaseExecutionResult } from '@quality-ai/contracts'
 
 test('补齐未执行结果保留顺序和原结论，不伪造DOM或通过证据',()=>{

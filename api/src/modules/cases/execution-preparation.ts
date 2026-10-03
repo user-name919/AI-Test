@@ -1,6 +1,6 @@
 import type { ExecutionCaseSnapshot } from '@quality-ai/contracts'
 import { executionPreparationSchema } from '@quality-ai/contracts/cases'
-import { buildAgentGoalFromContract } from '../../agent-goal'
+import { buildAgentGoalFromContract } from '../../automation/agent-goal'
 import { getCaseAsset } from './repository'
 import { getPublishedCaseAsset } from './published-assets'
 import { getRegressionCaseAsset } from './regression-assets'

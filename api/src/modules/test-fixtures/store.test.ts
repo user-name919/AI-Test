@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { handleTestFixtureRoutes } from './routes'
 import { loadTestFixture } from './store'
-import { runAutomationPlan } from '../../playwright-runner'
+import { runAutomationPlan } from '../../automation/playwright-runner'
 import type { AutomationPlan, CaseExecutionContract } from '@quality-ai/contracts'
 import type { TestFixture } from '@quality-ai/contracts/test-fixtures'
 

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { chromium } from 'playwright'
-import { readCheckedState } from './checked-state'
-import { PageObserver } from './page-observer'
-import { SingleActionExecutor } from './single-action-executor'
-import { assertFixedLocator } from './fixed-locator-assertion'
+import { readCheckedState } from './automation/checked-state'
+import { PageObserver } from './automation/page-observer'
+import { SingleActionExecutor } from './automation/single-action-executor'
+import { assertFixedLocator } from './automation/fixed-locator-assertion'
 
 test('两模式与快照区分原生半选、ARIA mixed、无效值和真实未选中', async () => {
   const browser = await chromium.launch({ headless: true })

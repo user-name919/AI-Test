@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { chromium, type Browser } from 'playwright'
-import type { AgentDecisionProvider } from './test-agent'
+import type { AgentDecisionProvider } from './automation/test-agent'
 import type { ProjectKnowledgeProvider } from './project-knowledge/types'
-import { runAgentTest } from './agent-test-runner'
+import { runAgentTest } from './automation/agent-test-runner'
 import type { AgentTestGoal, LiveExecutionEvent } from '@quality-ai/contracts'
-import { ResponsesDecisionProvider } from './responses-decision-provider'
+import { ResponsesDecisionProvider } from './automation/responses-decision-provider'
 
 function caseGoal(targetUrl: string, index: number): AgentTestGoal {
   return {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PageSnapshot } from '@quality-ai/contracts'
 import { agentTestGoalSchema } from '@quality-ai/contracts'
-import { TestPolicy, type AgentRuntimeState } from './test-policy'
+import { TestPolicy, type AgentRuntimeState } from './automation/test-policy'
 
 test('allows a bounded four-step project context exploration', () => {
   const goal = agentTestGoalSchema.parse({

@@ -1,5 +1,5 @@
 import type { AgentAction, AgentDecision, AgentTestGoal, PageSnapshot, ResolvedDataBinding } from '@quality-ai/contracts'
-import { validateFixtureReference } from './modules/test-fixtures/store'
+import { validateFixtureReference } from '../modules/test-fixtures/store'
 
 export interface AgentRuntimeState {
   startedAt: number

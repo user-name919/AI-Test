@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { chromium } from 'playwright'
-import { PageObserver } from './page-observer'
-import { SingleActionExecutor } from './single-action-executor'
+import { PageObserver } from './automation/page-observer'
+import { SingleActionExecutor } from './automation/single-action-executor'
 
 test('builds a compact semantic snapshot and resolves element refs for its active snapshot', async () => {
   const browser = await chromium.launch({ headless: true })

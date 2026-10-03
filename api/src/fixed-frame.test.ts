@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import type { AutomationPlan, TestDataBinding } from '@quality-ai/contracts'
 import { automationStepSchema } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
-import { runAutomationPlan } from './playwright-runner'
+import { runAutomationPlan } from './automation/playwright-runner'
 
 test('固定跨源嵌套框架定位与运行时数据不借用主页面，歧义失败后继续', async t => {
   const artifactRoot = await mkdtemp(join(tmpdir(), 'quality-ai-fixed-frame-'))

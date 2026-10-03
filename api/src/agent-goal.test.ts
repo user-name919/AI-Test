@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SavedAnalysis } from '@quality-ai/contracts'
-import { buildAgentTestGoal } from './agent-goal'
+import { buildAgentTestGoal } from './automation/agent-goal'
 import { resolveCaseExecutionContract } from './review-execution-context'
 
 function analysis(blockedByQuestion = false): SavedAnalysis {

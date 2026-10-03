@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { automationStepSchema, type AutomationPlan } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
-import { runAutomationPlan } from './playwright-runner'
+import { runAutomationPlan } from './automation/playwright-runner'
 
 type AutomationStep = AutomationPlan['steps'][number]
 
