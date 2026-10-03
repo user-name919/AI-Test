@@ -151,6 +151,6 @@ export interface DesignRun {
   createdAt: string
   updatedAt: string
   error?: string
-  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[]; cases?: CaseDesignDraft[]; processedScenarioIds?: string[]; unprocessedScenarioIds?: string[]; issues?: DesignIssue[]; modelReviewCompleted?: boolean }
+  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[]; cases?: CaseDesignDraft[]; processedScenarioIds?: string[]; unprocessedScenarioIds?: string[]; generationAttempts?: Array<{scenarioId:string;attempt:number;status:'invalid'|'validated';response:string;responseTruncated:boolean;error?:string}>; issues?: DesignIssue[]; modelReviewCompleted?: boolean }
   statistics: { calls: number; inputCharacters: number; outputCharacters: number }
 }
