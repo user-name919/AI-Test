@@ -8,7 +8,7 @@ export function interruptedExecution(job: ExecutionJob): ExecutionResult {
     const {caseKey,title,contractFingerprint} = snapshot.resolved
     const completed = job.completedCases?.find(item=>item.caseKey===caseKey && item.contractFingerprint===contractFingerprint)
     if(completed) return structuredClone(completed)
-    const uncertain = job.activeCase?.caseKey===caseKey || (job.completedCases===undefined && job.status!=='queued')
+    const uncertain = job.activeCase?.caseKey===caseKey || job.completedCases?.some(item=>item.caseKey===caseKey) || (job.completedCases===undefined && job.status!=='queued')
     return {caseKey,title,contractFingerprint,status:uncertain?'infrastructure_failed':'not_run',
       error:uncertain?'服务中断：本用例没有持久化最终结果，可能已产生业务操作，不能推断通过或安全重试':'服务中断前尚未开始本用例',
       startedFromUrl:job.activeCase?.caseKey===caseKey?job.activeCase.startedFromUrl:'',continuation:uncertain?'reused_current_page':'not_started',

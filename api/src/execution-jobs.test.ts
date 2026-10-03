@@ -8,6 +8,8 @@ import { execFileSync } from 'node:child_process'
 import test from 'node:test'
 import type { ExecutionJob } from '@quality-ai/contracts/cases'
 import { automationPlanSchema } from '@quality-ai/contracts'
+import { interruptedExecution } from './modules/executions/interruption'
+import { executionMarkdown } from './modules/executions/report'
 
 test('受阻计划只保存原因，不接受混入动作或无原因的空计划',()=>{
   const plan={name:'合成',targetUrl:'http://localhost',steps:[]}
@@ -93,6 +95,14 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   assert.equal(result.caseResults[0].passedAssertions.length,1)
   assert.deepEqual(current.completedCases,result.caseResults,'真实浏览器完成的逐用例结果应独立落盘')
   assert.equal(current.activeCase,undefined)
+  const mismatched=interruptedExecution({...current,status:'running',completedCases:current.completedCases?.map(item=>({...item,contractFingerprint:'different'}))})
+  assert.equal(mismatched.caseResults?.[0].status,'infrastructure_failed','不匹配的检查点说明可能已执行，不能称为尚未开始')
+  assert.deepEqual(mismatched.caseResults?.[0].passedAssertions,[])
+  const legacyInterrupted=interruptedExecution({...current,status:'running',completedCases:undefined})
+  assert.equal(legacyInterrupted.caseResults?.[0].status,'infrastructure_failed')
+  const markdown=executionMarkdown({...mismatched,caseKeys:current.snapshots.map(item=>item.resolved.caseKey)},[])
+  assert.match(markdown,/实际起止与耗时：未知/)
+  assert.doesNotMatch(markdown,/耗时 0 ms/)
   assert.equal(modelRequests.length,1,'已取消排队任务不能调用模型或浏览器')
   const automationPlanId='11111111-1111-4111-8111-111111111111'
   saveAutomationPlan({id:automationPlanId,analysisId:'synthetic',caseKeys:['0-TC-0'],plan:result.plan,createdAt:new Date().toISOString()})
@@ -206,5 +216,9 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   assert.deepEqual(checkpointReport.caseResults[0],result.caseResults[0])
   assert.equal(checkpointReport.caseResults[1].passedAssertions.length,0)
   assert.equal(checkpointReport.caseResults[1].startedFromUrl,target)
+  const beforeRestart=getExecutionById(job.id)
+  database.prepare('UPDATE execution_jobs SET status=?,job_json=? WHERE id=?').run('running',JSON.stringify({...current,status:'running',executionId:undefined}),job.id)
+  execFileSync(process.execPath,['--import','tsx','--input-type=module','-e',"const m=await import('./src/modules/executions/jobs.ts');m.initializeExecutionJobs();"],{cwd:import.meta.dirname+'/..',env:process.env,encoding:'utf8'})
+  assert.deepEqual(getExecutionById(job.id),beforeRestart,'最终报告先落盘而任务状态未更新时，恢复不能覆盖原证据')
   assert.equal((await(await fetch(url+`/api/execution-jobs/${job.id}`)).json()).job.status,'completed')
 })
