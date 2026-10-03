@@ -198,6 +198,10 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
   } else if(step.action==='resolveTestData'){
     title=`从当前页面解析测试数据 ${step.bindingId}`
     technicalAction=`resolveTestData ${step.bindingId}`
+  } else if('locator' in step){
+    const names={expectVisible:'可见',expectHidden:'隐藏',expectEnabled:'可操作',expectDisabled:'不可操作',expectValue:'输入值符合预期',expectAttribute:'属性符合预期'}
+    title=`确认${quoted(step.locator.name??step.locator.value)}${names[step.action]}`
+    technicalAction=JSON.stringify(step)
   } else {
     title = `保存当前页面截图${quoted(step.name)}`
     technicalAction = `screenshot ${step.name}`

@@ -12,6 +12,7 @@ import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-ru
 import { completeCaseResults } from './complete-case-results'
 import type { PageSnapshot, TestDataBinding, ResolveTestDataDecision } from '@quality-ai/contracts'
 import { resolveRuntimeDataBinding, RuntimeDataBindingBlockedError } from './test-data-binding'
+import { assertFixedLocator } from './fixed-locator-assertion'
 
 interface AutomationRunnerOptions {
   signal?: AbortSignal
@@ -146,6 +147,11 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               options.signal?.throwIfAborted()
               const resolved=resolveRuntimeDataBinding(binding,snapshot,proposal)
               checkpoint.resolvedDataBindings=checkpoint.resolvedDataBindings.filter(item=>item.bindingId!==binding.id).concat(resolved)
+            } else if('locator' in step){
+              const expected=step.action==='expectValue'?(step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value):undefined
+              if(step.action==='expectValue'&&expected===undefined)throw new RuntimeDataBindingBlockedError(`断言引用尚未解析：${step.valueRef}`)
+              await assertFixedLocator(locatorFor(page,step.locator),step,expected,options.signal)
+              checkpoint.passedAssertions.push(`step-${index+1}`)
             } else {
               const filePath = resolve(caseDirectory, `${String(index + 1).padStart(2, '0')}-${step.name.replace(/[^\w\u4e00-\u9fa5-]/g, '_')}.png`)
               await page.screenshot({ path: filePath, fullPage: true })
