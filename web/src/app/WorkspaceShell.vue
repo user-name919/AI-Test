@@ -8,6 +8,7 @@ import CaseContractDetails from '../components/CaseContractDetails.vue'
 import CaseAssetWorkbench from '../components/CaseAssetWorkbench.vue'
 import ExecutionContractEvidence from '../components/ExecutionContractEvidence.vue'
 import RequirementsPage from '../features/requirements/RequirementsPage.vue'
+import { startRequirementExecution } from '../features/executions/startRequirementExecution'
 import { useWorkspaceNavigation, type WorkspaceView } from './useWorkspaceNavigation'
 
 const { workspaceView, activeTab, activeRequirement, selectedExecutionId } = useWorkspaceNavigation()
@@ -672,22 +673,16 @@ async function runDynamicAgent() {
   if (!projectId.value) return toast('没有可用的项目源码连接，请先检查项目软链配置')
   if (!matchingProjects.value.some(project => project.id === projectId.value)) return toast('当前项目与测试地址 Origin 不匹配')
   executionRunning.value = true
-  showNotice('Agent 正在观察真实页面并逐步执行，遇到歧义时会按需读取局部源码…', 'loading', 0)
+  const requested={analysisId:savedAnalysis.value.id,targetUrl:targetUrl.value,projectId:projectId.value,
+    cases:selectedCaseKeys.value.map(caseKey=>({caseKey,contractFingerprint:caseContracts.value[caseKey]!.contractFingerprint}))}
+  showNotice('正在创建后台 Agent 任务，启动后可关闭页面并从后台执行任务找回…', 'loading', 0)
   try {
     const savedEnvironment = await persistEnvironment()
-    const execution = await streamExecution('/api/automation/agent/run/stream', {
-        analysisId: savedAnalysis.value.id,
-        caseKeys: selectedCaseKeys.value,
-        targetUrl: targetUrl.value,
-        environmentId: savedEnvironment.id,
-        projectId: projectId.value,
-      }, selectedCaseKeys.value.length === 1 ? caseAssets.value.find(item => item.key === selectedCaseKeys.value[0])?.item.title ?? 'Agent 动态执行' : `${analysis.value.versionName} · ${selectedCaseKeys.value.length} 条用例`, targetUrl.value)
-    latestExecution.value = execution
-    await refreshExecutions(execution.id)
-    workspaceView.value = 'executions'
-    toast(`Agent ${executionStatusText(execution.status)} · ${execution.agent?.trajectory.length ?? 0} 轮决策`)
+    const job=await startRequirementExecution({...requested,environmentId:savedEnvironment.id})
+    toast('后台任务已创建，可在任务页面查看画面、操作历史或取消执行')
+    await router.push(`/execution-jobs/${job.id}`)
   } catch (error) {
-    toast(`Agent 执行失败：${markLiveExecutionFailed(error)}`)
+    toast(`Agent 任务创建失败：${error instanceof Error?error.message:'未知错误'}`)
   } finally {
     executionRunning.value = false
   }

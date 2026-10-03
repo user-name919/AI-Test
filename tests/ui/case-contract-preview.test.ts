@@ -29,6 +29,8 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
   const resolved = resolveCaseExecutionContract(analysis, '0-TC-0')
   let asset: CaseAsset = { id: 'fixture-case', title: resolved.title, source: { type: 'requirement', analysisId: analysis.id, caseKey: '0-TC-0' }, revision: 1, reviewStatus: 'confirmed', originalSuggestion: { ...resolved.contract, objective: '原始建议', steps: ['旧示例步骤，不应再展示为执行口径'] }, finalContract: resolved.contract, resolved, createdAt: analysis.createdAt, updatedAt: analysis.createdAt }
   let conflictOnce = true
+  let jobInput:Record<string,unknown>|undefined
+  const job={id:'synthetic-job',status:'queued',mode:'agent',targetUrl:'https://example.test/exams',snapshots:[],createdAt:analysis.createdAt,updatedAt:analysis.createdAt}
   const historicalExecution = { id: '44444444-4444-4444-8444-444444444444', name: '历史执行', targetUrl: 'https://example.test', status: 'passed', mode: 'plan', startedAt: analysis.createdAt, finishedAt: analysis.createdAt, durationMs: 1, steps: [], screenshots: [], caseKeys: ['0-TC-0'], caseSnapshots: [{ caseId: asset.id, revision: 1, analysisId: analysis.id, capturedAt: analysis.createdAt, resolved }] }
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
   try {
@@ -41,6 +43,11 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
     page.on('pageerror', error => errors.push(error.message))
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname
+      if(path==='/api/execution-jobs'&&route.request().method()==='POST'){
+        jobInput=route.request().postDataJSON()
+        await route.fulfill({status:202,json:{job}})
+        return
+      }
       if (path === '/api/cases/fixture-case/review') {
         const request = route.request().postDataJSON()
         if (conflictOnce) {
@@ -62,6 +69,9 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
         '/api/environments/latest': { environment: { id: 'env', name: '合成环境', targetUrl: 'https://example.test/exams' } },
         '/api/projects': { projects: [{ id: 'project', name: '合成项目', connected: true, targetOrigins: ['https://example.test'] }] },
         '/api/cases': { cases: [asset] },
+        '/api/environments': {environment:{id:'env',name:'合成环境',targetUrl:'https://example.test/exams'}},
+        '/api/execution-jobs/synthetic-job': {job},
+        '/api/execution-jobs/synthetic-job/events': {events:[],nextCursor:0,frame:null},
         [`/api/analyses/${analysis.id}/case-contracts`]: { caseContracts: [resolveCaseExecutionContract(analysis, '0-TC-0')] },
       }
       await route.fulfill({ status: path in payload ? 200 : 404, json: payload[path] ?? { error: '未配置的夹具路由' } })
@@ -101,6 +111,13 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
     assert.equal(await agent.isEnabled(), true)
     assert.equal(await page.getByRole('button', { name: '生成固定计划', exact: true }).isEnabled(), true)
     assert.match(await page.locator('.target-config').innerText(), /生成固定计划/)
+    await agent.click()
+    await page.waitForURL('**/#/execution-jobs/synthetic-job')
+    assert.deepEqual(jobInput,{mode:'agent',targetUrl:'https://example.test/exams',environmentId:'env',projectId:'project',cases:[{caseId:asset.id,revision:asset.revision,contractFingerprint:asset.resolved.contractFingerprint}]})
+    await page.reload()
+    await page.getByText('排队中 · 动态 Agent', {exact:false}).waitFor()
+    await page.goBack()
+    await page.getByRole('button', { name: '需求中心', exact: true }).waitFor()
     await page.getByRole('button', { name: '需求中心', exact: true }).click()
     await page.waitForURL('**/#/requirements?**')
     await page.getByRole('button', { name: '查看需求详情 →', exact: true }).click()
