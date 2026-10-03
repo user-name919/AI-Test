@@ -2,7 +2,7 @@ import { setTimeout } from 'node:timers/promises'
 import type { Locator } from 'playwright'
 import type { AutomationPlan } from '@quality-ai/contracts'
 
-type Assertion=Extract<AutomationPlan['steps'][number],{action:'expectVisible'|'expectHidden'|'expectEnabled'|'expectDisabled'|'expectValue'|'expectAttribute'}>
+type Assertion=Extract<AutomationPlan['steps'][number],{action:'expectVisible'|'expectHidden'|'expectEnabled'|'expectDisabled'|'expectChecked'|'expectValue'|'expectAttribute'}>
 export async function assertFixedLocator(locator:Locator,step:Assertion,expectedValue:string|undefined,signal?:AbortSignal){
   signal?.throwIfAborted()
   if(step.action==='expectVisible'||step.action==='expectHidden'){
@@ -17,6 +17,11 @@ export async function assertFixedLocator(locator:Locator,step:Assertion,expected
     let matches=false
     if(step.action==='expectEnabled'||step.action==='expectDisabled'){
       actual=await locator.isEnabled({timeout:1000});matches=actual===(step.action==='expectEnabled')
+    }else if(step.action==='expectChecked'){
+      const ariaChecked=await locator.getAttribute('aria-checked',{timeout:1000})
+      // mixed/无效 aria 值不等于 false，避免把不确定状态当未选中通过。
+      actual=ariaChecked===null?await locator.isChecked({timeout:1000}):ariaChecked==='true'?true:ariaChecked==='false'?false:ariaChecked
+      matches=actual===step.checked
     }else if(step.action==='expectValue'){
       actual=await locator.inputValue({timeout:1000});matches=actual===expectedValue
     }else{
@@ -24,7 +29,7 @@ export async function assertFixedLocator(locator:Locator,step:Assertion,expected
       matches=step.match==='token'?typeof actual==='string'&&actual.split(/\s+/).includes(step.value):actual===step.value
     }
     if(matches)return
-    if(Date.now()>=deadline)throw new Error(`${step.action} 断言失败：实际 ${JSON.stringify(actual)}；预期 ${JSON.stringify(step.action==='expectAttribute'?step.value:step.action==='expectValue'?expectedValue:step.action==='expectEnabled')}`)
+    if(Date.now()>=deadline)throw new Error(`${step.action} 断言失败：实际 ${JSON.stringify(actual)}；预期 ${JSON.stringify(step.action==='expectAttribute'?step.value:step.action==='expectValue'?expectedValue:step.action==='expectChecked'?step.checked:step.action==='expectEnabled')}`)
     await setTimeout(100,undefined,{signal})
   }
 }

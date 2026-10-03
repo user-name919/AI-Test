@@ -14,6 +14,8 @@ test('固定规划使用最终契约，拒绝异地地址和未解析引用，�
     const chunks:Buffer[]=[];for await(const chunk of request)chunks.push(Buffer.from(chunk))
     const body=JSON.parse(Buffer.concat(chunks).toString())
     assert.match(JSON.stringify(body),/人工最终预期/)
+    assert.match(JSON.stringify(body),/expectChecked/)
+    assert.match(JSON.stringify(body),/操作不是断言/)
     response.setHeader('content-type','application/json');response.end(JSON.stringify({output_text:JSON.stringify(output)}))
   })
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve))

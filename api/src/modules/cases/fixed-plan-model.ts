@@ -12,6 +12,7 @@ export async function generateFixedPlan(targetUrl:string,testCase:ResolvedCaseEx
   const prompt=`你是 Playwright 自动化测试规划器。返回严格 JSON，不输出脚本。
 格式 {"name":"计划名称","targetUrl":"${targetUrl}","steps":[]}。
 允许 goto{path}、click{locator}、fill{locator,value或valueRef}、expectText{text或valueRef}、screenshot{name}、resolveTestData{bindingId}；每步有 action 字段。
+表单动作支持 check{locator}、uncheck{locator}、hover{locator}、press{locator,key}；key 只允许 Enter/Escape/Tab/ArrowUp/ArrowDown/ArrowLeft/ArrowRight/Home/End/PageUp/PageDown/Backspace/Delete/Space，不允许任意文本或组合键。check/uncheck 使用明确的选中目标，不用 click 切换代替；操作不是断言。expectChecked{locator,checked:true或false,assertionIndex} 验证真实选中状态。悬停/键盘若引发提交必须符合最终契约，不添加额外提交。
 元素断言支持 expectVisible{locator}、expectHidden{locator}、expectEnabled{locator}、expectDisabled{locator}、expectValue{locator,value或valueRef}、expectAttribute{locator,name,value,match:"exact|token"}。属性 exact 为完整值相等，token 为独立空白分隔标记（例如 class）。高亮必须有明确的标记元素及属性依据，没有依据就报告能力受阻，不猜样式或把文本存在当高亮。
 每个 expect 动作必须带 assertionIndex，指向最终契约 expectedAssertions 数组的下标（从0开始）。每项预期至少有一个真正验证它的动作；不得重复验证容易的预期而漏掉其他项。
 locator={by:"role|label|text|css",value:"定位内容",name:"可选名称"}；优先语义定位，不能杜撰选择器。

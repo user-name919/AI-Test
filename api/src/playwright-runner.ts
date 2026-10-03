@@ -131,6 +131,10 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               await page.goto(destination.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
             } else if (step.action === 'click') {
               await locatorFor(page, step.locator).click({ timeout: 10_000 })
+            } else if (step.action === 'check' || step.action === 'uncheck' || step.action === 'hover') {
+              await locatorFor(page, step.locator)[step.action]({ timeout: 10_000 })
+            } else if (step.action === 'press') {
+              await locatorFor(page, step.locator).press(step.key, { timeout: 10_000 })
             } else if (step.action === 'fill') {
               const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`输入引用尚未解析：${step.valueRef}`)

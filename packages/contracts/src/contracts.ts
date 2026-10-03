@@ -306,9 +306,19 @@ export const locatorSchema = z.object({
   name: z.string().optional(),
 })
 
+const keyboardKeySchema = z.enum([
+  'Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'Home', 'End', 'PageUp', 'PageDown', 'Backspace', 'Delete', 'Space',
+])
+
 export const automationStepSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
   z.object({ action: z.literal('click'), locator: locatorSchema }),
+  z.object({ action: z.literal('check'), locator: locatorSchema }),
+  z.object({ action: z.literal('uncheck'), locator: locatorSchema }),
+  z.object({ action: z.literal('hover'), locator: locatorSchema }),
+  z.object({ action: z.literal('press'), locator: locatorSchema, key: keyboardKeySchema }),
+  z.object({ action: z.literal('expectChecked'), locator: locatorSchema, checked: z.boolean(), assertionIndex: z.number().int().nonnegative().optional() }),
   z.object({ action: z.literal('fill'), locator: locatorSchema, value: z.string().optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.value!==undefined)!==(item.valueRef!==undefined),'输入值与数据引用必须且只能提供一个'),
   z.object({ action: z.literal('expectText'), assertionIndex:z.number().int().nonnegative().optional(), text: z.string().min(1).optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.text!==undefined)!==(item.valueRef!==undefined),'预期文本与数据引用必须且只能提供一个'),
   z.object({ action:z.literal('resolveTestData'), bindingId:z.string().min(1) }),
@@ -568,11 +578,6 @@ export const agentRunRequestSchema = z.object({
 const elementActionBase = {
   elementRef: z.string().regex(/^e\d+$/),
 }
-
-const keyboardKeySchema = z.enum([
-  'Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'Home', 'End', 'PageUp', 'PageDown', 'Backspace', 'Delete', 'Space',
-])
 
 const semanticRoleSchema = z.enum([
   'alert', 'button', 'cell', 'checkbox', 'combobox', 'dialog', 'grid', 'gridcell',

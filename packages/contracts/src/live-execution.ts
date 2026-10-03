@@ -189,6 +189,10 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
   } else if (step.action === 'click') {
     title = `点击${quoted(step.locator.name ?? step.locator.value)}`
     technicalAction = `click ${locatorDetail(step.locator)}`
+  } else if (step.action === 'check' || step.action === 'uncheck' || step.action === 'hover' || step.action === 'press') {
+    const names={check:'勾选',uncheck:'取消勾选',hover:'悬停到',press:'按键操作'}
+    title = `${names[step.action]}${quoted(step.locator.name ?? step.locator.value)}${step.action==='press'?`：${step.key}`:''}`
+    technicalAction = JSON.stringify(step)
   } else if (step.action === 'fill') {
     title = `在${quoted(step.locator.name ?? step.locator.value)}中输入${step.valueRef?`运行时数据 ${step.valueRef}`:quoted(step.value??'')}`
     technicalAction = `fill ${locatorDetail(step.locator)} ${step.valueRef?`valueRef=${step.valueRef}`:quoted(step.value??'')}`
@@ -199,7 +203,7 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
     title=`从当前页面解析测试数据 ${step.bindingId}`
     technicalAction=`resolveTestData ${step.bindingId}`
   } else if('locator' in step){
-    const names={expectVisible:'可见',expectHidden:'隐藏',expectEnabled:'可操作',expectDisabled:'不可操作',expectValue:'输入值符合预期',expectAttribute:'属性符合预期'}
+    const names={expectVisible:'可见',expectHidden:'隐藏',expectEnabled:'可操作',expectDisabled:'不可操作',expectChecked:step.action==='expectChecked'&&step.checked?'已选中':'未选中',expectValue:'输入值符合预期',expectAttribute:'属性符合预期'}
     title=`确认${quoted(step.locator.name??step.locator.value)}${names[step.action]}`
     technicalAction=JSON.stringify(step)
   } else {
