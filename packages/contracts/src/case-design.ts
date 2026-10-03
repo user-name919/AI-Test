@@ -64,6 +64,30 @@ export const designIssueProposalSchema = z.object({
 })
 export const qualityReviewSchema = z.object({ issues: z.array(designIssueProposalSchema) })
 export type DesignIssue = z.infer<typeof designIssueProposalSchema> & { id: string; checkedBy: 'rule' | 'model' | 'human' }
+export const designReviewContentSchema = z.object({
+  cases: z.record(z.string(), z.object({
+    title: z.string().trim().min(1), contract: caseExecutionContractSchema,
+    verification: z.enum(['browser', 'api', 'manual']), verificationReason: z.string().trim().min(1),
+    status: z.enum(['draft', 'confirmed', 'excluded']), exclusionReason: z.string().trim().optional(),
+  }).superRefine((item, context) => {
+    if (item.status === 'excluded' && !item.exclusionReason) context.addIssue({ code: 'custom', path: ['exclusionReason'], message: '排除用例必须说明原因' })
+  })),
+  questionDecisions: z.record(z.string(), z.string().trim().min(1)),
+  issueDecisions: z.record(z.string(), z.object({ status: z.enum(['addressed', 'dismissed']), reason: z.string().trim().min(1) })),
+  excludedFacts: z.record(z.string(), z.string().trim().min(1)),
+})
+export const designReviewRequestSchema = z.object({ expectedRevision: z.number().int().nonnegative(), runId: z.string().min(1), review: designReviewContentSchema })
+export type DesignReviewContent = z.infer<typeof designReviewContentSchema>
+export interface DesignReview {
+  id: string
+  designId: string
+  runId: string
+  revision: number
+  inputRevision: number
+  inputHash: string
+  createdAt: string
+  content: DesignReviewContent
+}
 export type CaseDesignDraft = z.infer<typeof generatedCaseSchema> & {
   id: string
   scenarioId: string

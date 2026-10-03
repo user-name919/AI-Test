@@ -4,8 +4,22 @@ import { parseSourceDocuments } from '../../source-documents'
 import { createEvidenceDocuments } from './documents'
 import { createCaseDesign, getCaseDesign, listCaseDesigns, listDesignRuns } from './repository'
 import { cancelDesignRun, startDesignRun } from './jobs'
+import { designReviewRequestSchema } from '@quality-ai/contracts/case-design'
+import { listDesignReviews, saveDesignReview } from './review'
 
 export async function handleCaseDesignRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const reviewMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/reviews$/)
+  if (reviewMatch && (request.method === 'GET' || request.method === 'POST')) {
+    const id = decodeURIComponent(reviewMatch[1])
+    if (!getCaseDesign(id)) return json(response, 404, { error: '用例设计任务不存在' })
+    if (request.method === 'GET') return json(response, 200, { reviews: listDesignReviews(id) })
+    const parsed = designReviewRequestSchema.safeParse(await readJson(request))
+    if (!parsed.success) return json(response, 400, { error: '审核内容或预期版本不合法', issues: parsed.error.issues })
+    const result = saveDesignReview(id, parsed.data.runId, parsed.data.expectedRevision, parsed.data.review)
+    if (result.kind === 'invalid') return json(response, 400, { error: result.error })
+    if (result.kind === 'conflict') return json(response, 409, { error: '审核版本已变化，请保留草稿并对比最新版本', review: result.review })
+    return json(response, 201, { review: result.review })
+  }
   if (request.url === '/api/case-designs' && request.method === 'GET') return json(response, 200, { designs: listCaseDesigns() })
   if (request.url === '/api/case-designs' && request.method === 'POST') {
     const body = await readJson(request)
