@@ -5,6 +5,7 @@ import { ResponsesModelClient } from '../../model-client'
 import { RuntimeDataBindingBlockedError } from '../../test-data-binding'
 import { validateFixedAssertionCoverage } from '../../fixed-assertion-coverage'
 import { validateFixedSelectData } from '../../fixed-select-option'
+import { validateFixtureReference } from '../test-fixtures/store'
 
 const parse=(text:string)=>JSON.parse(jsonrepair(text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'')))
 
@@ -13,6 +14,7 @@ export async function generateFixedPlan(targetUrl:string,testCase:ResolvedCaseEx
   const prompt=`你是 Playwright 自动化测试规划器。返回严格 JSON，不输出脚本。
 格式 {"name":"计划名称","targetUrl":"${targetUrl}","steps":[]}。
 允许 goto{path}、click{locator}、fill{locator,value或valueRef}、expectText{text或valueRef}、screenshot{name}、resolveTestData{bindingId}；每步有 action 字段。
+已登记测试附件可用 uploadFile{locator,fixtureId} 上传到真实 input[type=file]。fixtureId 必须是最终契约 fixture/manual 中已确认的附件 UUID，不允许路径、URL或生成文件。此动作会触发 change，网站可能自动上传，须符合人工确认的用例；不额外点击提交。上传动作不证明服务端处理成功，仍需执行契约的业务断言。附件缺失/内容改变时受阻，不替换附件。
 原生 HTML select 可使用 selectOption{locator,value,optionBy:"value|label"}，optionBy 默认 value；显示名称和选项value可能不同，必须明确选择依据。只允许最终契约已声明且有依据的 fixture/manual 值，禁止猜测。此动作不支持搜索策略 valueRef，不替代自定义搜索下拉的 click/fill；不知道原生选项数据时明确受阻。选择动作不计业务断言，随后验证已确认预期。
 表单动作支持 check{locator}、uncheck{locator}、hover{locator}、press{locator,key}；key 只允许 Enter/Escape/Tab/ArrowUp/ArrowDown/ArrowLeft/ArrowRight/Home/End/PageUp/PageDown/Backspace/Delete/Space，不允许任意文本或组合键。check/uncheck 使用明确的选中目标，不用 click 切换代替；操作不是断言。expectChecked{locator,checked:true或false,assertionIndex} 验证真实选中状态。悬停/键盘若引发提交必须符合最终契约，不添加额外提交。
 元素断言支持 expectVisible{locator}、expectHidden{locator}、expectEnabled{locator}、expectDisabled{locator}、expectValue{locator,value或valueRef}、expectAttribute{locator,name,value,match:"exact|token"}。属性 exact 为完整值相等，token 为独立空白分隔标记（例如 class）。高亮必须有明确的标记元素及属性依据，没有依据就报告能力受阻，不猜样式或把文本存在当高亮。
@@ -33,6 +35,7 @@ value 与 valueRef、text 与 valueRef 各自只能选一个。非运行时输�
   const resolved=new Set<string>()
   for(const step of plan.steps){
     if(step.action==='selectOption')validateFixedSelectData(step.value,testCase.contract)
+    if(step.action==='uploadFile')validateFixtureReference(step.fixtureId,testCase.contract)
     if(step.action==='resolveTestData'){
       if(!testCase.contract.dataBindings.some(binding=>binding.id===step.bindingId&&binding.mode==='runtime_dom'))throw new Error('计划引用未声明的运行时数据')
       resolved.add(step.bindingId)

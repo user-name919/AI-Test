@@ -5,6 +5,7 @@ import { handleCaseRoutes } from './modules/cases/routes'
 import { handleExecutionRoutes } from './modules/executions/routes'
 import { handleProjectRoutes } from './modules/projects/routes'
 import { handleEnvironmentRoutes } from './modules/projects/environments'
+import { handleTestFixtureRoutes } from './modules/test-fixtures/routes'
 import { handleCaseDesignRoutes } from './modules/case-design/routes'
 import { initializeDesignJobs } from './modules/case-design/jobs'
 import { initializeExecutionJobs } from './modules/executions/jobs'
@@ -15,7 +16,7 @@ import { initializeRegressionJobs } from './modules/regressions/jobs'
 import { initializeRegressionReviews } from './modules/regressions/review'
 import { initializeDeploymentConfirmations } from './modules/regressions/deployments'
 
-const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleCaseDesignRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes, handleRegressionRoutes]
+const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleTestFixtureRoutes, handleCaseDesignRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes, handleRegressionRoutes]
 
 export function createApiServer() {
   initializeDesignJobs()

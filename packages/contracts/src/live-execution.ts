@@ -193,6 +193,9 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
     const names={check:'勾选',uncheck:'取消勾选',hover:'悬停到',press:'按键操作'}
     title = `${names[step.action]}${quoted(step.locator.name ?? step.locator.value)}${step.action==='press'?`：${step.key}`:''}`
     technicalAction = JSON.stringify(step)
+  } else if (step.action === 'uploadFile') {
+    title = `向${quoted(step.locator.name ?? step.locator.value)}上传已确认附件 ${step.fixtureId}`
+    technicalAction = JSON.stringify(step)
   } else if (step.action === 'selectOption') {
     title = `在${quoted(step.locator.name ?? step.locator.value)}中按${step.optionBy==='label'?'显示名称':'选项值'}选择${quoted(step.value)}`
     technicalAction = JSON.stringify(step)

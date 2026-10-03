@@ -7,6 +7,7 @@
     ".": "./src/contracts.ts",
     "./cases": "./src/case-assets.ts",
     "./regressions": "./src/regressions.ts",
+    "./test-fixtures": "./src/test-fixtures.ts",
     "./case-design": "./src/case-design.ts",
     "./live-execution": "./src/live-execution.ts",
     "./review-state": "./src/review-state.ts"

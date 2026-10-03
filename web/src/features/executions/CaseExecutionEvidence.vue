@@ -6,6 +6,11 @@ const recoveryNames={reobserved:'已重新观察页面，再由 AI 决定下一�
 <template>
   <section class="evidence" aria-label="用例实际执行证据">
     <h3>本次实际使用的数据</h3>
+    <article v-for="(fixture,index) in result.usedFixtures??[]" :key="`${fixture.id}:${index}`">
+      <p>上传使用的测试附件：<strong>{{ fixture.name }}</strong> · {{ fixture.size }} 字节</p>
+      <p>附件 ID：{{ fixture.id }}</p><small>内容 SHA256：{{ fixture.sha256 }}</small>
+      <p>这是尝试上传时的附件快照；是否上传成功、是否完成业务处理，以后续动作和断言结果为准。</p>
+    </article>
     <p v-if="!result.resolvedDataBindings.length">未记录运行时数据绑定，不代表已验证数据来源。</p>
     <article v-for="binding in result.resolvedDataBindings" :key="binding.bindingId">
       <p>输入：<strong>{{ binding.value }}</strong> · 来源选项：{{ binding.sourceText }}</p>

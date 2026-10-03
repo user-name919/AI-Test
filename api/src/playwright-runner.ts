@@ -7,6 +7,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright'
 import { automationPlanSchema, type AutomationPlan, type CaseExecutionResult, type ExecutionResult, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
 import { validateFixedSelectData } from './fixed-select-option'
+import { loadTestFixture, validateFixtureReference } from './modules/test-fixtures/store'
 import { startLivePageStream } from './live-page-stream'
 import { PageObserver } from './page-observer'
 import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-runner'
@@ -149,6 +150,15 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
                 step.optionBy === 'label' ? { label: step.value } : { value: step.value },
                 { timeout: 10_000 },
               )
+            } else if (step.action === 'uploadFile') {
+              validateFixtureReference(step.fixtureId, casePlan.contract)
+              let fixture
+              try { fixture = await loadTestFixture(step.fixtureId) }
+              catch { throw new RuntimeDataBindingBlockedError('已登记测试附件缺失、已改变或不可读取，请回到附件配置检查') }
+              options.signal?.throwIfAborted()
+              checkpoint.usedFixtures ??= []
+              checkpoint.usedFixtures.push(fixture.metadata)
+              await locatorFor(page, step.locator).setInputFiles({ name: fixture.metadata.name, mimeType: fixture.metadata.mimeType, buffer: fixture.buffer }, { timeout: 10_000 })
             } else if (step.action === 'fill') {
               const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`输入引用尚未解析：${step.valueRef}`)
