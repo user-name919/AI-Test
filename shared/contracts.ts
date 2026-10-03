@@ -276,6 +276,13 @@ export const automationPlanSchema = z.object({
   name: z.string().min(1),
   targetUrl: z.string().url(),
   steps: z.array(automationStepSchema).min(1).max(50),
+  casePlans: z.array(z.object({
+    caseKey: z.string().regex(/^\d+-TC-\d+$/),
+    title: z.string().min(1),
+    contractFingerprint: z.string().min(1),
+    contract: caseExecutionContractSchema.optional(),
+    steps: z.array(automationStepSchema).min(1).max(50),
+  })).min(1).max(20).optional(),
 })
 
 export type AutomationPlan = z.infer<typeof automationPlanSchema>
@@ -313,7 +320,7 @@ export interface ExecutionResult {
   id: string
   name: string
   targetUrl: string
-  status: 'passed' | 'failed' | 'blocked'
+  status: ExecutionStatus
   mode?: 'plan' | 'agent'
   startedAt: string
   finishedAt: string
@@ -322,6 +329,8 @@ export interface ExecutionResult {
   screenshots: string[]
   tracePath?: string
   error?: string
+  caseResults?: CaseExecutionResult[]
+  sourceProject?: { id: string; branch?: string; commit?: string }
   agent?: {
     summary: string
     passedAssertions: string[]
@@ -339,6 +348,7 @@ export interface ExecutionResult {
       }
       result?: ToolResult
       projectContext?: unknown
+      resolvedDataBinding?: ResolvedDataBinding
     }>
   }
 }
@@ -353,6 +363,7 @@ export interface CaseExecutionResult {
   continuation: 'reused_current_page' | 'agent_recovered_page'
   resolvedDataBindings: ResolvedDataBinding[]
   passedAssertions: string[]
+  trajectory: NonNullable<ExecutionResult['agent']>['trajectory']
   steps: ExecutionResult['steps']
   screenshots: string[]
   tracePath?: string
@@ -395,8 +406,8 @@ export type LiveExecutionEvent =
     targetUrl: string
     cases?: Array<{ key: string; title: string }>
   }
-  | { type: 'activity'; executionId: string; activity: LiveExecutionActivity }
-  | { type: 'browser_frame'; executionId: string; dataUrl: string; capturedAt: string }
+  | { type: 'activity'; executionId: string; caseKey?: string; caseTitle?: string; activity: LiveExecutionActivity }
+  | { type: 'browser_frame'; executionId: string; caseKey?: string; caseTitle?: string; dataUrl: string; capturedAt: string }
   | { type: 'execution_completed'; execution: ExecutionRecord }
   | { type: 'execution_error'; executionId?: string; error: string }
 
@@ -464,6 +475,17 @@ export const agentTestGoalSchema = z.object({
     contract: caseExecutionContractSchema,
     contractFingerprint: z.string().min(1),
   }).optional(),
+  resolvedQuestions: z.array(z.object({
+    questionKey: z.string(), questionTitle: z.string(), finalStatement: z.string(),
+    objective: z.string().optional(), triggers: z.array(z.string()), behaviors: z.array(z.string()).optional(),
+    assertions: z.array(z.string()), forbiddenBehaviors: z.array(z.string()), sourceHints: z.array(z.string()),
+    uncertainties: z.array(z.string()), confidence: z.enum(['high', 'medium', 'low']).optional(),
+  })).optional(),
+  previousCaseSummaries: z.array(z.object({
+    caseKey: z.string(), title: z.string(), status: z.enum(['passed', 'failed', 'blocked', 'infrastructure_failed']),
+    summary: z.string(), actions: z.array(z.string()),
+  })).optional(),
+  sessionContinuation: z.string().optional(),
 })
 
 export const agentRunRequestSchema = z.object({

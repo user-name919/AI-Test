@@ -8,7 +8,7 @@ import { analyzePrd } from './model'
 import { getAnalysisById, getAutomationPlanById, getEnvironmentById, getExecutionById, getLatestAnalysis, getLatestAutomationPlan, getLatestEnvironment, getLatestExecution, listAnalyses, listExecutions, saveAnalysis, saveAutomationPlan, saveEnvironment, saveExecution, saveReview, setEnvironmentStorageState } from './database'
 import { runAutomationPlan } from './playwright-runner'
 import { generateAutomationPlan } from './model'
-import { agentRunRequestSchema, automationPlanSchema, reviewStateSchema, storageStateSchema, type LiveExecutionEvent, type SavedAnalysis } from '../shared/contracts'
+import { agentRunRequestSchema, automationPlanSchema, reviewStateSchema, storageStateSchema, type AutomationPlan, type LiveExecutionEvent, type SavedAnalysis } from '../shared/contracts'
 import { getProjectProvider, getProjectProviderRegistry } from './project-knowledge/registry'
 import type { SourceScope } from './project-knowledge/types'
 import { inspectTargetPage } from './page-observer-runner'
@@ -17,17 +17,34 @@ import { runAgentTest } from './agent-test-runner'
 import { parseSourceDocuments } from './source-documents'
 import { openNdjsonResponse } from './ndjson-response'
 import { collectReviewSourceContext, generateReviewExecutionContract } from './review-contract'
-import { collectResolvedReviewContext, resolveCaseExecutionContract } from './review-execution-context'
+import { resolveCaseExecutionContract } from './review-execution-context'
 
 const port = Number(process.env.API_PORT ?? 8787)
 const maxBodySize = 30 * 1024 * 1024
 const sourceScopes = new Set<SourceScope>(['route', 'page', 'component', 'api'])
 
-function executionCases(analysis: SavedAnalysis, caseKeys: string[]) {
-  return caseKeys.flatMap(key => {
-    const match = key.match(/^(\d+)-TC-(\d+)$/)
-    const testCase = match ? analysis.result.requirements[Number(match[1])]?.testCases[Number(match[2])] : undefined
-    return testCase ? [{ key, title: testCase.title }] : []
+async function generateCasePlans(analysis: SavedAnalysis, caseKeys: string[], targetUrl: string): Promise<AutomationPlan> {
+  const cases = caseKeys.map(caseKey => resolveCaseExecutionContract(analysis, caseKey))
+  for (const item of cases) {
+    if (!item.readiness.plan.executable) throw new Error(item.readiness.plan.reason ?? `用例不能生成固定计划：${item.caseKey}`)
+  }
+  const casePlans = await Promise.all(cases.map(async item => {
+    const testCase = analysis.result.requirements[item.requirementIndex]?.testCases[item.caseIndex]
+    if (!testCase) throw new Error(`测试用例不存在：${item.caseKey}`)
+    const generated = await generateAutomationPlan(targetUrl, [testCase], item.resolvedQuestions)
+    return {
+      caseKey: item.caseKey,
+      title: item.title,
+      contractFingerprint: item.contractFingerprint,
+      contract: item.contract,
+      steps: generated.steps,
+    }
+  }))
+  return automationPlanSchema.parse({
+    name: `${analysis.result.versionName} · ${casePlans.length} 条用例`,
+    targetUrl,
+    steps: casePlans[0]!.steps,
+    casePlans,
   })
 }
 
@@ -235,20 +252,14 @@ export function createApiServer() {
       const analysis = getAnalysisById(analysisId)
       if (!analysis) return json(response, 404, { error: '解析记录不存在' })
       if (!targetUrl || !caseKeys.length) return json(response, 400, { error: '请选择用例并配置测试地址' })
-      const testCases = caseKeys.map(key => {
-        const match = key.match(/^(\d+)-TC-(\d+)$/)
-        return match ? analysis.result.requirements[Number(match[1])]?.testCases[Number(match[2])] : undefined
-      }).filter((item): item is NonNullable<typeof item> => Boolean(item))
-      if (!testCases.length) return json(response, 400, { error: '没有找到可生成的测试用例' })
       try {
-        buildAgentTestGoal(analysis, caseKeys, targetUrl)
+        const plan = await generateCasePlans(analysis, caseKeys, targetUrl)
+        const savedPlan = { id: randomUUID(), analysisId, caseKeys, plan, createdAt: new Date().toISOString() }
+        saveAutomationPlan(savedPlan)
+        return json(response, 201, { automationPlan: savedPlan })
       } catch (error) {
         return json(response, 409, { error: error instanceof Error ? error.message : '测试用例仍未满足执行前置条件' })
       }
-      const plan = await generateAutomationPlan(targetUrl, testCases, collectResolvedReviewContext(analysis, caseKeys))
-      const savedPlan = { id: randomUUID(), analysisId, caseKeys, plan, createdAt: new Date().toISOString() }
-      saveAutomationPlan(savedPlan)
-      return json(response, 201, { automationPlan: savedPlan })
     }
 
     const streamPlanExecution = request.url === '/api/automation/run/stream'
@@ -262,10 +273,12 @@ export function createApiServer() {
       if (automationPlanId && !savedPlan) return json(response, 404, { error: '自动化计划不存在' })
       const wrappedPlan = automationPlanSchema.parse(savedPlan?.plan ?? body.plan ?? body)
       const planAnalysis = savedPlan ? getAnalysisById(savedPlan.analysisId) : null
-      const cases = savedPlan && planAnalysis ? executionCases(planAnalysis, savedPlan.caseKeys) : undefined
       if (savedPlan && planAnalysis) {
         try {
-          buildAgentTestGoal(planAnalysis, savedPlan.caseKeys, wrappedPlan.targetUrl)
+          for (const caseKey of savedPlan.caseKeys) {
+            const resolved = resolveCaseExecutionContract(planAnalysis, caseKey)
+            if (!resolved.readiness.plan.executable) throw new Error(resolved.readiness.plan.reason ?? `用例不能执行固定计划：${caseKey}`)
+          }
         } catch (error) {
           return json(response, 409, { error: error instanceof Error ? error.message : '自动化计划仍未满足执行前置条件' })
         }
@@ -273,7 +286,6 @@ export function createApiServer() {
       const stream = streamPlanExecution ? openNdjsonResponse(response) : null
       try {
         const result = await runAutomationPlan(wrappedPlan, environment?.storageStatePath, {
-          cases,
           onEvent: stream ? (event: LiveExecutionEvent) => stream.send(event) : undefined,
         })
         saveExecution(result, {
@@ -320,19 +332,19 @@ export function createApiServer() {
       if (project.targetOrigins.length && !project.targetOrigins.includes(target.origin)) {
         return json(response, 400, { error: `测试页面 Origin 未配置到项目：${target.origin}` })
       }
-      let goal
+      let goals
       try {
-        goal = buildAgentTestGoal(analysis, input.caseKeys, target.href)
+        goals = input.caseKeys.map(caseKey => buildAgentTestGoal(analysis, caseKey, target.href))
       } catch (error) {
         return json(response, 409, { error: error instanceof Error ? error.message : '测试目标构造失败' })
       }
       const stream = streamAgentExecution ? openNdjsonResponse(response) : null
       try {
-        const result = await runAgentTest(goal, environment?.storageStatePath, {
+        const result = await runAgentTest(goals, environment?.storageStatePath, {
           projectProvider,
-          cases: executionCases(analysis, input.caseKeys),
           onEvent: stream ? (event: LiveExecutionEvent) => stream.send(event) : undefined,
         })
+        result.sourceProject = { id: project.id, branch: project.branch, commit: project.commit }
         saveExecution(result, {
           analysisId: input.analysisId,
           environmentId: input.environmentId,

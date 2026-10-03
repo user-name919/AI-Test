@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SavedAnalysis } from '../shared/contracts'
 import { buildAgentTestGoal } from './agent-goal'
+import { resolveCaseExecutionContract } from './review-execution-context'
 
 function analysis(blockedByQuestion = false): SavedAnalysis {
   return {
@@ -24,19 +25,24 @@ function analysis(blockedByQuestion = false): SavedAnalysis {
   }
 }
 
-test('builds an executable Agent goal from selected PRD cases', () => {
-  const goal = buildAgentTestGoal(analysis(), ['0-TC-0'], 'http://localhost:5173/students')
+test('builds a single-case goal from the same resolved contract used for review', () => {
+  const saved = analysis()
+  const resolved = resolveCaseExecutionContract(saved, '0-TC-0')
+  const goal = buildAgentTestGoal(saved, '0-TC-0', 'http://localhost:5173/students')
   assert.equal(goal.name, '成功新增学生')
-  assert.match(goal.objective, /输入学生姓名/)
-  assert.deepEqual(goal.requiredAssertions, [{ id: 'r1-tc1', description: '页面显示保存成功' }])
+  assert.equal(goal.objective, '成功新增学生')
+  assert.equal(goal.executionContract?.caseKey, '0-TC-0')
+  assert.equal(goal.executionContract?.contractFingerprint, resolved.contractFingerprint)
+  assert.deepEqual(goal.executionContract?.contract, resolved.contract)
+  assert.deepEqual(goal.requiredAssertions, [{ id: 'r1-tc1-a1', description: '页面显示保存成功' }])
 })
 
 test('rejects cases that still depend on unanswered product questions', () => {
-  assert.throws(() => buildAgentTestGoal(analysis(true), ['0-TC-0'], 'http://localhost:5173/students'), /待确认问题/)
+  assert.throws(() => buildAgentTestGoal(analysis(true), '0-TC-0', 'http://localhost:5173/students'), /待确认问题/)
 })
 
 test('rejects stale or forged case keys', () => {
-  assert.throws(() => buildAgentTestGoal(analysis(), ['9-TC-9'], 'http://localhost:5173/students'), /测试用例不存在/)
+  assert.throws(() => buildAgentTestGoal(analysis(), '9-TC-9', 'http://localhost:5173/students'), /测试用例不存在/)
 })
 
 test('allows a blocked case after its question has an explicit human resolution', () => {
@@ -46,9 +52,9 @@ test('allows a blocked case after its question has an explicit human resolution'
     '0-Q-0': { status: 'edited', finalStatement: '失败时展示提示并允许重试', updatedAt: null },
   }
 
-  const goal = buildAgentTestGoal(reviewed, ['0-TC-0'], 'http://localhost:5173/students')
+  const goal = buildAgentTestGoal(reviewed, '0-TC-0', 'http://localhost:5173/students')
 
-  assert.match(goal.objective, /人工最终口径：失败时展示提示并允许重试/)
+  assert.equal(goal.resolvedQuestions?.[0]?.finalStatement, '失败时展示提示并允许重试')
 })
 
 test('keeps a case blocked when the saved execution contract still has uncertainties', () => {
@@ -64,5 +70,32 @@ test('keeps a case blocked when the saved execution contract still has uncertain
     },
   }
 
-  assert.throws(() => buildAgentTestGoal(reviewed, ['0-TC-0'], 'http://localhost:5173/students'), /仍有不确定项/)
+  assert.throws(() => buildAgentTestGoal(reviewed, '0-TC-0', 'http://localhost:5173/students'), /仍有不确定项/)
+})
+
+test('uses reviewed objective, assertions and runtime bindings without appending other cases', () => {
+  const saved = analysis()
+  saved.review.caseReviews = { '0-TC-0': {
+    status: 'confirmed', updatedAt: null,
+    finalContract: {
+      objective: '验证真实学生部分搜索', preconditions: ['打开学生列表'], steps: ['从当前选项选择部分关键词'],
+      expectedAssertions: ['匹配学生保留', '关键词高亮'], forbiddenBehaviors: ['不得编造学生姓名'], uncertainties: [],
+      dataBindings: [{ id: 'student', label: '学生', mode: 'runtime_dom', targetHint: '学生列表', businessIntent: '部分搜索',
+        strategy: 'visible_option_substring', constraints: { mustComeFromCurrentDom: true, mustBePartialOfSource: true } }],
+    },
+  } }
+  const goal = buildAgentTestGoal(saved, '0-TC-0', 'http://localhost:5173/students')
+  const resolved = resolveCaseExecutionContract(saved, '0-TC-0')
+  assert.equal(goal.objective, '验证真实学生部分搜索')
+  assert.deepEqual(goal.requiredAssertions.map(item => item.description), ['匹配学生保留', '关键词高亮'])
+  assert.deepEqual(goal.executionContract?.contract, resolved.contract)
+  assert.equal(goal.executionContract?.contractFingerprint, resolved.contractFingerprint)
+
+  saved.review.caseReviews['0-TC-0'].status = 'needs_data_review'
+  assert.throws(() => buildAgentTestGoal(saved, '0-TC-0', goal.targetUrl), /确认测试数据/)
+  saved.review.caseReviews['0-TC-0'].status = 'confirmed'
+  saved.review.caseReviews['0-TC-0'].finalContract.dataBindings[0]!.mode = 'fixture'
+  assert.throws(() => buildAgentTestGoal(saved, '0-TC-0', goal.targetUrl), /固定夹具.*缺少/)
+  saved.review.caseReviews['0-TC-0'].finalContract.dataBindings[0]!.mode = 'manual'
+  assert.throws(() => buildAgentTestGoal(saved, '0-TC-0', goal.targetUrl), /人工数据.*缺少/)
 })

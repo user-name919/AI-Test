@@ -12,7 +12,7 @@ type AutomationStep = AutomationPlan['steps'][number]
 
 export interface LiveExecutionState {
   visible: boolean
-  status: 'idle' | 'running' | 'passed' | 'failed' | 'blocked'
+  status: 'idle' | 'running' | ExecutionRecord['status']
   executionId: string
   mode: 'plan' | 'agent' | null
   name: string

@@ -144,3 +144,17 @@ test('reduces a live event stream without carrying the previous execution frame'
   assert.equal(state.frameDataUrl, '')
   assert.equal(state.activity, null)
 })
+
+test('retains an infrastructure failure reported by a completed execution', () => {
+  const state = reduceLiveExecutionState(createLiveExecutionState(), {
+    type: 'execution_completed',
+    execution: {
+      id: 'run-infrastructure-failure', name: '连续执行', targetUrl: 'https://example.test', status: 'infrastructure_failed',
+      startedAt: '2026-09-03T00:00:00.000Z', finishedAt: '2026-09-03T00:00:01.000Z', durationMs: 1_000,
+      steps: [], screenshots: [], caseKeys: [], error: '浏览器会话已中断',
+    },
+  })
+
+  assert.equal(state.status, 'infrastructure_failed')
+  assert.equal(state.error, '浏览器会话已中断')
+})

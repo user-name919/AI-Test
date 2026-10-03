@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import test, { after } from 'node:test'
-import type { CaseReview, PrdAnalysis } from '../shared/contracts'
+import type { CaseReview, ExecutionResult, PrdAnalysis } from '../shared/contracts'
 
 const temporaryDirectory = mkdtempSync(join(tmpdir(), 'quality-ai-database-test-'))
 const databasePath = join(temporaryDirectory, 'quality-ai.sqlite')
@@ -136,4 +136,29 @@ test('new analyses still initialize with an empty legacy-compatible review', () 
     caseReviews: {},
     updatedAt: null,
   })
+})
+
+test('preserves case-level execution and source-project attribution in result JSON', () => {
+  const execution: ExecutionResult = {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: '连续执行', targetUrl: 'https://example.test/exams',
+    status: 'failed', mode: 'agent', startedAt: createdAt, finishedAt: '2026-09-03T08:01:00.000Z', durationMs: 60_000,
+    steps: [], screenshots: [],
+    sourceProject: { id: 'exam-web', branch: 'feature/exam-search', commit: 'abc123' },
+    caseResults: [{
+      caseKey: '0-TC-0', title: '按部分关键词筛选', contractFingerprint: 'fingerprint', status: 'failed',
+      startedFromUrl: 'https://example.test/exams', startedFromSnapshotId: 'snapshot-1', continuation: 'reused_current_page',
+      resolvedDataBindings: [{ bindingId: 'exam-query', sourceElementRef: 'e1', sourceText: '期中数学考试', value: '数学', snapshotId: 'snapshot-1', observedAt: createdAt, reason: '真实候选项' }],
+      passedAssertions: ['搜索框值正确'], trajectory: [], steps: [], screenshots: ['failure.png'], tracePath: 'trace.zip', error: '预期结果未出现',
+    }],
+  }
+
+  databaseModule.saveExecution(execution, {
+    analysisId: 'legacy-analysis', environmentId: 'test-environment', projectId: 'exam-web', caseKeys: ['0-TC-0'],
+  })
+
+  const saved = databaseModule.getExecutionById(execution.id)
+  assert.deepEqual(saved?.caseResults, execution.caseResults)
+  assert.deepEqual(saved?.sourceProject, execution.sourceProject)
+  assert.deepEqual(saved?.caseKeys, ['0-TC-0'])
+  assert.equal(saved?.projectId, 'exam-web')
 })
