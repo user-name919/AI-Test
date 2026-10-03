@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { executionJobRequestSchema, type ExecutionJob } from '@quality-ai/contracts/cases'
-import { automationPlanSchema, type LiveExecutionEvent } from '@quality-ai/contracts'
+import { automationPlanSchema, type AutomationPlan, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { database } from '../../storage/database'
 import { prepareAssetExecution } from '../cases/execution-preparation'
 import { getEnvironmentById } from '../projects/environment-repository'
@@ -13,6 +13,7 @@ import { validateDeploymentForExecution } from '../regressions/deployments'
 import { acquireChangeSetWorktree, releaseChangeSetWorktree } from '../../integrations/git/worktree-manager'
 import { loadProjectConfigs } from '../../project-knowledge/config'
 import { LocalProjectKnowledgeProvider } from '../../project-knowledge/local-project-provider'
+import { getAutomationPlanById } from '../cases/plan-repository'
 
 let initialized = false
 let working = false
@@ -93,13 +94,26 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
   // 所有异步配置查询之后重新固定资产，不接受客户端准备接口返回的快照。
   const preparation = prepareAssetExecution({ mode:request.mode,targetUrl:request.targetUrl,cases:request.cases,environmentId:request.environmentId,deploymentConfirmationId:request.deploymentConfirmationId })
   const deployment = preparation.deploymentConfirmation
+  const savedPlan = request.automationPlanId ? getAutomationPlanById(request.automationPlanId) : null
+  if(request.automationPlanId&&!savedPlan)throw new Error('已确认计划不存在，请重新生成并查看计划')
+  let confirmedPlan:AutomationPlan|undefined
+  if(savedPlan){
+    if(request.mode!=='plan')throw new Error('已确认固定计划不能用于动态执行')
+    confirmedPlan=automationPlanSchema.parse(savedPlan.plan)
+    if(confirmedPlan.targetUrl!==request.targetUrl)throw new Error('执行地址与已确认计划不一致，请重新生成计划')
+    if(!confirmedPlan.casePlans||confirmedPlan.casePlans.length!==preparation.snapshots.length||savedPlan.caseKeys.length!==preparation.snapshots.length)throw new Error('计划缺少完整逐用例依据，请重新生成计划')
+    for(const [index,snapshot] of preparation.snapshots.entries()){
+      const item=confirmedPlan.casePlans[index]!
+      if(snapshot.source?.type!=='requirement'||snapshot.source.analysisId!==savedPlan.analysisId||item.caseKey!==snapshot.resolved.caseKey||savedPlan.caseKeys[index]!==item.caseKey||item.contractFingerprint!==snapshot.resolved.contractFingerprint||!item.contract)throw new Error('已确认计划与所选用例、顺序或口径不一致，请重新生成计划')
+    }
+  }
   if (deployment && request.projectId !== deployment.projectId) throw new Error('回归执行必须选择变更范围对应的源码项目')
   const regressionProjectConfig = deployment ? (await loadProjectConfigs()).find(config => config.id === deployment.projectId) : undefined
   if (deployment && !regressionProjectConfig) throw new Error('回归源码项目配置不存在')
   if (queue.length >= 20) throw new Error('执行队列已满，请等待当前任务完成')
   const now = new Date().toISOString()
   const job: ExecutionJob = {id:randomUUID(),status:'queued',mode:request.mode,targetUrl:request.targetUrl,snapshots:preparation.snapshots,createdAt:now,updatedAt:now,
-    environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,
+    environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,automationPlanId:savedPlan?.id,
     sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit} : undefined}
   writeJob(job)
   queue.push(async () => {
@@ -130,8 +144,8 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
         const current = await provider.getProjectInfo()
         if (!current.connected || current.commit !== project.commit || current.branch !== project.branch) throw new Error('排队期间源码版本已变化，请重新确认项目版本再执行')
       }
-      let plan
-      if (request.mode === 'plan') {
+      let plan=confirmedPlan
+      if (request.mode === 'plan'&&!plan) {
         const casePlans = []
         for (const snapshot of job.snapshots) {
           controller.signal.throwIfAborted()
@@ -158,7 +172,7 @@ export async function createExecutionJob(input: unknown): Promise<ExecutionJob> 
       result.caseSnapshots = job.snapshots
       result.sourceProject = job.sourceProject
       result.deploymentConfirmation = deployment
-      saveExecution(result,{environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
+      saveExecution(result,{analysisId:savedPlan?.analysisId,automationPlanId:savedPlan?.id,environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
       job.executionId = result.id
       job.status = controller.signal.aborted ? 'cancelled' : 'completed' // 完成任务不等于用例通过。
       writeJob(job)

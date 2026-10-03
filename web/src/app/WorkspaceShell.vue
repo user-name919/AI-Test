@@ -652,17 +652,16 @@ async function runGeneratedPlan() {
   const blockedPlanCases = blockedCaseKeys(latestAutomationPlan.value.caseKeys, 'plan')
   if (blockedPlanCases.length) return toast(`${blockedPlanCases[0]}：${caseReadinessReason(blockedPlanCases[0]!, 'plan')}`)
   executionRunning.value = true
-  showNotice('正在启动 Chromium 执行已确认计划…', 'loading', 0)
+  const confirmed=latestAutomationPlan.value
+  showNotice('正在为已确认计划创建后台任务，不会重新生成计划…', 'loading', 0)
   try {
-    const execution = await streamExecution('/api/automation/run/stream', {
-      plan: latestAutomationPlan.value.plan,
-      automationPlanId: latestAutomationPlan.value.id,
-      environmentId: environment.value?.id,
-    }, latestAutomationPlan.value.plan.name, latestAutomationPlan.value.plan.targetUrl)
-    latestExecution.value = execution
-    await refreshExecutions(execution.id)
-    toast(`AI 计划执行${execution.status === 'passed' ? '通过' : '失败'}：${execution.steps.length} 步`)
-  } catch (error) { toast(`执行失败：${markLiveExecutionFailed(error)}`) }
+    if(!environment.value)throw new Error('请先配置测试环境')
+    if(!confirmed.plan.casePlans)throw new Error('历史计划缺少逐用例依据，请重新生成计划')
+    const job=await startRequirementExecution({analysisId:confirmed.analysisId,automationPlanId:confirmed.id,targetUrl:confirmed.plan.targetUrl,
+      environmentId:environment.value.id,cases:confirmed.plan.casePlans.map(item=>({caseKey:item.caseKey,contractFingerprint:item.contractFingerprint}))})
+    toast('已确认计划已进入后台任务，可关闭页面后找回')
+    await router.push(`/execution-jobs/${job.id}`)
+  } catch (error) { toast(`任务创建失败：${error instanceof Error?error.message:'未知错误'}`) }
   finally { executionRunning.value = false }
 }
 

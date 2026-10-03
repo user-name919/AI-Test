@@ -25,6 +25,7 @@ const {createApiServer}=await import('./app')
 const {database}=await import('./storage/database')
 const {saveAnalysis}=await import('./modules/requirements/repository')
 const {listCaseAssets}=await import('./modules/cases/repository')
+const {saveAutomationPlan}=await import('./modules/cases/plan-repository')
 
 test('持久任务先返回ID，断开创建请求后实际浏览器执行，游标可补取且重启不重放',async t=>{
   const modelRequests:string[]=[]
@@ -90,6 +91,25 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   assert.equal(result.caseResults.length,1)
   assert.equal(result.caseResults[0].passedAssertions.length,1)
   assert.equal(modelRequests.length,1,'已取消排队任务不能调用模型或浏览器')
+  const automationPlanId='11111111-1111-4111-8111-111111111111'
+  saveAutomationPlan({id:automationPlanId,analysisId:'synthetic',caseKeys:['0-TC-0'],plan:result.plan,createdAt:new Date().toISOString()})
+  assert.equal((await post('/api/execution-jobs',{...input,automationPlanId,targetUrl:target+'/different'})).status,409)
+  const invalidPlanId='22222222-2222-4222-8222-222222222222'
+  saveAutomationPlan({id:invalidPlanId,analysisId:'synthetic',caseKeys:['0-TC-0'],plan:{...result.plan,casePlans:result.plan.casePlans.map((item:object)=>({...item,contractFingerprint:'outdated'}))},createdAt:new Date().toISOString()})
+  assert.equal((await post('/api/execution-jobs',{...input,automationPlanId:invalidPlanId})).status,409)
+  let confirmedJob=(await(await post('/api/execution-jobs',{...input,automationPlanId})).json()).job as ExecutionJob
+  for(let i=0;i<200;i++){
+    confirmedJob=(await(await fetch(url+`/api/execution-jobs/${confirmedJob.id}`)).json()).job
+    if(['completed','failed'].includes(confirmedJob.status))break
+    await new Promise(resolve=>setTimeout(resolve,50))
+  }
+  assert.equal(confirmedJob.status,'completed',confirmedJob.error)
+  assert.equal(confirmedJob.automationPlanId,automationPlanId)
+  const confirmedResult=(await(await fetch(url+`/api/executions/${confirmedJob.id}`)).json()).execution
+  assert.equal(confirmedResult.status,'passed')
+  assert.deepEqual(confirmedResult.plan,result.plan,'执行必须保留人员确认的计划，不能重新生成替换')
+  assert.equal(confirmedResult.automationPlanId,automationPlanId)
+  assert.equal(modelRequests.length,1,'已确认计划不再调用计划生成模型')
   const history=(await(await fetch(url+`/api/execution-jobs/${job.id}/events?after=0`)).json())
   assert.ok(history.events.some((item:{event:{type:string}})=>item.event.type==='execution_started'))
   assert.ok(history.events.some((item:{event:{type:string}})=>item.event.type==='activity'))

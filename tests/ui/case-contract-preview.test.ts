@@ -48,6 +48,11 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
         await route.fulfill({status:202,json:{job}})
         return
       }
+      if(path==='/api/automation/generate'){
+        const steps=[{action:'expectText',assertionIndex:0,text:'合成期望'}]
+        await route.fulfill({status:201,json:{automationPlan:{id:'confirmed-plan',analysisId:analysis.id,caseKeys:['0-TC-0'],createdAt:analysis.createdAt,plan:{name:'待确认固定计划',targetUrl:'https://example.test/exams',steps,casePlans:[{caseKey:'0-TC-0',title:asset.title,contractFingerprint:asset.resolved.contractFingerprint,contract:asset.resolved.contract,steps}]}}}})
+        return
+      }
       if (path === '/api/cases/fixture-case/review') {
         const request = route.request().postDataJSON()
         if (conflictOnce) {
@@ -118,6 +123,11 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
     await page.getByText('排队中 · 动态 Agent', {exact:false}).waitFor()
     await page.goBack()
     await page.getByRole('button', { name: '需求中心', exact: true }).waitFor()
+    await page.getByRole('button',{name:'生成固定计划',exact:true}).click()
+    await page.getByRole('button',{name:'确认并执行',exact:true}).click()
+    await page.waitForURL('**/#/execution-jobs/synthetic-job')
+    assert.deepEqual(jobInput,{mode:'plan',automationPlanId:'confirmed-plan',targetUrl:'https://example.test/exams',environmentId:'env',cases:[{caseId:asset.id,revision:asset.revision,contractFingerprint:asset.resolved.contractFingerprint}]})
+    await page.goBack()
     await page.getByRole('button', { name: '需求中心', exact: true }).click()
     await page.waitForURL('**/#/requirements?**')
     await page.getByRole('button', { name: '查看需求详情 →', exact: true }).click()

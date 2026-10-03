@@ -44,11 +44,13 @@ export const executionPreparationSchema = z.object({
 }).strict()
 
 export const executionJobRequestSchema = executionPreparationSchema.extend({
+  automationPlanId: z.string().uuid().optional(),
   environmentId: z.string().uuid().optional(),
   projectId: z.string().min(1).optional(),
 })
 
 export interface ExecutionJob {
+  automationPlanId?: string
   deploymentConfirmation?: import('./regressions').DeploymentConfirmation
   id: string
   status: 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'interrupted' | 'cancelled'
