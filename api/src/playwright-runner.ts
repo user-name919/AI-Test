@@ -125,6 +125,14 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`输入引用尚未解析：${step.valueRef}`)
               if(!step.valueRef&&casePlan.contract?.dataBindings.some(binding=>binding.mode==='runtime_dom')&&!casePlan.contract.dataBindings.some(binding=>binding.mode==='fixture'?binding.fixture?.value===value:binding.mode==='manual'&&binding.manual?.value===value))throw new RuntimeDataBindingBlockedError('运行时数据不能使用未确认的固定输入')
               await locatorFor(page, step.locator).fill(value, { timeout: 10_000 })
+              if(step.valueRef){
+                const binding=casePlan.contract?.dataBindings.find(item=>item.id===step.valueRef)
+                const resolved=checkpoint.resolvedDataBindings.find(item=>item.bindingId===step.valueRef)
+                if(binding?.constraints.mustRemainAfterFiltering&&resolved){
+                  try{await page.getByRole('option',{name:resolved.sourceText,exact:true}).first().waitFor({state:'visible',timeout:10_000})}
+                  catch{throw new Error(`产品筛选行为不符合已确认契约：输入“${value}”后来源 option“${resolved.sourceText}”未保留`)}
+                }
+              }
             } else if (step.action === 'expectText') {
               const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.text
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`断言引用尚未解析：${step.valueRef}`)
