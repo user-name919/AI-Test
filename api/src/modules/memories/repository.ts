@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { createMemorySchema, reviewMemorySchema, type QualityMemory } from '@quality-ai/contracts/memories'
+import { createMemorySchema, reviewMemorySchema, type QualityMemory, type MemoryReference } from '@quality-ai/contracts/memories'
+import type { SourceProjectSnapshot } from '@quality-ai/contracts'
 import { database } from '../../storage/database'
 import { getExecutionById } from '../executions/repository'
 
@@ -12,6 +13,16 @@ export function listMemories(projectId?:string):QualityMemory[]{
     ? database.prepare('SELECT memory_json FROM quality_memories WHERE project_id=? ORDER BY rowid DESC').all(projectId)
     : database.prepare('SELECT memory_json FROM quality_memories ORDER BY rowid DESC').all()
   return rows.map(row=>JSON.parse(String(row.memory_json)) as QualityMemory)
+}
+
+// 自动引用只覆盖原页面与已核对的干净源码版本；跨版本适用性需后续明确审核，不能猜测。
+export function selectMemoryHints(project:SourceProjectSnapshot|undefined,targetUrl:string):MemoryReference[]{
+  if(!project?.commit||project.worktree?.status!=='clean')return []
+  initializeMemories()
+  return listMemories(project.id).filter(item=>item.status==='adopted'&&item.scope.targetUrl===targetUrl&&item.scope.sourceProject?.commit===project.commit&&item.scope.sourceProject?.worktree?.status==='clean').slice(0,5).map(item=>({
+    id:item.id,revision:item.revision,lesson:item.lesson,executionId:item.source.executionId,caseKey:item.source.caseKey,
+    projectId:project.id,targetUrl,sourceCommit:project.commit!,
+  }))
 }
 
 export function createMemory(input:unknown):QualityMemory{

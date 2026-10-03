@@ -27,6 +27,11 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       '这是人工登记，不是平台自动探测证明；失败与变更相关联，不代表已确定由某个提交引入。','')
   }
   if(execution.error)lines.push(`批次说明：${text(execution.error)}`,'')
+  if(execution.memoryHints?.length){
+    lines.push('## 本次提供给模型的历史经验','', '仅为参考，不替代当前 DOM 或改变原断言；以下为当次冻结版本，后续审核不覆盖。')
+    for(const hint of execution.memoryHints)lines.push(`- ${text(hint.id)} / v${hint.revision}：${text(hint.lesson)}；来源执行 ${text(hint.executionId)}；源码 ${text(hint.sourceCommit)}`)
+    lines.push('')
+  }
   if(!execution.caseResults)lines.push('历史记录未采集逐用例结果；不能用步骤成功数推算用例通过率。','')
   else{
     lines.push('## 结果概览','',`通过 / 选中总数：${passed} / ${selected}`,`已完成验证通过率：${verified?`${Math.round(passed/verified*100)}%`:'暂无'}（分母只计通过和验证失败，共 ${verified} 条）`)

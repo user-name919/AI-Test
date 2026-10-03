@@ -50,6 +50,7 @@ export const executionJobRequestSchema = executionPreparationSchema.extend({
 })
 
 export interface ExecutionJob {
+  memoryHints?: import('./memories').MemoryReference[]
   rerunOf?: string
   automationPlanId?: string
   deploymentConfirmation?: import('./regressions').DeploymentConfirmation

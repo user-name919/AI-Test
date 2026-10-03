@@ -41,6 +41,21 @@ test('uses Responses API headers and returns a validated single action', async (
   assert.equal(body.store, false)
 })
 
+test('人工历史经验进入模型上下文但不改变原始必需断言',async()=>{
+  let body=''
+  const provider=new ResponsesDecisionProvider({...modelOptions,fetchImpl:async(_input,init)=>{
+    body=String(init?.body)
+    return responseWithText(JSON.stringify({type:'blocked',reason:'缺少当前页面依据'}))
+  }})
+  const input=decisionInput()
+  input.goal.memoryHints=[{id:'11111111-1111-4111-8111-111111111111',revision:2,lesson:'先核对可见选项',executionId:'source',projectId:'project',targetUrl:input.goal.targetUrl,sourceCommit:'a'.repeat(40)}]
+  const before=structuredClone(input.goal.requiredAssertions)
+  await provider.decide(input)
+  assert.match(body,/先核对可见选项/)
+  assert.match(body,/不得改变人工最终断言/)
+  assert.deepEqual(input.goal.requiredAssertions,before)
+})
+
 test('repairs an invalid first Responses output with schema feedback', async () => {
   const bodies: string[] = []
   let call = 0

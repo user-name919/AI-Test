@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { fixtureMetadataSchema, type TestFixture } from './test-fixtures'
+import { memoryReferenceSchema, type MemoryReference } from './memories'
 
 export interface ProjectInfo {
   id:string
@@ -402,6 +403,7 @@ export interface ExecutionCaseSnapshot {
 }
 
 export interface ExecutionResult {
+  memoryHints?: MemoryReference[]
   interruptionRecovery?: { recoveredAt: string; timingsUnknown: true }
   deploymentConfirmation?: import('./regressions').DeploymentConfirmation
   id: string
@@ -576,6 +578,7 @@ export type SemanticElement = z.infer<typeof semanticElementSchema>
 export type PageSnapshot = z.infer<typeof pageSnapshotSchema>
 
 export const agentTestGoalSchema = z.object({
+  memoryHints:z.array(memoryReferenceSchema).max(5).optional(),
   name: z.string().min(1),
   targetUrl: z.string().url(),
   objective: z.string().min(1),

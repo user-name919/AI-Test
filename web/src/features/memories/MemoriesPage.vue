@@ -67,7 +67,7 @@ onBeforeUnmount(()=>window.removeEventListener('beforeunload',protect))
   <main class="memories-page">
     <nav><RouterLink to="/versions">返回版本中心</RouterLink><RouterLink to="/executions">执行报告</RouterLink><RouterLink to="/case-designs">用例设计</RouterLink></nav>
     <header><h1>质量记忆</h1><button @click="help=!help">使用指引</button><button :disabled="loading||busy" @click="refresh">刷新来源与记忆</button></header>
-    <section v-if="help"><h2>如何沉淀经验</h2><ol><li>选择已保存的执行报告，可进一步指定一条用例；查看原报告后填写经验。</li><li>经验先保存为待审核。选择左侧记录，核对项目、页面、SHA和原结论，再填写理由采纳。</li><li>页面或规则改变后标记失效。经验是参考，不证明当前页面通过，也不能替代真实DOM验证。</li></ol><p>这里只保存人工经验；旧页面临时展示的PRD规则并非已审核记忆，原需求和历史报告仍在各自入口。本页尚未接入自动向模型提供记忆。</p></section>
+    <section v-if="help"><h2>如何沉淀经验</h2><ol><li>选择已保存的执行报告，可进一步指定一条用例；查看原报告后填写经验。</li><li>经验先保存为待审核。选择左侧记录，核对项目、页面、SHA和原结论，再填写理由采纳。</li><li>页面或规则改变后标记失效。经验是参考，不证明当前页面通过，也不能替代真实DOM验证。</li></ol><p>后台执行任务只引用已采纳、项目和完整目标地址及源码SHA一致，且两次源码工作区均记录为干净的最近5条经验。跨版本、未知或脏工作区不自动引用；已确认固定计划不重新生成。报告保留本次提供给模型的版本，不代表模型已采纳。旧页面PRD规则并非已审核记忆，原需求和历史报告仍在各自入口。</p></section>
     <p v-if="error" role="alert" class="error">{{ error }}（草稿仍保留，可重试；版本冲突时先刷新。）</p>
     <p v-if="notice" role="status">{{ notice }} <button @click="notice=''">关闭提示</button></p>
     <section><h2>登记执行经验</h2>

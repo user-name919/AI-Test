@@ -15,6 +15,7 @@ import { loadProjectConfigs } from '../../project-knowledge/config'
 import { LocalProjectKnowledgeProvider } from '../../project-knowledge/local-project-provider'
 import { getAutomationPlanById } from '../cases/plan-repository'
 import { interruptedExecution } from './interruption'
+import { selectMemoryHints } from '../memories/repository'
 
 let initialized = false
 let working = false
@@ -176,6 +177,7 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
         if (!current.connected || current.commit !== project.commit || current.branch !== project.branch) throw new Error('排队期间源码版本已变化，请重新确认项目版本再执行')
         job.sourceProject = {id:current.id,branch:current.branch,commit:current.commit,worktree:current.worktree}
       }
+      job.memoryHints=request.mode==='agent'||!confirmedPlan?selectMemoryHints(job.sourceProject,job.targetUrl):[]
       writeJob(job)
       let plan=confirmedPlan
       if (request.mode === 'plan'&&!plan) {
@@ -184,7 +186,7 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
           controller.signal.throwIfAborted()
           const identity = {caseKey:snapshot.resolved.caseKey,title:snapshot.resolved.title,contractFingerprint:snapshot.resolved.contractFingerprint,contract:snapshot.resolved.contract}
           try {
-            const generated = await generateFixedPlan(job.targetUrl,snapshot.resolved,controller.signal)
+            const generated = await generateFixedPlan(job.targetUrl,snapshot.resolved,controller.signal,undefined,job.memoryHints)
             controller.signal.throwIfAborted()
             casePlans.push({...identity,steps:generated.steps})
           } catch (error) {
@@ -210,10 +212,11 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
         },
       }
       const result = request.mode === 'agent'
-        ? await runAgentTest(preparation.goals,environment?.storageStatePath,{...checkpoints,projectProvider:executionProvider!,executionId:job.id,onEvent,signal:controller.signal})
+        ? await runAgentTest(preparation.goals.map(goal=>({...goal,memoryHints:job.memoryHints})),environment?.storageStatePath,{...checkpoints,projectProvider:executionProvider!,executionId:job.id,onEvent,signal:controller.signal})
         : await runAutomationPlan(plan,environment?.storageStatePath,{...checkpoints,executionId:job.id,onEvent,signal:controller.signal,resolveTestData:(binding,snapshot)=>proposeFixedPlanData(binding,snapshot,controller.signal)})
       result.caseSnapshots = job.snapshots
       result.sourceProject = job.sourceProject
+      result.memoryHints = job.memoryHints
       result.deploymentConfirmation = deployment
       saveExecution(result,{analysisId:savedPlan?.analysisId??replay?.analysisId,automationPlanId:job.automationPlanId,rerunOf:replay?.id,environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
       job.executionId = result.id
