@@ -21,3 +21,24 @@ test('报告完整比较需要三种配置各三次，失败不能隐藏',()=>{
   assert.match(report,/2\/3（期望3）/)
   assert.match(report,/full-search \/ quality-ai-legacy：失败原因缺失/)
 })
+
+test('真实模型的机器通过仍展示阻塞审查项和次数，不误标为夹具或执行成功',()=>{
+  const row={provider:{id:'quality-ai-skills'},success:true,response:{output:JSON.stringify({evidenceMode:'real-model',output:{cases:[{},{}],issues:[{severity:'blocking',kind:'unverifiable',checkedBy:'rule',targetId:'c1',reason:'缺少高亮证据 | 需审核\n不是产品故障'}]}})},vars:{payload:JSON.stringify({sampleId:'full-search'})}}
+  const report=summarize([row,row])
+  assert.match(report,/quality-ai-skills \/ 2 \| 2 \| 审查层 1 项/)
+  assert.match(report,/blocking \/ unverifiable \/ rule \/ c1/)
+  assert.match(report,/缺少高亮证据 \\\| 需审核 不是产品故障/)
+  assert.match(report,/执行层未在本评估中运行/)
+  assert.doesNotMatch(report,/本地夹具故意/)
+})
+
+test('请求失败保留已完成阶段，断言失败不冒充模型失败',()=>{
+  const vars={payload:JSON.stringify({sampleId:'full-search'})}
+  const report=summarize([
+    {provider:{id:'quality-ai-pipeline'},success:false,vars,response:{error:'请求超时',metadata:{completedStages:['extracting','modeling']}}},
+    {provider:{id:'quality-ai-skills'},success:false,vars,gradingResult:{reason:'引用不存在'}},
+  ])
+  assert.match(report,/已完成阶段：extracting、modeling/)
+  assert.match(report,/评估断言层：引用不存在/)
+  assert.match(report,/具体失败层需核对错误/)
+})
