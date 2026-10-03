@@ -1,7 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { json, readJson } from '../../http/response'
-import { basename, resolve } from 'node:path'
-import { createReadStream, existsSync } from 'node:fs'
 import { agentRunRequestSchema, automationPlanSchema, type ExecutionCaseSnapshot, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { getAnalysisById } from '../requirements/repository'
 import { getExecutionById, getLatestExecution, listExecutions, saveExecution } from '../executions/repository'
@@ -14,42 +12,19 @@ import { getProjectProviderRegistry } from '../../project-knowledge/registry'
 import { inspectTargetPage } from '../../page-observer-runner'
 import { openNdjsonResponse } from '../../ndjson-response'
 import { resolveCaseExecutionContract } from '../../review-execution-context'
-import { getRuntimePaths } from '../../config/paths'
 import { captureExecutionCases } from '../cases/repository'
 import { createExecutionJob, createExecutionRerunJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelExecutionJob } from './jobs'
-import { executionArtifacts } from './artifacts'
-import { executionMarkdown } from './report'
 import { proposeFixedPlanData } from '../cases/fixed-plan-model'
+import { handleExecutionEvidenceRoutes } from './evidence-routes'
 
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  if (handleExecutionEvidenceRoutes(request, response)) return true
   const url = new URL(request.url ?? '/', 'http://localhost')
   const rerunJobMatch=url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/rerun-job$/i)
   if(request.method==='POST'&&rerunJobMatch){
     try{return json(response,202,{job:await createExecutionRerunJob(rerunJobMatch[1])})}
     catch(error){return json(response,409,{error:error instanceof Error?error.message:'重跑任务创建失败'})}
-  }
-  const reportMatch=url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/report\.md$/i)
-  if(request.method==='GET'&&reportMatch){
-    const execution=getExecutionById(reportMatch[1])
-    if(!execution)return json(response,404,{error:'执行报告不存在'})
-    response.writeHead(200,{'content-type':'text/markdown; charset=utf-8','content-disposition':`attachment; filename="execution-${execution.id}.md"`})
-    response.end(executionMarkdown(execution,executionArtifacts(execution)))
-    return true
-  }
-  const evidenceMatch = url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/artifacts(?:\/([a-f0-9]{64}))?$/i)
-  if(request.method==='GET'&&evidenceMatch){
-    const execution=getExecutionById(evidenceMatch[1])
-    if(!execution)return json(response,404,{error:'执行记录不存在'})
-    const artifacts=executionArtifacts(execution)
-    if(!evidenceMatch[2])return json(response,200,{artifacts:artifacts.map(({path,...item})=>{void path;return item})})
-    const artifact=artifacts.find(item=>item.id===evidenceMatch[2])
-    if(!artifact?.available||!artifact.path)return json(response,404,{error:'附件不存在、已清理或不在允许范围内'})
-    response.writeHead(200,{'content-type':artifact.kind==='trace'?'application/zip':artifact.kind==='download'?'application/octet-stream':'image/png',
-      'content-disposition':`${artifact.kind!=='screenshot'||url.searchParams.get('download')==='1'?'attachment':'inline'}; filename="${encodeURIComponent(artifact.name)}"; filename*=UTF-8''${encodeURIComponent(artifact.name).replace(/['()*]/g, char=>`%${char.charCodeAt(0).toString(16).toUpperCase()}`)}`,
-      'x-content-type-options':'nosniff'})
-    createReadStream(artifact.path).on('error',()=>response.destroy()).pipe(response)
-    return true
   }
   if (url.pathname === '/api/execution-jobs') {
     if (request.method === 'GET') return json(response,200,{jobs:listExecutionJobs()})
@@ -107,20 +82,6 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
     return json(response, result.status === 'passed' ? 201 : 422, { execution })
   }
 
-  const artifactMatch = request.url?.match(/^\/api\/artifacts\/([a-f0-9-]+)\/([^/?]+)$/i)
-  if (request.method === 'GET' && artifactMatch) {
-    const executionId = artifactMatch[1]
-    const fileName = basename(decodeURIComponent(artifactMatch[2]))
-    if (!/^(trace\.zip|failure\.png|[\w\u4e00-\u9fa5-]+\.png)$/.test(fileName)) return json(response, 400, { error: '证据文件名不合法' })
-    const filePath = resolve(getRuntimePaths().artifactRoot, executionId, fileName)
-    if (!existsSync(filePath)) return json(response, 404, { error: '证据文件不存在' })
-    response.writeHead(200, {
-      'content-type': fileName.endsWith('.zip') ? 'application/zip' : 'image/png',
-      'content-disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
-    })
-    createReadStream(filePath).pipe(response)
-    return true
-  }
 
   if (request.method === 'GET' && request.url === '/api/automation/plans/latest') {
     return json(response, 200, { automationPlan: getLatestAutomationPlan() })
