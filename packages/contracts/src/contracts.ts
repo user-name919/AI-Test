@@ -300,10 +300,15 @@ export const reviewStateSchema = z.object({
   updatedAt: z.string().nullable().default(null),
 })
 
-export const locatorSchema = z.object({
+const locatorSelectorSchema = z.object({
   by: z.enum(['role', 'label', 'text', 'css']),
   value: z.string().min(1),
   name: z.string().optional(),
+  exact: z.boolean().optional(),
+})
+
+export const locatorSchema = locatorSelectorSchema.extend({
+  scope: z.array(locatorSelectorSchema).min(1).max(4).optional(),
 })
 
 const keyboardKeySchema = z.enum([
@@ -327,6 +332,7 @@ export const automationStepSchema = z.discriminatedUnion('action', [
   z.object({ action:z.literal('expectHidden'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),
   z.object({ action:z.literal('expectEnabled'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),
   z.object({ action:z.literal('expectDisabled'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),
+  z.object({ action:z.literal('expectElementText'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema, text:z.string().min(1), exact:z.boolean().default(false) }),
   z.object({ action:z.literal('expectValue'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema, value:z.string().optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.value!==undefined)!==(item.valueRef!==undefined),'预期值与数据引用必须且只能提供一个'),
   z.object({ action:z.literal('expectAttribute'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema, name:z.string().min(1), value:z.string(), match:z.enum(['exact','token']).default('exact') }),
   z.object({ action: z.literal('screenshot'), name: z.string().min(1) }),

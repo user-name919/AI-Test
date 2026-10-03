@@ -16,9 +16,9 @@
 | 展开下拉，从实际选项选完整名称/部分词 | 部分支持 | 部分支持 | `api/src/test-data-binding.ts`、`api/src/modules/cases/fixed-plan-model.ts`；有三策略及 valueRef。必须先观察可见 option，过长截断文本不可冒充完整名称 |
 | 搜索不存在项并验证空态 | 部分支持 | 部分支持 | 负例要求完整受控候选依据；只有远程/分页列表当前可见项时不能证明全局不存在 |
 | 逐步滚动虚拟列表，再观察新选项 | 部分支持 | 缺失 | 动态 scroll 后重新观察；没有全量列表枚举或保证到达目标项的协议，不能把一次快照当完整数据集 |
-| 表格按行内容点操作、分页筛选 | 部分支持 | 部分支持 | observer 有表格摘要和最多 3 行样本；无显式行作用域定位协议。固定可使用已知 CSS，但不能要求模型凭空猜 selector |
-| 弹窗内同名按钮，与背景按钮区分 | 部分支持 | 部分支持 | observer 保存 dialog/container 描述，动态引用绑定具体 DOM；尚无通用 scope 定位契约，普通弹窗容器本身不一定可引用 |
-| 禁用/启用、输入值、错误提示 | 已支持 | 已支持 | `expectEnabled/expectDisabled/expectValue` 和文本/属性断言；动态有局部 `expectElementText`，固定 expectText 仍是页面范围，不能证明特定容器结果 |
+| 表格按行内容点操作、分页筛选 | 部分支持 | 部分支持 | observer 有表格摘要和最多 3 行样本；固定 locator.scope 支持表格→行→控件及精确名称，已验证指定行按钮；动态尚无显式行范围协议，分页/虚拟表格完整性不能据此保证 |
+| 弹窗内同名按钮，与背景按钮区分 | 部分支持 | 部分支持 | 固定 scope 支持命名弹窗→按钮或局部文本；已验证背景同名按钮不被误点。动态仍依赖 DOM 引用和容器描述；范围名称的模型推理正确性未保证 |
+| 禁用/启用、输入值、错误提示 | 已支持 | 已支持 | `expectEnabled/expectDisabled/expectValue` 和文本/属性断言；两模式有局部 `expectElementText`。固定旧 expectText 仍是页面范围，局部结果需使用带范围的元素断言 |
 | 匹配关键词高亮 | 部分支持 | 部分支持 | 验证明确 class/data-state 等属性；固定 token 匹配、动态属性匹配规则不同。文本出现不能代替高亮，也未验证像素颜色或视觉规范 |
 | 容器中 option 数量为 0 | 部分支持 | 缺失 | 动态 `expectCount` 可带 containerRef；容器必须可被观察/引用。固定无计数动作 |
 | 选择已配置附件并上传 | 缺失 | 缺失 | 没有附件白名单/附件 ID 到受控路径映射，也无 setInputFiles 动作。平台导入 PRD 文件不等于自动化上传被测网站文件 |
@@ -46,6 +46,7 @@
 node --import tsx --test api/src/page-observer.test.ts api/src/single-action-executor.test.ts api/src/test-policy.test.ts
 node --import tsx --test api/src/fixed-form-actions.test.ts api/src/fixed-locator-assertion.test.ts api/src/modules/cases/fixed-plan-model.test.ts
 node --import tsx --test api/src/fixed-select-option.test.ts
+node --import tsx --test api/src/fixed-scope.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。
@@ -53,7 +54,7 @@ node --import tsx --test api/src/fixed-select-option.test.ts
 ## 补齐顺序及验收要求
 
 1. 表单动作对齐：固定键盘/勾选/悬停与选中断言已接入；原生 selectOption 已接入有依据的单值选择，运行时原生选项采集仍待扩展。保持人工契约和可读历史；每项验证成功及失败继续。
-2. 表格/弹窗作用域：观察与执行使用明确容器；同名背景元素不能误通过，固定文本断言也需限定目标。
+2. 表格/弹窗作用域：固定 locator.scope 与局部文本已接入并验证背景反例；继续完善动态观察/执行的显式容器，不能仅因固定路径已支持就标整个场景完成。
 3. 受控上传下载：先建立测试附件与产物协议，再加动作；模型只选择附件 ID，不接受任意本机路径。下载完成与内容验证分开，失败保留证据。
 4. 页面/框架上下文：先完善引用身份和生命周期，再支持 iframe/新页；切换后旧引用拒绝，不静默操作原页面。
 5. 有副作用动作：执行前明确授权与预期，技术超时后核对实际状态，不盲目重复提交。

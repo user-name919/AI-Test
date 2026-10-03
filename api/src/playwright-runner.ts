@@ -26,11 +26,18 @@ interface AutomationRunnerOptions {
   resolveTestData?: (binding:TestDataBinding,snapshot:PageSnapshot)=>Promise<ResolveTestDataDecision>
 }
 
-function locatorFor(page: Page, locator: { by: string; value: string; name?: string }): Locator {
-  if (locator.by === 'role') return page.getByRole(locator.value as never, locator.name ? { name: locator.name } : undefined)
-  if (locator.by === 'label') return page.getByLabel(locator.value)
-  if (locator.by === 'text') return page.getByText(locator.value)
-  return page.locator(locator.value)
+type FixedLocator = Extract<AutomationPlan['steps'][number], {action:'click'}>['locator']
+function selectWithin(root: Page | Locator, selector: Omit<FixedLocator, 'scope'>): Locator {
+  if (selector.by === 'role') return root.getByRole(selector.value as never, { name: selector.name, exact: selector.exact })
+  if (selector.by === 'label') return root.getByLabel(selector.value, { exact: selector.exact })
+  if (selector.by === 'text') return root.getByText(selector.value, { exact: selector.exact })
+  return root.locator(selector.value)
+}
+
+function locatorFor(page: Page, locator: FixedLocator): Locator {
+  let root: Page | Locator = page
+  for (const scope of locator.scope ?? []) root = selectWithin(root, scope)
+  return selectWithin(root, locator)
 }
 
 export async function runAutomationPlan(input: unknown, storageStatePath?: string, options: AutomationRunnerOptions = {}): Promise<ExecutionResult> {

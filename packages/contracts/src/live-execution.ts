@@ -206,12 +206,16 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
     title=`从当前页面解析测试数据 ${step.bindingId}`
     technicalAction=`resolveTestData ${step.bindingId}`
   } else if('locator' in step){
-    const names={expectVisible:'可见',expectHidden:'隐藏',expectEnabled:'可操作',expectDisabled:'不可操作',expectChecked:step.action==='expectChecked'&&step.checked?'已选中':'未选中',expectValue:'输入值符合预期',expectAttribute:'属性符合预期'}
+    const names={expectVisible:'可见',expectHidden:'隐藏',expectEnabled:'可操作',expectDisabled:'不可操作',expectChecked:step.action==='expectChecked'&&step.checked?'已选中':'未选中',expectValue:'输入值符合预期',expectElementText:step.action==='expectElementText'?`文本${step.exact?'等于':'包含'}${quoted(step.text)}`:'文本符合预期',expectAttribute:'属性符合预期'}
     title=`确认${quoted(step.locator.name??step.locator.value)}${names[step.action]}`
     technicalAction=JSON.stringify(step)
   } else {
     title = `保存当前页面截图${quoted(step.name)}`
     technicalAction = `screenshot ${step.name}`
+  }
+  if ('locator' in step && step.locator.scope?.length) {
+    title = `在${step.locator.scope.map(scope=>quoted(scope.name??scope.value)).join(' → ')}范围内：${title}`
+    technicalAction = JSON.stringify(step)
   }
   return {
     id: `plan-step:${index}`,
