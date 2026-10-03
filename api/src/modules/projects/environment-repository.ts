@@ -60,3 +60,7 @@ export function getEnvironmentById(id: string): (TestEnvironment & { storageStat
 export function getLatestEnvironment(): TestEnvironment | null {
   return mapEnvironment(database.prepare('SELECT * FROM test_environments ORDER BY updated_at DESC LIMIT 1').get() as Record<string, string> | undefined)
 }
+
+export function listEnvironments(): TestEnvironment[] {
+  return (database.prepare('SELECT * FROM test_environments ORDER BY updated_at DESC').all() as Array<Record<string,string>>).map(row=>mapEnvironment(row)!)
+}

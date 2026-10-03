@@ -3,11 +3,12 @@ import { json, readJson } from '../../http/response'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { storageStateSchema } from '@quality-ai/contracts'
-import { getEnvironmentById, getLatestEnvironment, saveEnvironment, setEnvironmentStorageState } from '../projects/environment-repository'
+import { getEnvironmentById, getLatestEnvironment, listEnvironments, saveEnvironment, setEnvironmentStorageState } from '../projects/environment-repository'
 import { getRuntimePaths } from '../../config/paths'
 
 
 export async function handleEnvironmentRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  if (request.method === 'GET' && request.url === '/api/environments') return json(response, 200, { environments: listEnvironments() })
   if (request.method === 'GET' && request.url === '/api/environments/latest') return json(response, 200, { environment: getLatestEnvironment() })
 
   if (request.method === 'POST' && request.url === '/api/environments') {

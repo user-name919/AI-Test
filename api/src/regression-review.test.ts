@@ -59,11 +59,17 @@ test('人工范围排除有理由、修改用例独立版本且不覆盖 AI 原�
     const url = `http://127.0.0.1:${(api.address() as AddressInfo).port}`
     const list = await (await fetch(`${url}/api/cases?sourceType=change_regression&sourceId=${id}`)).json()
     assert.equal(list.cases[0].revision, 2)
+    const oldAssets = await (await fetch(`${url}/api/cases?sourceType=change_regression&sourceId=${id}&reviewRevision=1`)).json()
+    assert.equal(oldAssets.cases[0].revision, 1)
+    assert.equal((await fetch(`${url}/api/cases?sourceType=change_regression&reviewRevision=1`)).status, 400)
     const detail = await (await fetch(`${url}/api/cases/${encodeURIComponent(asset.id)}/contract`)).json()
     assert.deepEqual(detail.asset, asset)
     const immutable = await fetch(`${url}/api/cases/${encodeURIComponent(asset.id)}/review`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' })
     assert.equal(immutable.status, 409)
     const environment = saveEnvironment({ name: '合成测试环境', baseUrl: 'http://example.test', targetUrl: 'http://example.test/page' })
+    const environments = (await (await fetch(`${url}/api/environments`)).json()).environments
+    assert.equal(environments[0].id, environment.id)
+    assert.equal('storageStatePath' in environments[0], false, '环境列表不暴露登录态文件路径')
     const expected = { regressionId: id, reviewRevision: 2, environmentId: environment.id, targetUrl: environment.targetUrl }
     const confirmationInput = { reviewRevision: 2, environmentId: environment.id, targetUrl: environment.targetUrl, confirmedBy: '测试人员', note: '根据本地夹具发布记录人工核对', deployedSha: analysis.targetSha }
     const postConfirmation = (body: unknown) => fetch(`${url}/api/regressions/${id}/deployments`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })

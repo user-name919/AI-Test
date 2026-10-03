@@ -99,6 +99,7 @@ onUnmounted(()=>{generation++;clearTimeout(timer)})
       <section class="panel"><h2>{{ job.snapshots[0]?.resolved.title }} · {{ job.snapshots.length }} 条用例</h2><p>{{ names[job.status] }} · {{ job.mode==='agent'?'动态 Agent':'固定计划' }} · 最近更新 {{ job.updatedAt }}</p><p>{{ job.targetUrl }}</p><p>源码：{{ job.sourceProject ? `${job.sourceProject.id} / ${job.sourceProject.branch??'未知分支'} / ${job.sourceProject.commit??'未记录 SHA'}`:'未关联源码' }}</p><p v-if="job.error" class="error">{{ job.error }}</p><button :disabled="cancelling||!['queued','running'].includes(job.status)" @click="cancel">取消执行</button><span v-if="job.status==='cancelling'"> 已请求取消，等待执行器及当前请求收尾。</span></section>
       <section v-if="job.deploymentConfirmation" class="panel" aria-label="回归版本对应">
         <h2>回归版本对应 · 人工审核 v{{ job.deploymentConfirmation.reviewRevision }}</h2>
+        <RouterLink :to="`/regressions/${job.deploymentConfirmation.regressionId}`">返回回归范围、审核与变更依据</RouterLink>
         <p :class="{error:job.deploymentConfirmation.status!=='matched'}">{{ job.deploymentConfirmation.status==='matched'?'人工登记匹配（非自动探测证明）':job.deploymentConfirmation.status==='unverified'?'部署版本未核实：本次结果不能证明目标版本已经部署':'部署版本不匹配' }}</p>
         <p>冻结源码 SHA：{{ job.deploymentConfirmation.targetSha }}<br />人工登记部署 SHA：{{ job.deploymentConfirmation.deployedSha??'未提供' }}</p>
         <p>确认人：{{ job.deploymentConfirmation.confirmedBy }} · {{ job.deploymentConfirmation.createdAt }}<br />依据：{{ job.deploymentConfirmation.note }}</p>

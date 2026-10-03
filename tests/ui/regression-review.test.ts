@@ -36,6 +36,9 @@ test('人工回归编辑保留 AI 原文，刷新草稿、版本冲突比较与�
       }
       if(path===`/api/regressions/${id}`){await route.fulfill({json:{regression:{id,projectId:'fixture',changeSetId:'change',targetSha:'a'.repeat(40),status:'completed',stage:'finished',updatedAt:'now',generation:{batches:[],pendingEvidenceIds:[],omittedEvidenceIds:[],limitations:[],model:'fixture',promptVersion:'fixture'}}}});return}
       if(path==='/api/change-sets/change'){await route.fulfill({json:{changeSet:{id:'change',projectId:'fixture',status:'frozen',factsHash:'h',facts:{comparison:{mode:'endpoints'},targetSha:'a'.repeat(40),commits:[],diffs:[],omittedCommitShas:[],warnings:[]}}}});return}
+      if(path==='/api/environments'){await route.fulfill({json:{environments:[]}});return}
+      if(path==='/api/cases'){await route.fulfill({json:{cases:[]}});return}
+      if(path.endsWith('/deployments')){await route.fulfill({json:{confirmations:[]}});return}
       await route.fulfill({json:{}})
     })
     await page.goto(`http://127.0.0.1:${address.port}/#/regressions/${id}`)

@@ -5,9 +5,10 @@ import type { CaseExecutionContract } from '@quality-ai/contracts'
 import { regressionReviewContentSchema, type RegressionReview, type RegressionReviewItems } from '@quality-ai/contracts/regressions'
 import ContractEditor from '../case-design/ContractEditor.vue'
 import ContractView from '../case-design/ContractView.vue'
+import RegressionExecution from './RegressionExecution.vue'
 import { regressionRequest } from './api'
 
-const props=defineProps<{regressionId:string}>()
+const props=defineProps<{regressionId:string;projectId:string;targetSha:string}>()
 const route=useRoute();const router=useRouter()
 type Decision='pending'|'include'|'exclude'
 interface Draft {scopeNote:string;risks:Record<string,{decision:Decision;reason:string}>;cases:Record<string,{decision:Decision;reason:string;title:string;verification:'browser'|'api'|'manual';verificationReason:string;contract:CaseExecutionContract}>}
@@ -97,6 +98,7 @@ onUnmounted(()=>{disposed=true;window.removeEventListener('beforeunload',beforeU
       <label>人工回归范围及已知限制<textarea v-model="draft.scopeNote" :disabled="busy" rows="3" placeholder="说明本次覆盖什么，哪些未解析、未处理或未验证内容需要后续补充" /></label>
       <div class="review-actions"><button :disabled="busy||!!conflict" @click="save('draft')">保存审核草稿</button><button :disabled="busy||!!conflict||pending>0||!draft.scopeNote.trim()" @click="save('confirmed')">确认回归范围与用例</button></div><p v-if="pending||!draft.scopeNote.trim()">确认前请决定所有风险和用例，并填写范围限制。接口或人工用例不会自动变成浏览器用例。</p>
       <details><summary>人工审核历史（{{ history.length }}）</summary><article v-for="entry in history" :key="entry.revision"><h3>v{{ entry.revision }} · {{ entry.content.status==='confirmed'?'已确认':'草稿' }} · {{ entry.createdAt }}</h3><p>{{ entry.content.scopeNote }}</p><ul><li v-for="risk in entry.content.risks" :key="risk.key">{{ items.risks.find(item=>item.key===risk.key)?.original.title??risk.key }} · {{ risk.decision==='include'?'纳入':'排除' }} · {{ risk.reason||'未附理由' }}</li></ul><details v-for="item in entry.content.cases" :key="item.key"><summary>{{ item.decision==='include'?item.title:items.cases.find(candidate=>candidate.key===item.key)?.original.title??item.key }} · {{ item.decision==='include'?'纳入':'排除' }}</summary><ContractView v-if="item.decision==='include'" :contract="item.finalContract" /><p v-else>{{ item.reason }}</p></details></article></details>
+      <RegressionExecution :regression-id="regressionId" :project-id="projectId" :target-sha="targetSha" :reviews="history" :disabled="dirty||busy||!!conflict" />
     </template>
   </section>
 </template>

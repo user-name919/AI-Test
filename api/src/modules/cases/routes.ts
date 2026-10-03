@@ -24,7 +24,13 @@ export async function handleCaseRoutes(request: IncomingMessage, response: Serve
   if (request.method === 'GET' && url.pathname === '/api/cases') {
     const sourceType = url.searchParams.get('sourceType')
     if(sourceType==='case_design')return json(response,200,{cases:listPublishedCaseAssets(url.searchParams.get('sourceId')??undefined)})
-    if(sourceType==='change_regression')return json(response,200,{cases:listRegressionCaseAssets(url.searchParams.get('sourceId')??undefined)})
+    if(sourceType==='change_regression'){
+      const sourceId=url.searchParams.get('sourceId')??undefined
+      const rawRevision=url.searchParams.get('reviewRevision')
+      const revision=rawRevision===null?undefined:Number(rawRevision)
+      if(revision!==undefined&&(!sourceId||!Number.isSafeInteger(revision)||revision<1))return json(response,400,{error:'指定审核版本需要回归任务 ID 与正整数版本号'})
+      return json(response,200,{cases:listRegressionCaseAssets(sourceId,revision)})
+    }
     if (sourceType && sourceType !== 'requirement') return json(response, 400, { error: '不支持的用例资产来源' })
     return json(response, 200, { cases: listCaseAssets(url.searchParams.get('sourceId') ?? undefined) })
   }

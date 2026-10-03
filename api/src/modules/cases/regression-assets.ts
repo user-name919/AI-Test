@@ -33,13 +33,13 @@ function assets(review: RegressionReview, deploymentVerified = false): CaseAsset
   })
 }
 
-export function listRegressionCaseAssets(regressionId?: string): CaseAsset[] {
+export function listRegressionCaseAssets(regressionId?: string, revision?: number): CaseAsset[] {
   const rows = (regressionId ? database.prepare("SELECT record_json FROM regression_reviews WHERE regression_id=? ORDER BY revision DESC").all(regressionId)
     : database.prepare('SELECT record_json FROM regression_reviews ORDER BY revision DESC').all()) as Array<{ record_json: string }>
   const seen = new Set<string>()
   return rows.flatMap(row => {
     const review = JSON.parse(row.record_json) as RegressionReview
-    if (review.content.status !== 'confirmed' || seen.has(review.regressionId)) return []
+    if (review.content.status !== 'confirmed' || seen.has(review.regressionId) || (revision !== undefined && review.revision !== revision)) return []
     seen.add(review.regressionId)
     return assets(review)
   })

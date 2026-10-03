@@ -32,6 +32,8 @@ test('回归页面显式范围预览、刷新冻结、启动取消和源码证�
       else if(path.endsWith('/cancel')){analysis.status='cancelled';analysis.error='用户取消，部分成果保留';payload={regression:analysis}}
       else if(path===`/api/regressions/${analysis.id}`)payload={regression:analysis}
       else if(path.endsWith('/review'))payload={items:{risks:[],cases:[]},reviews:[]}
+      else if(path==='/api/environments')payload={environments:[]}
+      else if(path.endsWith('/deployments'))payload={confirmations:[]}
       else if(path==='/api/regressions')payload={regressions:[{...analysis,completedBatches:0,analyzedTrees:1}]}
       else if(path==='/api/change-sets')payload={changeSets:[{...range,targetSha:sha,fileCount:1}]}
       await route.fulfill({json:payload})
