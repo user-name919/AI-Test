@@ -1,0 +1,61 @@
+import type { ExecutionRecord } from '@quality-ai/contracts'
+import type { ExecutionArtifact } from '@quality-ai/contracts/cases'
+
+const labels={passed:'通过',failed:'验证失败',blocked:'受阻',infrastructure_failed:'环境或执行器中断',cancelled:'已取消',not_run:'未执行'}
+const text=(value:unknown)=>String(value??'未记录').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/([\\`*_{}[\]#|])/g,'\\$1').replace(/\r?\n/g,' / ')
+
+export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionArtifact[]):string{
+  const results=execution.caseResults??[]
+  const selected=execution.caseSnapshots?.length??results.length
+  const passed=results.filter(item=>item.status==='passed').length
+  const verified=results.filter(item=>item.status==='passed'||item.status==='failed').length
+  const lines=[`# ${text(execution.name)} · 执行报告`,'',`- 执行 ID：${text(execution.id)}`,`- 批次状态：${labels[execution.status]}`,`- 测试地址：${text(execution.targetUrl)}`,`- 执行模式：${execution.mode==='agent'?'动态 Agent':execution.mode==='plan'?'固定计划':'历史未记录'}`,`- 开始：${text(execution.startedAt)}；结束：${text(execution.finishedAt)}；耗时 ${execution.durationMs} ms`,'', '本报告来自当次保存的契约和运行事实，不重新调用模型评判。失败不直接等同于产品缺陷，需结合证据定位。','']
+  if(execution.sourceProject)lines.push(`源码参考：${text(execution.sourceProject.id)} / 分支 ${text(execution.sourceProject.branch)} / SHA ${text(execution.sourceProject.commit)}`,'源码版本不是测试环境部署版本证明。','')
+  else lines.push('源码参考：本次未记录。','')
+  if(execution.error)lines.push(`批次说明：${text(execution.error)}`,'')
+  if(!execution.caseResults)lines.push('历史记录未采集逐用例结果；不能用步骤成功数推算用例通过率。','')
+  else{
+    lines.push('## 结果概览','',`通过 / 选中总数：${passed} / ${selected}`,`已完成验证通过率：${verified?`${Math.round(passed/verified*100)}%`:'暂无'}（分母只计通过和验证失败，共 ${verified} 条）`)
+    for(const [status,label] of Object.entries(labels))lines.push(`- ${label}：${results.filter(item=>item.status===status).length}`)
+    if(selected!==results.length)lines.push(`- 记录不完整：选择 ${selected} 条，结果 ${results.length} 条；缺失项不推断为通过或未执行。`)
+    lines.push('')
+  }
+  for(const [index,item] of results.entries()){
+    const snapshot=execution.caseSnapshots?.find(candidate=>candidate.resolved.caseKey===item.caseKey)
+    lines.push(`## ${index+1}. ${text(item.title)} · ${labels[item.status]}`,'',`用例标识：${text(item.caseKey)}`,`执行指纹：${text(item.contractFingerprint)}`)
+    if(snapshot){
+      lines.push(`冻结版本：${snapshot.revision}；采集时间：${text(snapshot.capturedAt)}`)
+      if(snapshot.resolved.contractFingerprint!==item.contractFingerprint)lines.push('警告：执行指纹与契约快照不一致，不能认为使用了同一口径。')
+      if(snapshot.source?.type==='case_design')lines.push(`设计来源：${text(snapshot.source.designId)}；发布 v${snapshot.source.publicationVersion} / ${text(snapshot.source.publicationId)}`)
+      if(snapshot.source?.type==='requirement')lines.push(`需求来源：${text(snapshot.source.analysisId)} / ${text(snapshot.source.caseKey)}`)
+      if(snapshot.source?.type==='change_regression')lines.push(`变更回归来源：${text(snapshot.source.regressionId)} / ${text(snapshot.source.suggestionId)}`)
+      lines.push('','### 当时确认的测试口径','',`目标：${text(snapshot.resolved.contract.objective)}`)
+      for(const [key,label] of [['preconditions','前置条件'],['steps','计划操作'],['expectedAssertions','预期断言'],['forbiddenBehaviors','禁止行为'],['uncertainties','未确定事项']] as const){
+        lines.push(`- ${label}：`)
+        for(const value of snapshot.resolved.contract[key])lines.push(`  - ${text(value)}`)
+        if(!snapshot.resolved.contract[key].length)lines.push('  - 无')
+      }
+      for(const question of snapshot.resolved.resolvedQuestions)lines.push(`- 关联人工决定：${text(question.questionTitle)} → ${text(question.finalStatement)}`)
+    }else lines.push('未保存该用例的契约快照，不从当前编辑记录补写。')
+    lines.push('','### 实际数据与结果','',`- 起始页面：${item.startedFromUrl?text(item.startedFromUrl):'未开始/未记录'}`,`- 起始 DOM 快照：${text(item.startedFromSnapshotId)}`,`- 结果说明：${text(item.error??labels[item.status])}`)
+    for(const binding of item.resolvedDataBindings)lines.push(`- 数据 ${text(binding.bindingId)}：输入「${text(binding.value)}」，来源 option「${text(binding.sourceText)}」；DOM ${text(binding.snapshotId)} / ${text(binding.sourceElementRef)}；观察时间 ${text(binding.observedAt)}；选择理由：${text(binding.reason)}`)
+    if(!item.resolvedDataBindings.length)lines.push('- 本条未记录运行时数据绑定；不代表已验证数据来源。')
+    lines.push(`- 已通过断言 ID：${item.passedAssertions.length?item.passedAssertions.map(text).join('、'):'无'}`,'','### 操作与观察记录','')
+    for(const turn of item.trajectory){
+      const decision=turn.decision
+      const purpose=decision.type==='finish'?decision.summary:decision.reason
+      lines.push(`- 第 ${turn.iteration} 轮 · ${text(decision.type)}：${text(purpose)}；DOM ${text(turn.snapshotId)}`)
+      if(decision.type==='action')lines.push(`  - 技术动作：${text(JSON.stringify(decision.action))}`)
+      if(turn.result)lines.push(`  - 实际结果：${turn.result.ok?'操作/断言成功':'操作/断言失败'} · ${text(turn.result.message)} · ${turn.result.durationMs} ms`)
+    }
+    if(!item.trajectory.length)for(const step of item.steps)lines.push(`- 步骤 ${step.index+1}：${text(step.action)} · ${step.status==='passed'?'成功':'失败'} · ${step.durationMs} ms${step.error?` · ${text(step.error)}`:''}`)
+    if(!item.trajectory.length&&!item.steps.length)lines.push('- 没有操作证据。')
+    lines.push('','### 附件','')
+    const attachments=artifacts.filter(artifact=>artifact.caseKey===item.caseKey)
+    for(const artifact of attachments)lines.push(artifact.available?`- [${text(artifact.name)}](${artifact.url})`:`- ${text(artifact.name)}：已清理或不可访问`)
+    if(!attachments.length)lines.push('- 本条未登记附件。')
+    lines.push('')
+  }
+  lines.push('## 查看与判读说明','','附件链接相对于本平台地址；离线阅读时需回平台打开。Trace 请下载后在本地使用 Playwright show-trace 查看。','恢复操作如有发生，按原始轨迹展示；未单独记录恢复尝试时，本报告不推断曾重试或已自愈。','取消不会回滚已提交业务操作；未执行没有通过证据。')
+  return lines.join('\n')+'\n'
+}

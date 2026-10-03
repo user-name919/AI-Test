@@ -18,10 +18,19 @@ import { getRuntimePaths } from '../../config/paths'
 import { captureExecutionCases } from '../cases/repository'
 import { createExecutionJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelExecutionJob } from './jobs'
 import { executionArtifacts } from './artifacts'
+import { executionMarkdown } from './report'
 
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const url = new URL(request.url ?? '/', 'http://localhost')
+  const reportMatch=url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/report\.md$/i)
+  if(request.method==='GET'&&reportMatch){
+    const execution=getExecutionById(reportMatch[1])
+    if(!execution)return json(response,404,{error:'执行报告不存在'})
+    response.writeHead(200,{'content-type':'text/markdown; charset=utf-8','content-disposition':`attachment; filename="execution-${execution.id}.md"`})
+    response.end(executionMarkdown(execution,executionArtifacts(execution)))
+    return true
+  }
   const evidenceMatch = url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/artifacts(?:\/([a-f0-9]{64}))?$/i)
   if(request.method==='GET'&&evidenceMatch){
     const execution=getExecutionById(evidenceMatch[1])
