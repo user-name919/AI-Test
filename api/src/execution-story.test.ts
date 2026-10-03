@@ -10,7 +10,7 @@ import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
 import type { AgentDecision, AgentTestGoal, PageSnapshot, CaseExecutionContract, ExecutionRecord } from '@quality-ai/contracts'
 import type { DesignRun } from '@quality-ai/contracts/case-design'
-import type { CaseAsset, ExecutionJob } from '@quality-ai/contracts/cases'
+import type { CaseAsset, ExecutionJob, ExecutionArtifact } from '@quality-ai/contracts/cases'
 
 test('故事 B：真实 API 发布契约驱动三类 DOM 搜索，故意失败后继续并刷新找回',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'quality-ai-story-b-'))
@@ -102,9 +102,25 @@ test('故事 B：真实 API 发布契约驱动三类 DOM 搜索，故意失败�
     assert.equal(navigations,1,'共享真实Page，不为每条用例重新导航')
     assert.deepEqual(result.caseSnapshots!.map(item=>item.resolved.contract),publication.snapshot.cases.map((item:{contract:unknown})=>item.contract))
     assert.match(result.caseResults![0]!.error!,/99/)
+    const artifacts:ExecutionArtifact[]=(await request(`/api/executions/${job.id}/artifacts`)).artifacts
+    assert.equal(artifacts.filter(item=>item.kind==='trace').length,3)
+    assert.ok(artifacts.every(item=>item.available&&!('path' in item)))
+    for(const artifact of artifacts){
+      const download=await fetch(apiOrigin+artifact.url)
+      assert.equal(download.status,200)
+      const bytes=Buffer.from(await download.arrayBuffer())
+      if(artifact.kind==='trace')assert.equal(bytes.subarray(0,2).toString(),'PK')
+      else assert.equal(bytes.subarray(1,4).toString(),'PNG')
+    }
+    assert.equal((await fetch(apiOrigin+`/api/executions/${job.id}/artifacts/${'0'.repeat(64)}`)).status,404)
     await page.getByText('通过 / 选中总数：2 / 3',{exact:false}).waitFor()
     await page.locator('summary').filter({hasText:'故意错误数量预期 · 验证失败'}).click()
     await page.getByText('可见选项数量为 99',{exact:true}).waitFor()
+    await page.getByRole('button',{name:'查看截图',exact:true}).first().click()
+    await page.getByAltText('failure.png 页面证据').waitFor()
+    const downloadEvent=page.waitForEvent('download')
+    await page.getByRole('link',{name:'下载 Trace',exact:true}).first().click()
+    assert.equal((await downloadEvent).suggestedFilename(),'trace.zip')
     await page.reload();await page.getByText('通过 / 选中总数：2 / 3',{exact:false}).waitFor()
   }finally{
     release();await browser?.close();await web?.close()

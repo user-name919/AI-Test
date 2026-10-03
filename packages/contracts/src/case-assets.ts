@@ -60,3 +60,12 @@ export interface ExecutionJob {
   projectId?: string
   sourceProject?: { id:string; branch?:string; commit?:string }
 }
+
+export interface ExecutionArtifact {
+  id:string
+  name:string
+  kind:'screenshot'|'trace'
+  caseKey?:string
+  url:string
+  available:boolean
+}

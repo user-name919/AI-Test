@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import type { ExecutionJob } from '@quality-ai/contracts/cases'
 import type { ExecutionRecord, LiveExecutionEvent } from '@quality-ai/contracts'
 import ContractView from '../case-design/ContractView.vue'
+import ExecutionArtifacts from './ExecutionArtifacts.vue'
 
 const route=useRoute()
 const jobs=ref<ExecutionJob[]>([])
@@ -103,6 +104,7 @@ onUnmounted(()=>{generation++;clearTimeout(timer)})
       <section class="panel"><h2>逐用例结果</h2><p v-if="report">通过 / 选中总数：{{ passed }} / {{ job.snapshots.length }}；已完成验证通过率：{{ verified?`${Math.round(passed/verified*100)}%`:'暂无' }}（仅 passed + failed，{{ verified }} 条）</p><p v-else>暂无最终浏览器报告，以下是任务创建时冻结的用例，不表示已通过。</p>
         <details v-for="snapshot in job.snapshots" :key="snapshot.caseId" class="case-result"><summary>{{ snapshot.resolved.title }} · {{ report?.caseResults?.find(item=>item.caseKey===snapshot.resolved.caseKey) ? resultNames[report.caseResults.find(item=>item.caseKey===snapshot.resolved.caseKey)!.status] : '尚无最终结果' }}</summary><p>资产版本 {{ snapshot.revision }} · 指纹 {{ snapshot.resolved.contractFingerprint }}</p><p v-if="snapshot.source?.type==='case_design'">设计发布 v{{ snapshot.source.publicationVersion }} · {{ snapshot.source.publicationId }}</p><ContractView :contract="snapshot.resolved.contract" /><template v-for="result in report?.caseResults?.filter(item=>item.caseKey===snapshot.resolved.caseKey)??[]" :key="result.caseKey"><p v-if="result.error" class="error">{{ result.error }}</p><p>起始页面：{{ result.startedFromUrl||'未开始' }} · 快照：{{ result.startedFromSnapshotId??'无' }}</p><p>通过断言：{{ result.passedAssertions.join('、')||'无' }}</p><details><summary>实际数据与操作证据</summary><pre>{{ JSON.stringify({data:result.resolvedDataBindings,steps:result.steps,trajectory:result.trajectory},null,2) }}</pre></details></template></details>
         <RouterLink v-if="job.executionId" :to="`/executions/${job.executionId}`">查看完整报告与附件入口</RouterLink>
+        <ExecutionArtifacts v-if="report" :execution="report" />
       </section>
     </template>
   </main>

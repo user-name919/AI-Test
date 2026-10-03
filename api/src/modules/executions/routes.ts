@@ -17,10 +17,25 @@ import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { getRuntimePaths } from '../../config/paths'
 import { captureExecutionCases } from '../cases/repository'
 import { createExecutionJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelExecutionJob } from './jobs'
+import { executionArtifacts } from './artifacts'
 
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const url = new URL(request.url ?? '/', 'http://localhost')
+  const evidenceMatch = url.pathname.match(/^\/api\/executions\/([a-f0-9-]+)\/artifacts(?:\/([a-f0-9]{64}))?$/i)
+  if(request.method==='GET'&&evidenceMatch){
+    const execution=getExecutionById(evidenceMatch[1])
+    if(!execution)return json(response,404,{error:'执行记录不存在'})
+    const artifacts=executionArtifacts(execution)
+    if(!evidenceMatch[2])return json(response,200,{artifacts:artifacts.map(({path,...item})=>{void path;return item})})
+    const artifact=artifacts.find(item=>item.id===evidenceMatch[2])
+    if(!artifact?.available||!artifact.path)return json(response,404,{error:'附件不存在、已清理或不在允许范围内'})
+    response.writeHead(200,{'content-type':artifact.kind==='trace'?'application/zip':'image/png',
+      'content-disposition':`${artifact.kind==='trace'||url.searchParams.get('download')==='1'?'attachment':'inline'}; filename="${encodeURIComponent(artifact.name)}"`,
+      'x-content-type-options':'nosniff'})
+    createReadStream(artifact.path).on('error',()=>response.destroy()).pipe(response)
+    return true
+  }
   if (url.pathname === '/api/execution-jobs') {
     if (request.method === 'GET') return json(response,200,{jobs:listExecutionJobs()})
     if (request.method === 'POST') {
