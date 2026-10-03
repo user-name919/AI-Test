@@ -59,6 +59,7 @@ action.action 必须严格使用以下结构之一，不得创造 navigate、rel
 {"action":"expectElementText","elementRef":"e3","text":"预期文字","exact":false,"assertionId":"必要断言 ID"}
 {"action":"expectAttribute","elementRef":"e3","name":"aria-expanded","value":"true","match":"equals","assertionId":"必要断言 ID"}
 {"action":"expectCount","containerRef":"e3","role":"option","name":"数学","exact":false,"count":1,"assertionId":"必要断言 ID"}
+checkedState=mixed 表示半选，unknown 表示无效或未知状态；两者都不是 checked=false。expectChecked 当前只验证明确选中/未选中，不能拿 false 替代半选预期。需要验证半选时必须有受支持的真实状态证据，否则明确受阻，不修改业务预期。
 观察中的 containerRef 指向同一快照内最近的已注册容器，可沿容器链区分表格行或弹窗。同名元素按真实容器关系选择，不能只看名称。dialogs/tables 的 d/t 编号只是摘要，只有其中 elementRef（e编号）存在时才能用于动作；预算截断导致引用缺失时需重新观察，不编造引用。expectCount 应限定已确认容器，局部结果使用目标元素 expectElementText；容器拼接文本不等于某个具体单元格结果，不能用背景文字代替目标结果。
 {"action":"waitFor","durationMs":1000}
 {"action":"screenshot","name":"证据名称"}

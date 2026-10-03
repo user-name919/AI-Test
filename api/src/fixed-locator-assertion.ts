@@ -1,6 +1,7 @@
 import { setTimeout } from 'node:timers/promises'
 import type { Locator } from 'playwright'
 import type { AutomationPlan } from '@quality-ai/contracts'
+import { readCheckedState } from './checked-state'
 
 type Assertion=Extract<AutomationPlan['steps'][number],{action:'expectVisible'|'expectHidden'|'expectEnabled'|'expectDisabled'|'expectChecked'|'expectValue'|'expectElementText'|'expectAttribute'}>
 export async function assertFixedLocator(locator:Locator,step:Assertion,expectedValue:string|undefined,signal?:AbortSignal){
@@ -18,9 +19,7 @@ export async function assertFixedLocator(locator:Locator,step:Assertion,expected
     if(step.action==='expectEnabled'||step.action==='expectDisabled'){
       actual=await locator.isEnabled({timeout:1000});matches=actual===(step.action==='expectEnabled')
     }else if(step.action==='expectChecked'){
-      const ariaChecked=await locator.getAttribute('aria-checked',{timeout:1000})
-      // mixed/无效 aria 值不等于 false，避免把不确定状态当未选中通过。
-      actual=ariaChecked===null?await locator.isChecked({timeout:1000}):ariaChecked==='true'?true:ariaChecked==='false'?false:ariaChecked
+      actual=await readCheckedState(locator)
       matches=actual===step.checked
     }else if(step.action==='expectElementText'){
       actual=await locator.innerText({timeout:1000})

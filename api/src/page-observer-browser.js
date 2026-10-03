@@ -68,9 +68,11 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       : undefined
     const disabled = 'disabled' in element && Boolean(element.disabled)
     const ariaDisabled = element.getAttribute('aria-disabled') === 'true'
-    const checked = element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type)
-      ? element.checked
-      : element.getAttribute('aria-checked') === null ? undefined : element.getAttribute('aria-checked') === 'true'
+    const rawChecked = element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type)
+      ? element.indeterminate ? 'mixed' : element.checked ? 'true' : 'false'
+      : element.getAttribute('aria-checked')
+    const checked = rawChecked === 'true' ? true : rawChecked === 'false' ? false : undefined
+    const checkedState = rawChecked === null ? undefined : rawChecked === 'true' ? 'checked' : rawChecked === 'false' ? 'unchecked' : rawChecked === 'mixed' ? 'mixed' : 'unknown'
     const selected = element instanceof HTMLOptionElement
       ? element.selected
       : element.getAttribute('aria-selected') === null ? undefined : element.getAttribute('aria-selected') === 'true'
@@ -95,6 +97,7 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       visible: true,
       enabled: !disabled && !ariaDisabled,
       checked,
+      checkedState,
       selected,
       expanded,
       required,

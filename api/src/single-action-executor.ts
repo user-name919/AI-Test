@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import type { Locator, Page } from 'playwright'
 import { toolResultSchema, type AgentAction, type ResolvedDataBinding, type ToolResult } from '@quality-ai/contracts'
 import type { ElementRegistry } from './element-registry'
+import { readCheckedState } from './checked-state'
 
 function safeArtifactName(value: string) {
   return value.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 80) || 'screenshot'
@@ -105,10 +106,7 @@ export class SingleActionExecutor {
         await waitForAssertion(() => locator.isDisabled({ timeout: 10_000 }), value => value, () => '禁用状态断言失败：元素仍可用')
       } else if (action.action === 'expectChecked') {
         const locator = this.registry.resolve(snapshotId, action.elementRef)
-        await waitForAssertion(async () => {
-          const ariaChecked = await locator.getAttribute('aria-checked')
-          return ariaChecked === null ? locator.isChecked({ timeout: 10_000 }) : ariaChecked === 'true'
-        }, value => value === action.checked, actual => `选中状态断言失败：预期 ${action.checked}，实际 ${actual}`)
+        await waitForAssertion(() => readCheckedState(locator), value => value === action.checked, actual => `选中状态断言失败：预期 ${action.checked}，实际 ${actual}`)
       } else if (action.action === 'expectValue') {
         const expected = actionValue(action, bindings)
         const actual = await this.registry.resolve(snapshotId, action.elementRef).inputValue({ timeout: 10_000 })

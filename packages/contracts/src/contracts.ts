@@ -505,6 +505,7 @@ export const semanticElementSchema = z.object({
   visible: z.boolean(),
   enabled: z.boolean(),
   checked: z.boolean().optional(),
+  checkedState: z.enum(['checked', 'unchecked', 'mixed', 'unknown']).optional(),
   selected: z.boolean().optional(),
   expanded: z.boolean().optional(),
   required: z.boolean().optional(),
