@@ -54,6 +54,16 @@ export const generatedCaseSchema = z.object({
   verificationReason: z.string().trim().min(1),
 })
 export const caseGenerationSchema = z.object({ cases: z.array(generatedCaseSchema).min(1) })
+export const designIssueProposalSchema = z.object({
+  targetType: z.enum(['design', 'fact', 'scenario', 'case']),
+  targetId: z.string().min(1),
+  kind: z.enum(['missing_evidence', 'contradiction', 'missing_coverage', 'invented_data', 'unverifiable', 'duplicate']),
+  severity: z.enum(['blocking', 'warning']),
+  reason: z.string().trim().min(1),
+  evidence: z.array(evidenceRefSchema),
+})
+export const qualityReviewSchema = z.object({ issues: z.array(designIssueProposalSchema) })
+export type DesignIssue = z.infer<typeof designIssueProposalSchema> & { id: string; checkedBy: 'rule' | 'model' | 'human' }
 export type CaseDesignDraft = z.infer<typeof generatedCaseSchema> & {
   id: string
   scenarioId: string
@@ -78,6 +88,6 @@ export interface DesignRun {
   createdAt: string
   updatedAt: string
   error?: string
-  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[]; cases?: CaseDesignDraft[]; processedScenarioIds?: string[]; unprocessedScenarioIds?: string[] }
+  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[]; cases?: CaseDesignDraft[]; processedScenarioIds?: string[]; unprocessedScenarioIds?: string[]; issues?: DesignIssue[]; modelReviewCompleted?: boolean }
   statistics: { calls: number; inputCharacters: number; outputCharacters: number }
 }

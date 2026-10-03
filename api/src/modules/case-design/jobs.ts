@@ -6,6 +6,7 @@ import { getCaseDesign, listDesignRuns, recoverInterruptedDesignRuns, saveDesign
 import { loadStageSkills, type LoadedDesignSkill } from './skill-loader'
 import { planFromFacts } from './scenario-planner'
 import { generateCases } from './case-generator'
+import { checkCaseQuality } from './quality-checker'
 
 const queue: Array<{ run: DesignRun; config: ModelConfig; controller: AbortController; skills: LoadedDesignSkill[] }> = []
 let active: typeof queue[number] | undefined
@@ -15,13 +16,13 @@ export function initializeDesignJobs() {
   recoverInterruptedDesignRuns()
   initialized = true
 }
-export function startDesignRun(designId: string, expectedRevision: number, skillsEnabled = true, stage: 'extracting' | 'modeling' | 'planning' | 'generating' = 'extracting', upstreamRunId?: string) {
+export function startDesignRun(designId: string, expectedRevision: number, skillsEnabled = true, stage: DesignRun['stage'] = 'extracting', upstreamRunId?: string) {
   const design = getCaseDesign(designId)
   if (!design) throw new Error('用例设计任务不存在')
   if (design.revision !== expectedRevision) throw new Error('材料版本已变化，请刷新后重试')
   if (queue.length >= 20) throw new Error('生成队列已满，请稍后重试')
   if (listDesignRuns(designId).some(run => run.status === 'queued' || run.status === 'running')) throw new Error('当前设计已有生成任务')
-  const previousStage = stage === 'generating' ? 'planning' : stage === 'modeling' ? 'extracting' : 'modeling'
+  const previousStage = stage === 'checking' ? 'generating' : stage === 'generating' ? 'planning' : stage === 'modeling' ? 'extracting' : 'modeling'
   const upstream = stage === 'extracting' ? undefined : listDesignRuns(designId).find(run => (!upstreamRunId || run.id === upstreamRunId) && run.stage === previousStage && run.status === 'completed' && run.inputHash === design.inputHash && run.inputRevision === design.revision)
   if (stage !== 'extracting' && !upstream) throw new Error(`缺少兼容的已完成 ${previousStage} 产物，请先完成上游阶段`)
   const config = getModelConfig()
@@ -57,6 +58,7 @@ async function drain() {
     run.status = 'running'; checkpoint()
     if(run.stage==='extracting') await extractFacts(design,run,config,controller.signal,checkpoint,skills)
     else if (run.stage === 'generating') await generateCases(run,config,controller.signal,checkpoint,skills)
+    else if (run.stage === 'checking') await checkCaseQuality(design,run,config,controller.signal,checkpoint,skills)
     else await planFromFacts(design,run,config,controller.signal,checkpoint,skills)
     controller.signal.throwIfAborted()
     run.status = 'completed'; checkpoint()

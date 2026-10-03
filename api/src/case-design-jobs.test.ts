@@ -23,12 +23,19 @@ let omitScenarios = false
 let generationInvalid = false
 let generationCalls = 0
 let failGenerationAt = -1
+let invalidReviewTarget = false
+let invalidReviewEvidence = false
 const model = createServer(async (request,response) => {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.from(chunk))
   const body = JSON.parse(Buffer.concat(chunks).toString())
   instructions.push(body.instructions)
   const message = body.input[0].content as string
+  if (body.instructions.includes('阶段：checking')) {
+    const input=JSON.parse(message.split('\n\nReturn only')[0])
+    response.writeHead(200,{'content-type':'application/json'})
+    response.end(JSON.stringify({output_text:JSON.stringify({issues:[{targetType:'case',targetId:invalidReviewTarget?'unknown':input.cases[0].id,kind:'unverifiable',severity:'warning',reason:'需要人工确认观察结果能否覆盖完整意图',evidence:invalidReviewEvidence?[{documentId:'fake',blockId:'fake',quote:'伪造原文'}]:[]}]})})); return
+  }
   if (body.instructions.includes('阶段：generating')) {
     generationCalls++
     response.writeHead(200, {'content-type':'application/json'})
@@ -173,6 +180,31 @@ test('generating consumes test-data skill, fixes provenance and retains earlier 
   assert.equal(draft.contract.dataBindings[0].strategy,'visible_option_full')
   assert.deepEqual(generated.output.unprocessedScenarioIds,[])
   assert.equal(listDesignRuns(design.id).find(run=>run.id===planned.id)?.output.cases,undefined)
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'checking',expectedRevision:1,upstreamRunId:generated.id})
+  const checked=await waitFor(design.id,'completed')
+  assert.deepEqual(checked.skills.map(skill=>skill.id),['case-quality-review'])
+  assert.match(instructions.at(-1)!,/用例质量审查/)
+  assert.equal(instructions.at(-1)!.includes('平台技能 test-data-design'),false)
+  assert.equal(checked.output.modelReviewCompleted,true)
+  assert.ok(checked.output.issues?.some(issue=>issue.checkedBy==='rule' && issue.severity==='blocking'))
+  assert.ok(checked.output.issues?.some(issue=>issue.checkedBy==='model'))
+  assert.deepEqual(checked.output.cases,generated.output.cases)
+  assert.equal(listDesignRuns(design.id).find(run=>run.id===generated.id)?.output.issues,undefined)
+  invalidReviewTarget=true
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'checking',expectedRevision:1,upstreamRunId:generated.id,skillsEnabled:false})
+  const invalidReview=await waitFor(design.id,'failed')
+  invalidReviewTarget=false
+  assert.match(invalidReview.error!,/不存在的目标/)
+  assert.equal(invalidReview.output.modelReviewCompleted,false)
+  assert.ok(invalidReview.output.issues!.length>0)
+  assert.ok(invalidReview.output.issues!.every(issue=>issue.checkedBy==='rule'))
+  assert.deepEqual(invalidReview.output.cases,generated.output.cases)
+  invalidReviewEvidence=true
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'checking',expectedRevision:1,upstreamRunId:generated.id})
+  const invalidEvidence=await waitFor(design.id,'failed')
+  invalidReviewEvidence=false
+  assert.match(invalidEvidence.error!,/模型审查依据无效/)
+  assert.equal(invalidEvidence.output.modelReviewCompleted,false)
   generationInvalid=true
   await post(`/api/case-designs/${design.id}/runs`,{stage:'generating',expectedRevision:1,skillsEnabled:false})
   const failed=await waitFor(design.id,'failed')

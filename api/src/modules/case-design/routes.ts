@@ -22,7 +22,7 @@ export async function handleCaseDesignRoutes(request: IncomingMessage, response:
     if (!getCaseDesign(id)) return json(response,404,{error:'用例设计任务不存在'})
     if (operation[2] === 'cancel') return json(response,200,{cancelled:cancelDesignRun(id)})
     const body = await readJson(request)
-    if ((body.stage !== 'extracting' && body.stage !== 'modeling' && body.stage !== 'planning' && body.stage !== 'generating') || !Number.isInteger(body.expectedRevision)) return json(response,400,{error:'请提供 extracting/modeling/planning/generating 阶段及 expectedRevision；checking 尚未接入'})
+    if ((body.stage !== 'extracting' && body.stage !== 'modeling' && body.stage !== 'planning' && body.stage !== 'generating' && body.stage !== 'checking') || !Number.isInteger(body.expectedRevision)) return json(response,400,{error:'请提供 extracting/modeling/planning/generating/checking 阶段及 expectedRevision'})
     if (body.skillsEnabled !== undefined && typeof body.skillsEnabled !== 'boolean') return json(response,400,{error:'skillsEnabled 必须为布尔值'})
     if(body.upstreamRunId !== undefined && typeof body.upstreamRunId !== 'string') return json(response,400,{error:'upstreamRunId 必须为运行 ID'})
     try { return json(response,202,{run:startDesignRun(id,Number(body.expectedRevision),body.skillsEnabled !== false,body.stage,body.upstreamRunId as string|undefined)}) }
