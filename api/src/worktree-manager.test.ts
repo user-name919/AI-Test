@@ -14,6 +14,7 @@ writeFileSync(process.env.PROJECTS_CONFIG_PATH, JSON.stringify({ projects: [{ id
 const { database } = await import('./storage/database')
 const { initializeChangeSets, previewChangeSet, freezeChangeSet } = await import('./modules/regressions/change-sets')
 const { initializeManagedWorktrees, acquireChangeSetWorktree, releaseChangeSetWorktree, removeUnusedChangeSetWorktree } = await import('./integrations/git/worktree-manager')
+const { analyzeChangeSetSource } = await import('./modules/regressions/source-impact')
 
 test('独立 detached 快照固定版本、复用引用并保护原工作区及脏快照', async t => {
   t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }) })
@@ -38,6 +39,9 @@ test('独立 detached 快照固定版本、复用引用并保护原工作区及�
   assert.equal(first.path, second.path)
   assert.notEqual(first.token, second.token)
   assert.equal(first.sha, target)
+  const impact = await analyzeChangeSetSource(preview.id, 'source-impact')
+  assert.ok(impact.trees.some(tree => tree.sha === target && tree.scannedFiles.includes('page.ts')))
+  assert.equal((database.prepare('SELECT count(*) AS count FROM regression_worktree_leases').get() as { count: number }).count, 2, '分析完成释放自己的引用，保留其他任务引用')
   assert.equal(readFileSync(join(first.path, 'page.ts'), 'utf8'), 'target')
   assert.equal(execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: first.path, encoding: 'utf8' }).trim(), 'HEAD')
   assert.equal(git('branch', '--show-current'), 'main')

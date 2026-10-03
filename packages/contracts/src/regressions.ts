@@ -34,3 +34,18 @@ export interface LocalChangeFacts {
   capturedAt: string
   warnings: string[]
 }
+
+export interface SourceImpact {
+  method: 'static-import-candidates-v1'
+  trees: Array<{
+    sha: string
+    changedFiles: string[]
+    scannedFiles: string[]
+    skippedFiles: Array<{ path: string; reason: string }>
+    edges: Array<{ from: string; to: string; line: number; specifier: string }>
+    affectedFiles: string[]
+    unresolved: Array<{ path: string; line: number; expression: string; reason: string }>
+  }>
+  skippedShas: string[]
+  warnings: string[]
+}
