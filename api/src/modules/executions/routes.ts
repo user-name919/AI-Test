@@ -16,9 +16,35 @@ import { openNdjsonResponse } from '../../ndjson-response'
 import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { getRuntimePaths } from '../../config/paths'
 import { captureExecutionCases } from '../cases/repository'
+import { createExecutionJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelQueuedExecutionJob } from './jobs'
 
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const url = new URL(request.url ?? '/', 'http://localhost')
+  if (url.pathname === '/api/execution-jobs') {
+    if (request.method === 'GET') return json(response,200,{jobs:listExecutionJobs()})
+    if (request.method === 'POST') {
+      try { return json(response,202,{job:await createExecutionJob(await readJson(request))}) }
+      catch (error) { return json(response,409,{error:error instanceof Error ? error.message : '创建执行任务失败'}) }
+    }
+  }
+  const jobMatch = url.pathname.match(/^\/api\/execution-jobs\/([a-f0-9-]+)(?:\/(events|cancel))?$/i)
+  if (jobMatch) {
+    const job = getExecutionJob(jobMatch[1])
+    if (!job) return json(response,404,{error:'执行任务不存在'})
+    if (request.method === 'GET') {
+      if (jobMatch[2] === 'events') {
+        const after = Number(url.searchParams.get('after') ?? 0)
+        if (!Number.isSafeInteger(after) || after < 0) return json(response,400,{error:'事件游标不合法'})
+        return json(response,200,executionJobEvents(job.id,after))
+      }
+      return json(response,200,{job})
+    }
+    if (request.method === 'POST' && jobMatch[2] === 'cancel') {
+      try { return json(response,200,{job:cancelQueuedExecutionJob(job.id)}) }
+      catch (error) { return json(response,409,{error:error instanceof Error ? error.message : '取消失败'}) }
+    }
+  }
   if (request.method === 'GET' && request.url === '/api/executions/latest') {
     return json(response, 200, { execution: getLatestExecution() })
   }

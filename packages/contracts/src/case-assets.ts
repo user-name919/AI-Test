@@ -38,5 +38,25 @@ export const executionPreparationSchema = z.object({
     caseId: z.string().min(1),
     revision: z.number().int().positive(),
     contractFingerprint: z.string().min(1),
-  }).strict()).min(1).max(100),
+  }).strict()).min(1).max(20),
 }).strict()
+
+export const executionJobRequestSchema = executionPreparationSchema.extend({
+  environmentId: z.string().uuid().optional(),
+  projectId: z.string().min(1).optional(),
+})
+
+export interface ExecutionJob {
+  id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'interrupted' | 'cancelled'
+  mode: 'agent' | 'plan'
+  targetUrl: string
+  snapshots: import('./contracts').ExecutionCaseSnapshot[]
+  createdAt: string
+  updatedAt: string
+  error?: string
+  executionId?: string
+  environmentId?: string
+  projectId?: string
+  sourceProject?: { id:string; branch?:string; commit?:string }
+}

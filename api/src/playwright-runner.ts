@@ -11,6 +11,7 @@ import { PageObserver } from './page-observer'
 import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-runner'
 
 interface AutomationRunnerOptions {
+  executionId?: string
   artifactRoot?: string
   launchBrowser?: () => Promise<Browser>
   cases?: Array<{ key: string; title: string }>
@@ -31,7 +32,8 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
   if (plan.casePlans?.some(item => item.contract?.dataBindings.some(binding => binding.mode === 'runtime_dom'))) {
     throw new Error('运行时数据需要预检解析；当前固定计划不接受未绑定的 runtime_dom 契约')
   }
-  const id = randomUUID()
+  const id = options.executionId ?? randomUUID()
+  if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('执行 ID 不合法')
   const startedAt = new Date()
   const artifactDirectory = resolve(getRuntimePaths().workspaceRoot, options.artifactRoot ?? getRuntimePaths().artifactRoot, id)
   await mkdir(artifactDirectory, { recursive: true })

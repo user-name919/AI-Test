@@ -7,11 +7,13 @@ import { handleProjectRoutes } from './modules/projects/routes'
 import { handleEnvironmentRoutes } from './modules/projects/environments'
 import { handleCaseDesignRoutes } from './modules/case-design/routes'
 import { initializeDesignJobs } from './modules/case-design/jobs'
+import { initializeExecutionJobs } from './modules/executions/jobs'
 
 const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleCaseDesignRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes]
 
 export function createApiServer() {
   initializeDesignJobs()
+  initializeExecutionJobs()
   return createServer(async (request, response) => {
     try {
       if (request.method === 'GET' && request.url === '/api/health') {

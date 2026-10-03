@@ -14,6 +14,7 @@ import { TestAgent } from './test-agent'
 import { startLivePageStream } from './live-page-stream'
 
 export interface AgentTestRunnerOptions {
+  executionId?: string
   projectProvider: ProjectKnowledgeProvider
   decisionProvider?: AgentDecisionProvider
   artifactRoot?: string
@@ -72,7 +73,8 @@ export async function runAgentTest(
   if (goals.some(goal => !goal.executionContract)) throw new Error('每条用例必须包含已解析的执行契约')
   if (new Set(goals.map(goal => goal.executionContract!.caseKey)).size !== goals.length) throw new Error('测试用例不能重复')
 
-  const id = randomUUID()
+  const id = options.executionId ?? randomUUID()
+  if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('执行 ID 不合法')
   const startedAt = new Date()
   const name = goals.length === 1 ? goals[0]!.name : `${goals[0]!.name} · ${goals.length} 条用例`
   const artifactDirectory = resolve(getRuntimePaths().workspaceRoot, options.artifactRoot ?? getRuntimePaths().artifactRoot, id)

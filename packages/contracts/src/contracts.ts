@@ -307,7 +307,7 @@ export const automationPlanSchema = z.object({
   targetUrl: z.string().url(),
   steps: z.array(automationStepSchema).min(1).max(50),
   casePlans: z.array(z.object({
-    caseKey: z.string().regex(/^\d+-TC-\d+$/),
+    caseKey: z.string().regex(/^(?:\d+-TC-\d+|published:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+)$/),
     title: z.string().min(1),
     contractFingerprint: z.string().min(1),
     contract: caseExecutionContractSchema.optional(),
@@ -513,7 +513,7 @@ export const agentTestGoalSchema = z.object({
     description: z.string().min(1),
   })).min(1).max(20),
   executionContract: z.object({
-    caseKey: z.string().min(1),
+    caseKey: z.string().regex(/^(?:\d+-TC-\d+|published:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+)$/),
     contract: caseExecutionContractSchema,
     contractFingerprint: z.string().min(1),
   }).optional(),
