@@ -437,13 +437,14 @@ export interface ExecutionResult {
   }
 }
 
-export interface DownloadEvidence {
-  downloadId: string
-  name: string
-  size: number
-  sha256: string
-  path: string
-}
+export const downloadEvidenceSchema = z.object({
+  downloadId: z.string().min(1).max(80),
+  name: z.string(),
+  size: z.number().int().nonnegative(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  path: z.string().min(1),
+})
+export type DownloadEvidence = z.infer<typeof downloadEvidenceSchema>
 
 export interface CaseExecutionResult {
   downloads?: DownloadEvidence[]
@@ -640,6 +641,8 @@ function requireExactlyOneValueReference(
 }
 
 export const agentActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('download'), ...elementActionBase, downloadId: z.string().min(1).max(80) }),
+  z.object({ action: z.literal('expectDownload'), downloadId: z.string().min(1).max(80), assertionId: z.string().min(1), name: z.string().min(1).optional(), minBytes: z.number().int().nonnegative().default(1), textIncludes: z.string().min(1).optional() }),
   z.object({ action: z.literal('uploadFile'), ...elementActionBase, fixtureId: z.string().uuid() }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
   z.object({ action: z.literal('click'), ...elementActionBase }),
@@ -730,6 +733,7 @@ export const toolResultSchema = z.object({
   pageChanged: z.boolean(),
   screenshotPath: z.string().optional(),
   usedFixture: fixtureMetadataSchema.optional(),
+  download: downloadEvidenceSchema.optional(),
 })
 
 export type AgentTestGoal = z.infer<typeof agentTestGoalSchema>

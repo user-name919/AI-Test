@@ -94,6 +94,7 @@ function rawAgentAction(action: AgentAction) {
   if (action.action === 'waitFor') return `waitFor ${action.durationMs}ms`
   if (action.action === 'screenshot') return `screenshot ${action.name}`
   if (action.action === 'expectText') return `expectText ${quoted(action.text)}`
+  if (action.action === 'expectDownload') return JSON.stringify(action)
   if (action.action === 'expectHidden') {
     const target = action.target.by === 'elementRef'
       ? action.target.elementRef
@@ -108,6 +109,7 @@ function rawAgentAction(action: AgentAction) {
   if (action.action === 'scroll') return `scroll ${action.elementRef ?? 'page'} x=${action.deltaX} y=${action.deltaY}`
   if ('elementRef' in action) {
     if (action.action === 'uploadFile') return `uploadFile ${action.elementRef} fixtureId=${action.fixtureId}`
+    if (action.action === 'download') return `download ${action.elementRef} downloadId=${action.downloadId}`
     if (action.action === 'fill' || action.action === 'selectOption' || action.action === 'expectValue') return `${action.action} ${action.elementRef} ${action.value !== undefined ? quoted(action.value) : `valueRef=${action.valueRef}`}`
     if (action.action === 'press') return `press ${action.elementRef} ${action.key}`
     if (action.action === 'expectChecked') return `expectChecked ${action.elementRef} ${action.checked}`
@@ -125,6 +127,8 @@ function readableAgentAction(action: AgentAction, snapshot: PageSnapshot) {
   if (action.action === 'goto') return `打开页面 ${quoted(action.path)}`
   if (action.action === 'click') return `点击${quoted(name)}`
   if (action.action === 'uploadFile') return `向${quoted(name)}上传已确认附件 ${action.fixtureId}`
+  if (action.action === 'download') return `点击${quoted(name)}并接收下载 ${action.downloadId}`
+  if (action.action === 'expectDownload') return `验证下载 ${action.downloadId} 的文件与内容`
   if (action.action === 'fill') return `在${quoted(name)}中输入${value}`
   if (action.action === 'selectOption') return `在${quoted(name)}中选择${value}`
   if (action.action === 'check') return `选中${quoted(name)}`

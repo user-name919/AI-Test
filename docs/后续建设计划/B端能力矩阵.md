@@ -22,7 +22,7 @@
 | 匹配关键词高亮 | 部分支持 | 部分支持 | 验证明确 class/data-state 等属性；固定 token 匹配、动态属性匹配规则不同。文本出现不能代替高亮，也未验证像素颜色或视觉规范 |
 | 容器中 option 数量为 0 | 部分支持 | 缺失 | 动态 `expectCount` 可带 containerRef；容器必须可被观察/引用。固定无计数动作 |
 | 选择已配置附件并上传 | 部分支持 | 部分支持 | `/#/test-fixtures` 登记不可覆盖附件，两模式 uploadFile 只接受契约授权UUID并保存指纹。动态只操作当前快照中的文件控件，上传异常不自动恢复重试；隐藏输入/文件选择对话框/多文件待扩展，真实input上传不等于业务处理成功 |
-| 点击导出，等待下载并验证文件 | 缺失 | 部分支持 | 固定 download 点击前监听，15秒接收期限、10MB证据保存上限，expectDownload 验证名称/大小/UTF-8文本包含；逐用例文件和指纹关联报告。动态、PDF/Excel解析、多文件未接入；页面“下载成功”不能代替文件证据 |
+| 点击导出，等待下载并验证文件 | 部分支持 | 部分支持 | 两模式 download 点击前监听，15秒接收期限、10MB证据保存上限，expectDownload 验证名称/大小/UTF-8文本包含；逐用例隔离文件和指纹关联报告，动态异常不自动重复导出。PDF/Excel解析、多文件未接入；页面“下载成功”不能代替文件证据 |
 | iframe 内控件操作 | 缺失 | 缺失 | observer 使用主 Page 的 document；registry 未记录 frame 上下文；固定定位也以 Page 为根。不能用主页面引用代替 frame 内元素 |
 | 新标签页打开、切回原页面 | 缺失 | 缺失 | 没有 page ID/切换动作、弹出页面生命周期或跨页引用失效规则 |
 | Shadow DOM 内控件 | 缺失（观察链） | 部分支持（定位层） | observer 的 document.querySelectorAll 不穿透 shadow root；Playwright 定位器自身能力不能补齐 Agent 观察。固定未作本地场景验收 |
@@ -38,7 +38,7 @@
 | 业务用例失败 | 记录并继续后续用例，同一 Page 保留现场 | `execution-story.test.ts`、`playwright-runner.test.ts`；会话整体失效仍需停止 |
 | 断言完整性 | 动态 assertionId、固定 assertionIndex 关联契约预期；未全部完成不能当通过 | `test-policy.ts`、`fixed-assertion-coverage.ts`；映射存在不等于自然语言语义必然正确 |
 | 页面和动作范围 | goto 同 Origin、快照引用、动作白名单、次数/时长预算 | `test-policy.ts`；仍缺通用破坏性写操作授权和“已提交则不重复”确认协议，不能称为安全完成任意表单提交 |
-| 报告、实时预览 | 后台任务、逐用例记录、截图/Trace、画面流和可重开历史 | `api/src/modules/executions/`、`web/src/features/executions/`；下载文件证据尚未接入 |
+| 报告、实时预览 | 后台任务、逐用例记录、截图/Trace、下载文件证据、画面流和可重开历史 | `api/src/modules/executions/`、`web/src/features/executions/`；新增文件证据的独立页面浏览器验收待补 |
 
 ## 可重现的聚焦检查
 

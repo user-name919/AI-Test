@@ -4,7 +4,8 @@ import type { Locator, Page } from 'playwright'
 import { toolResultSchema, type AgentAction, type ResolvedDataBinding, type ToolResult } from '@quality-ai/contracts'
 import type { ElementRegistry } from './element-registry'
 import { readCheckedState } from './checked-state'
-import type { CaseExecutionContract } from '@quality-ai/contracts'
+import type { CaseExecutionContract, DownloadEvidence } from '@quality-ai/contracts'
+import { captureDownload, assertDownload } from './download-capture'
 import type { TestFixture } from '@quality-ai/contracts/test-fixtures'
 import { loadTestFixture, validateFixtureReference } from './modules/test-fixtures/store'
 import { RuntimeDataBindingBlockedError } from './test-data-binding'
@@ -46,12 +47,14 @@ function actionValue(
 }
 
 export class SingleActionExecutor {
+  private readonly downloads = new Map<string, DownloadEvidence>()
   constructor(
     private readonly page: Page,
     private readonly registry: ElementRegistry,
     private readonly baseUrl: string,
     private readonly artifactDirectory: string,
     private readonly contract?: CaseExecutionContract,
+    private readonly signal?: AbortSignal,
   ) {}
 
   async execute(
@@ -62,9 +65,17 @@ export class SingleActionExecutor {
     const startedAt = Date.now()
     const previousUrl = this.page.url()
     let usedFixture: TestFixture | undefined
+    let download: DownloadEvidence | undefined
     try {
       let screenshotPath: string | undefined
-      if (action.action === 'uploadFile') {
+      if (action.action === 'download') {
+        if (this.downloads.has(action.downloadId)) throw new Error('同一用例下载 ID 不得重复使用')
+        const locator = this.registry.resolve(snapshotId, action.elementRef)
+        download = await captureDownload(this.page, () => locator.click({ timeout: 10000 }), this.artifactDirectory, action.downloadId, this.signal)
+        this.downloads.set(action.downloadId, download)
+      } else if (action.action === 'expectDownload') {
+        await assertDownload(this.downloads.get(action.downloadId), action)
+      } else if (action.action === 'uploadFile') {
         validateFixtureReference(action.fixtureId, this.contract)
         const locator = this.registry.resolve(snapshotId, action.elementRef)
         let fixture
@@ -157,7 +168,7 @@ export class SingleActionExecutor {
         await this.page.screenshot({ path: screenshotPath, fullPage: true })
       }
       const pageChanged = previousUrl !== this.page.url()
-        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile'].includes(action.action)
+        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile', 'download'].includes(action.action)
       return toolResultSchema.parse({
         ok: true,
         code: 'ok',
@@ -167,6 +178,7 @@ export class SingleActionExecutor {
         pageChanged,
         screenshotPath,
         usedFixture,
+        download,
       })
     } catch (error) {
       const classified = classifyError(error)
@@ -174,6 +186,7 @@ export class SingleActionExecutor {
         ok: false,
         ...classified,
         ...(action.action === 'uploadFile' ? { retryable: false, code: error instanceof RuntimeDataBindingBlockedError ? 'fixture_unavailable' : 'upload_failed', usedFixture } : {}),
+        ...(action.action === 'download' ? { retryable: false, code: 'download_failed' } : {}),
         durationMs: Date.now() - startedAt,
         pageChanged: previousUrl !== this.page.url(),
       })

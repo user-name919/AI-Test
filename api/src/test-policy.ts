@@ -18,13 +18,13 @@ interface TestPolicyOptions {
 }
 
 const elementActions = new Set<AgentAction['action']>([
-  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile',
+  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile', 'download',
   'expectVisible', 'expectEnabled', 'expectDisabled', 'expectChecked', 'expectValue',
   'expectElementText', 'expectAttribute',
 ])
 
 const enabledElementActions = new Set<AgentAction['action']>([
-  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'uploadFile',
+  'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'uploadFile', 'download',
 ])
 
 export class TestPolicy {
