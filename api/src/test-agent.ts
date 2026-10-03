@@ -29,7 +29,7 @@ export interface AgentTrajectoryItem {
   result?: ToolResult
   projectContext?: unknown
   resolvedDataBinding?: ResolvedDataBinding
-  recovery?: { attempt: number; limit: number; status: 'reobserved' | 'exhausted'; reason: string }
+  recovery?: { attempt: number; limit: number; status: 'reobserved' | 'exhausted' | 'observation_failed'; reason: string }
 }
 
 export interface AgentDecisionInput {
@@ -215,11 +215,17 @@ export class TestAgent {
           return this.result('blocked', `技术操作恢复预算已用尽（${recoveryLimit} 次）：${result.message}`, state, trajectory, screenshots)
         }
         recoveries++
-        snapshot = await this.observer.observe(page)
+        try { snapshot = await this.observer.observe(page) }
+        catch(error){
+          const reason=error instanceof Error?error.message:String(error)
+          item.recovery={attempt:recoveries,limit:recoveryLimit,status:'observation_failed',reason:`${result.message}；重观测失败：${reason}`}
+          return this.result('blocked',`技术恢复时无法重新观察页面：${reason}`,state,trajectory,screenshots)
+        }
         item.recovery={attempt:recoveries,limit:recoveryLimit,status:'reobserved',reason:result.message}
         continue
       }
-      snapshot = await this.observer.observe(page)
+      try { snapshot = await this.observer.observe(page) }
+      catch(error){return this.result('blocked',`动作后无法观察页面：${error instanceof Error?error.message:String(error)}`,state,trajectory,screenshots)}
       if (decision.action.action === 'fill' && decision.action.valueRef) {
         const binding = state.resolvedDataBindings?.get(decision.action.valueRef)
         if (binding && this.bindingMustRemainAfterFiltering(binding.bindingId) && !this.sourceRemainsVisible(binding, snapshot)) {

@@ -156,6 +156,17 @@ test('re-observes and continues after a retryable technical action failure', asy
     assert.equal(assertionFailure.status,'failed')
     assert.equal(failedCalls,1)
     assert.equal(assertionFailure.trajectory[0].recovery,undefined)
+    const brokenObserver=new PageObserver()
+    const observe=brokenObserver.observe.bind(brokenObserver)
+    let observations=0
+    brokenObserver.observe=async currentPage=>{if(observations++)throw new Error('页面上下文已销毁');return observe(currentPage)}
+    failedCalls=0
+    const observationFailure=await new TestAgent(goal,brokenObserver,technicalExecutor,alternating).run(page)
+    assert.equal(observationFailure.status,'blocked')
+    assert.equal(observationFailure.executedSteps,1)
+    assert.equal(observationFailure.trajectory[0].result?.message,'timeout')
+    assert.equal(observationFailure.trajectory[0].recovery?.status,'observation_failed')
+    assert.match(observationFailure.trajectory[0].recovery?.reason??'',/页面上下文已销毁/)
   } finally {
     await browser.close()
   }

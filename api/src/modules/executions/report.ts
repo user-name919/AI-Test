@@ -55,7 +55,7 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       lines.push(`- 第 ${turn.iteration} 轮 · ${text(decision.type)}：${text(purpose)}；DOM ${text(turn.snapshotId)}`)
       if(decision.type==='action')lines.push(`  - 技术动作：${text(JSON.stringify(decision.action))}`)
       if(turn.result)lines.push(`  - 实际结果：${turn.result.ok?'操作/断言成功':'操作/断言失败'} · ${text(turn.result.message)} · ${turn.result.durationMs} ms`)
-      if(turn.recovery)lines.push(`  - 技术恢复 ${turn.recovery.attempt}/${turn.recovery.limit}：${turn.recovery.status==='reobserved'?'重新观察页面后交由模型决策，未盲目重放动作':'恢复预算耗尽'}；原因：${text(turn.recovery.reason)}`)
+      if(turn.recovery)lines.push(`  - 技术恢复 ${turn.recovery.attempt}/${turn.recovery.limit}：${{reobserved:'重新观察页面后交由模型决策，未盲目重放动作',exhausted:'恢复预算耗尽',observation_failed:'恢复时重新观察页面失败'}[turn.recovery.status]}；原因：${text(turn.recovery.reason)}`)
     }
     if(!item.trajectory.length)for(const step of item.steps)lines.push(`- 步骤 ${step.index+1}：${text(step.action)} · ${step.status==='passed'?'成功':'失败'} · ${step.durationMs} ms${step.error?` · ${text(step.error)}`:''}`)
     if(!item.trajectory.length&&!item.steps.length)lines.push('- 没有操作证据。')
