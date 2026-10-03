@@ -297,8 +297,9 @@ export const locatorSchema = z.object({
 export const automationStepSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
   z.object({ action: z.literal('click'), locator: locatorSchema }),
-  z.object({ action: z.literal('fill'), locator: locatorSchema, value: z.string() }),
-  z.object({ action: z.literal('expectText'), text: z.string().min(1) }),
+  z.object({ action: z.literal('fill'), locator: locatorSchema, value: z.string().optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.value!==undefined)!==(item.valueRef!==undefined),'输入值与数据引用必须且只能提供一个'),
+  z.object({ action: z.literal('expectText'), text: z.string().min(1).optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.text!==undefined)!==(item.valueRef!==undefined),'预期文本与数据引用必须且只能提供一个'),
+  z.object({ action:z.literal('resolveTestData'), bindingId:z.string().min(1) }),
   z.object({ action: z.literal('screenshot'), name: z.string().min(1) }),
 ])
 

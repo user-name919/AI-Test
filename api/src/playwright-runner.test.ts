@@ -7,6 +7,27 @@ import test from 'node:test'
 import type { LiveExecutionEvent } from '@quality-ai/contracts'
 import { runAutomationPlan } from './playwright-runner'
 
+test('固定执行器运行时取真实option，失败绑定不污染后续同会话用例',async t=>{
+  const artifactRoot=await mkdtemp(join(tmpdir(),'quality-ai-fixed-data-'))
+  t.after(()=>rm(artifactRoot,{recursive:true,force:true}))
+  const web=createServer((_request,response)=>{response.setHeader('content-type','text/html; charset=utf-8');response.end('<input aria-label="搜索"><ul role="listbox"><li role="option">AlphaBook</li></ul>')})
+  await new Promise<void>(resolve=>web.listen(0,'127.0.0.1',resolve))
+  t.after(()=>new Promise<void>(resolve=>web.close(()=>resolve())))
+  const address=web.address();assert.ok(address&&typeof address!=='string')
+  const binding={id:'query',label:'查询词',mode:'runtime_dom',strategy:'visible_option_substring',targetHint:'搜索',businessIntent:'部分搜索',constraints:{mustComeFromCurrentDom:true,mustBePartialOfSource:true}}
+  const contract={objective:'搜索',preconditions:[],steps:['输入真实关键词'],expectedAssertions:['可见关键词'],dataBindings:[binding],forbiddenBehaviors:[],uncertainties:[]}
+  const steps=[{action:'resolveTestData',bindingId:'query'},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:'query'},{action:'expectText',valueRef:'query'}]
+  let calls=0
+  const result=await runAutomationPlan({name:'运行时数据',targetUrl:`http://127.0.0.1:${address.port}`,steps,casePlans:[0,1].map(index=>({caseKey:`0-TC-${index}`,title:`用例${index}`,contractFingerprint:'frozen',contract,steps}))},undefined,{artifactRoot,resolveTestData:async(binding,snapshot)=>{
+    calls++
+    return {type:'resolve_test_data',bindingId:binding.id,snapshotId:snapshot.snapshotId,sourceElementRef:snapshot.elements.find(item=>item.role==='option')!.ref,value:calls===1?'不存在的词':'Alpha',reason:'基于当前可见选项'}
+  }})
+  assert.deepEqual(result.caseResults?.map(item=>item.status),['blocked','passed'],JSON.stringify(result.caseResults?.map(item=>item.error)))
+  assert.equal(result.caseResults?.[0].resolvedDataBindings.length,0)
+  assert.equal(result.caseResults?.[1].resolvedDataBindings[0].sourceText,'AlphaBook')
+  assert.equal(result.caseResults?.[1].resolvedDataBindings[0].value,'Alpha')
+})
+
 test('启动前取消仍返回全部选中用例的未执行记录且不启动浏览器',async t=>{
   const artifactRoot=await mkdtemp(join(tmpdir(),'quality-ai-plan-not-run-'))
   t.after(()=>rm(artifactRoot,{recursive:true,force:true}))

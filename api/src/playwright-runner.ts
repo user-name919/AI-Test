@@ -10,6 +10,8 @@ import { startLivePageStream } from './live-page-stream'
 import { PageObserver } from './page-observer'
 import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-runner'
 import { completeCaseResults } from './complete-case-results'
+import type { PageSnapshot, TestDataBinding, ResolveTestDataDecision } from '@quality-ai/contracts'
+import { resolveRuntimeDataBinding, RuntimeDataBindingBlockedError } from './test-data-binding'
 
 interface AutomationRunnerOptions {
   signal?: AbortSignal
@@ -18,6 +20,7 @@ interface AutomationRunnerOptions {
   launchBrowser?: () => Promise<Browser>
   cases?: Array<{ key: string; title: string }>
   onEvent?: (event: LiveExecutionEvent) => void
+  resolveTestData?: (binding:TestDataBinding,snapshot:PageSnapshot)=>Promise<ResolveTestDataDecision>
 }
 
 function locatorFor(page: Page, locator: { by: string; value: string; name?: string }): Locator {
@@ -31,7 +34,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
   const plan: AutomationPlan = automationPlanSchema.parse(input)
   const baseUrl = new URL(plan.targetUrl)
   if (!['http:', 'https:'].includes(baseUrl.protocol)) throw new Error('测试地址只允许 HTTP 或 HTTPS')
-  if (plan.casePlans?.some(item => item.contract?.dataBindings.some(binding => binding.mode === 'runtime_dom'))) {
+  if (!options.resolveTestData && plan.casePlans?.some(item => item.contract?.dataBindings.some(binding => binding.mode === 'runtime_dom'))) {
     throw new Error('运行时数据需要预检解析；当前固定计划不接受未绑定的 runtime_dom 契约')
   }
   const id = options.executionId ?? randomUUID()
@@ -118,10 +121,23 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             } else if (step.action === 'click') {
               await locatorFor(page, step.locator).click({ timeout: 10_000 })
             } else if (step.action === 'fill') {
-              await locatorFor(page, step.locator).fill(step.value, { timeout: 10_000 })
+              const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value
+              if(value===undefined)throw new RuntimeDataBindingBlockedError(`输入引用尚未解析：${step.valueRef}`)
+              if(!step.valueRef&&casePlan.contract?.dataBindings.some(binding=>binding.mode==='runtime_dom')&&!casePlan.contract.dataBindings.some(binding=>binding.mode==='fixture'?binding.fixture?.value===value:binding.mode==='manual'&&binding.manual?.value===value))throw new RuntimeDataBindingBlockedError('运行时数据不能使用未确认的固定输入')
+              await locatorFor(page, step.locator).fill(value, { timeout: 10_000 })
             } else if (step.action === 'expectText') {
-              await page.getByText(step.text).first().waitFor({ state: 'visible', timeout: 10_000 })
+              const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.text
+              if(value===undefined)throw new RuntimeDataBindingBlockedError(`断言引用尚未解析：${step.valueRef}`)
+              await page.getByText(value).first().waitFor({ state: 'visible', timeout: 10_000 })
               checkpoint.passedAssertions.push(`step-${index + 1}`)
+            } else if(step.action==='resolveTestData'){
+              const binding=casePlan.contract?.dataBindings.find(item=>item.id===step.bindingId)
+              if(!binding||!options.resolveTestData)throw new RuntimeDataBindingBlockedError('缺少运行时数据契约或解析能力')
+              const snapshot=await new PageObserver().observe(page)
+              const proposal=await options.resolveTestData(binding,snapshot)
+              options.signal?.throwIfAborted()
+              const resolved=resolveRuntimeDataBinding(binding,snapshot,proposal)
+              checkpoint.resolvedDataBindings=checkpoint.resolvedDataBindings.filter(item=>item.bindingId!==binding.id).concat(resolved)
             } else {
               const filePath = resolve(caseDirectory, `${String(index + 1).padStart(2, '0')}-${step.name.replace(/[^\w\u4e00-\u9fa5-]/g, '_')}.png`)
               await page.screenshot({ path: filePath, fullPage: true })
@@ -133,7 +149,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             await livePageStream?.capture().catch(() => undefined)
           } catch (error) {
             checkpoint.error = error instanceof Error ? error.message : String(error)
-            checkpoint.status = 'failed'
+            checkpoint.status = error instanceof RuntimeDataBindingBlockedError?'blocked':'failed'
             checkpoint.steps.push({ index, action: step.action, status: 'failed', durationMs: Date.now() - stepStart, error: checkpoint.error })
             emit({ ...activityEvent, activity: { ...activity, status: 'failed', durationMs: Date.now() - stepStart, message: checkpoint.error } })
             break

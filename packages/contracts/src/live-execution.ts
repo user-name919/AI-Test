@@ -190,11 +190,14 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
     title = `点击${quoted(step.locator.name ?? step.locator.value)}`
     technicalAction = `click ${locatorDetail(step.locator)}`
   } else if (step.action === 'fill') {
-    title = `在${quoted(step.locator.name ?? step.locator.value)}中输入${quoted(step.value)}`
-    technicalAction = `fill ${locatorDetail(step.locator)} ${quoted(step.value)}`
+    title = `在${quoted(step.locator.name ?? step.locator.value)}中输入${step.valueRef?`运行时数据 ${step.valueRef}`:quoted(step.value??'')}`
+    technicalAction = `fill ${locatorDetail(step.locator)} ${step.valueRef?`valueRef=${step.valueRef}`:quoted(step.value??'')}`
   } else if (step.action === 'expectText') {
-    title = `确认页面出现${quoted(step.text)}`
-    technicalAction = `expectText ${quoted(step.text)}`
+    title = `确认页面出现${step.valueRef?`运行时数据 ${step.valueRef}`:quoted(step.text??'')}`
+    technicalAction = `expectText ${step.valueRef?`valueRef=${step.valueRef}`:quoted(step.text??'')}`
+  } else if(step.action==='resolveTestData'){
+    title=`从当前页面解析测试数据 ${step.bindingId}`
+    technicalAction=`resolveTestData ${step.bindingId}`
   } else {
     title = `保存当前页面截图${quoted(step.name)}`
     technicalAction = `screenshot ${step.name}`
