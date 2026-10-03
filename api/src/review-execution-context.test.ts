@@ -119,7 +119,7 @@ test('uses a case review as the final contract without mutating the raw case', (
   assert.deepEqual(resolved.contract, contract)
   assert.notStrictEqual(resolved.contract, contract)
   assert.deepEqual(resolved.readiness.agent, { executable: true })
-  assert.equal(resolved.readiness.plan.executable, false)
+  assert.equal(resolved.readiness.plan.executable, true)
   assert.deepEqual(analysis.result.requirements[0]?.testCases[0]?.steps, ['打开考试选择器', '输入考试名称'])
 })
 
@@ -239,7 +239,7 @@ test('accepts a runtime DOM binding for a confirmed concrete data operation', ()
 
   assert.deepEqual(resolveCaseExecutionContract(analysis, '0-TC-0').readiness, {
     agent: { executable: true },
-    plan: { executable: false, reason: '运行时数据“考试搜索词”需要预检解析' },
+    plan: { executable: true },
   })
 })
 

@@ -22,7 +22,7 @@ function assets(review: RegressionReview, deploymentVerified = false): CaseAsset
         : containsUnprovenDataLiteral(contract) ? '测试数据来源尚待确认'
           : deploymentVerified ? undefined : '回归执行需要部署版本确认；请从回归任务配置执行'
     const agent = reason ? { executable: false, reason } : { executable: true }
-    const plan = reason ? agent : contract.dataBindings.some(binding => binding.mode === 'runtime_dom') ? { executable: false, reason: '固定计划尚需运行时数据预检，请使用动态 Agent' } : agent
+    const plan = agent
     const readiness = { agent, plan }
     const resolved = { caseKey: id, requirementIndex: -1, caseIndex: index, title: item.title, contract,
       questionAssociation: { mode: 'explicit' as const, questionKeys: [] }, resolvedQuestions: [], readiness,

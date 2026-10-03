@@ -15,7 +15,7 @@ function assets(publication:DesignPublication):CaseAsset[]{
     const resolvedQuestions=item.questionIds.map(questionKey=>({questionKey,questionTitle:[...publication.snapshot.run.output.questions,...publication.snapshot.run.output.factModel?.conflicts??[]].find(question=>question.id===questionKey)?.question??questionKey,finalStatement:publication.snapshot.review.content.questionDecisions[questionKey]??'',triggers:[],behaviors:[],assertions:[],forbiddenBehaviors:[],sourceHints:[],uncertainties:[]}))
     const missingDecision=resolvedQuestions.some(question=>!question.finalStatement)
     const agent=reason||missingDecision?{executable:false,reason:reason??'关联问题未决定'}:{executable:true}
-    const plan=!agent.executable?agent:contract.dataBindings.some(binding=>binding.mode==='runtime_dom')?{executable:false,reason:'固定计划尚需运行时数据预检，请使用动态 Agent'}:{executable:true}
+    const plan=agent
     const resolved={caseKey:id,requirementIndex:-1,caseIndex:index,title:item.title,contract,questionAssociation,resolvedQuestions,readiness:{agent,plan},contractFingerprint:createHash('sha256').update(JSON.stringify({publicationHash:publication.contentHash,caseId:item.id,contract,questionAssociation,resolvedQuestions})).digest('hex')}
     return {id,title:item.title,source:{type:'case_design',designId:publication.designId,draftId:item.id,publicationId:publication.id,publicationVersion:publication.version},revision:publication.version,reviewStatus:'confirmed',originalSuggestion:structuredClone(original.contract),finalContract:contract,resolved,createdAt:publication.createdAt,updatedAt:publication.createdAt}
   })

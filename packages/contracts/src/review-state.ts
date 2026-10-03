@@ -18,6 +18,8 @@ export function isCaseReviewExecutable(
   caseKey: string,
   mode: 'agent' | 'plan',
 ): { executable: boolean; reason?: string } {
+  // 两模式现在共享数据就绪条件；保留参数以兼容现有调用方。
+  void mode
   const caseReview = review.caseReviews?.[caseKey]
   if (!caseReview) return { executable: true }
 
@@ -38,8 +40,8 @@ export function isCaseReviewExecutable(
     if (binding.mode === 'manual' && (!binding.manual?.value?.trim() || !binding.manual.rationale?.trim())) {
       return { executable: false, reason: `人工数据“${binding.label}”缺少值或说明` }
     }
-    if (binding.mode === 'runtime_dom' && mode === 'plan') {
-      return { executable: false, reason: `运行时数据“${binding.label}”需要预检解析` }
+    if (binding.mode === 'runtime_dom' && !binding.strategy) {
+      return { executable: false, reason: `运行时数据“${binding.label}”缺少数据策略` }
     }
   }
 

@@ -37,12 +37,14 @@ const modelServer = createServer(async (request, response) => {
   for await (const chunk of request) chunks.push(Buffer.from(chunk))
   const body = JSON.parse(Buffer.concat(chunks).toString()) as { input: Array<{ content: string }> }
   modelPrompts.push(body.input.map(message => message.content).join('\n'))
+  const contractLine=modelPrompts[modelPrompts.length-1].split('\n').find(line=>line.startsWith('最终执行契约（唯一执行依据）：'))
+  const runtime=contractLine?JSON.parse(contractLine.split('：').slice(1).join('：')).dataBindings?.find((item:{mode:string})=>item.mode==='runtime_dom'):undefined
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({
     status: 'completed',
     output_text: JSON.stringify({
       name: '单用例固定计划', targetUrl: 'https://example.test/exams',
-      steps: [{ action: 'goto', path: '/exams' }, { action: 'screenshot', name: '证据' }],
+      steps: runtime?[{action:'resolveTestData',bindingId:runtime.id},{action:'fill',locator:{by:'label',value:'搜索'},valueRef:runtime.id},{action:'expectText',valueRef:runtime.id}]:[{ action: 'goto', path: '/exams' }, { action: 'screenshot', name: '证据' }],
     }),
   }))
 })
@@ -227,7 +229,7 @@ test('rejects an agent run from the server-resolved case even when the client se
   assert.match(body.error, /用例需要确认测试数据：0-TC-0/)
 })
 
-test('rejects fixed-plan generation when runtime DOM data has not been preflight-bound', async () => {
+test('allows fixed-plan generation with runtime DOM contract preserved for execution-time binding', async () => {
   databaseModule.saveReview('11111111-1111-4111-8111-111111111111', {
     confirmedQuestions: [], selectedCases: ['0-TC-0'], questionReviews: {},
     caseReviews: { '0-TC-0': { status: 'confirmed', finalContract: reviewedContract, updatedAt: null } },
@@ -239,10 +241,10 @@ test('rejects fixed-plan generation when runtime DOM data has not been preflight
       analysisId: '11111111-1111-4111-8111-111111111111', caseKeys: ['0-TC-0'], targetUrl: 'https://example.test/exams',
     }),
   })
-  const body = await response.json() as { error: string }
+  const body = await response.json() as { automationPlan:{plan:{casePlans:Array<{contract:CaseExecutionContract}>}} }
 
-  assert.equal(response.status, 409)
-  assert.match(body.error, /运行时数据“考试搜索词”需要预检解析/)
+  assert.equal(response.status, 201)
+  assert.equal(body.automationPlan.plan.casePlans[0].contract.dataBindings[0].mode,'runtime_dom')
 })
 
 test('generates one ready fixed plan per case and combines them into case checkpoints', async () => {
@@ -301,8 +303,9 @@ test('a real local browser run persists the captured case version in its report'
   const plan = { ...original, id: '33333333-3333-4333-8333-333333333333', createdAt: new Date(Date.now() + 1000).toISOString(), plan: { ...original.plan, targetUrl: `${modelBaseUrl}/exams` } }
   databaseModule.saveAutomationPlan(plan)
   const response = await fetch(`${baseUrl}/api/automation/run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ automationPlanId: plan.id }) })
-  assert.equal(response.status, 201)
+  assert.equal(response.status, 422)
   const { execution } = await response.json()
+  assert.equal(execution.status,'blocked','只导航和截图的历史计划不能视为业务通过')
   assert.equal(execution.caseSnapshots.length, 2)
   assert.equal(execution.caseSnapshots[0].resolved.contractFingerprint, plan.plan.casePlans![0].contractFingerprint)
   assert.equal(execution.caseSnapshots[0].analysisId, plan.analysisId)

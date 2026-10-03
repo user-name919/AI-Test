@@ -31,6 +31,9 @@ value 与 valueRef、text 与 valueRef 各自只能选一个。非运行时输�
     }
     if('valueRef' in step&&step.valueRef&&!resolved.has(step.valueRef))throw new Error('计划使用了尚未解析的数据引用')
   }
+  for(const binding of testCase.contract.dataBindings.filter(item=>item.mode==='runtime_dom')){
+    if(!resolved.has(binding.id)||!plan.steps.some(step=>step.action==='fill'&&step.valueRef===binding.id))throw new Error(`固定计划遗漏运行时数据的解析或使用：${binding.id}`)
+  }
   return plan
 }
 
