@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/contracts.ts",
     "./cases": "./src/case-assets.ts",
+    "./memories": "./src/memories.ts",
     "./regressions": "./src/regressions.ts",
     "./test-fixtures": "./src/test-fixtures.ts",
     "./case-design": "./src/case-design.ts",

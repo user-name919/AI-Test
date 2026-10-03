@@ -15,8 +15,10 @@ import { initializeManagedWorktrees } from './integrations/git/worktree-manager'
 import { initializeRegressionJobs } from './modules/regressions/jobs'
 import { initializeRegressionReviews } from './modules/regressions/review'
 import { initializeDeploymentConfirmations } from './modules/regressions/deployments'
+import { initializeMemories } from './modules/memories/repository'
+import { handleMemoryRoutes } from './modules/memories/routes'
 
-const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleTestFixtureRoutes, handleCaseDesignRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes, handleRegressionRoutes]
+const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleTestFixtureRoutes, handleCaseDesignRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes, handleRegressionRoutes, handleMemoryRoutes]
 
 export function createApiServer() {
   initializeDesignJobs()
@@ -26,6 +28,7 @@ export function createApiServer() {
   initializeRegressionJobs()
   initializeRegressionReviews()
   initializeDeploymentConfirmations()
+  initializeMemories()
   return createServer(async (request, response) => {
     try {
       if (request.method === 'GET' && request.url === '/api/health') {
