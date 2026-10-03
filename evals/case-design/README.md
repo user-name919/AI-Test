@@ -8,6 +8,15 @@
 
 ## 本地运行
 
+仅验证集成的确定性夹具（不会调用公司模型）：
+
+```sh
+node --import tsx evals/case-design/run-stub.ts
+node --import tsx evals/case-design/report.ts outputs/case-design-stub/results.json outputs/case-design-stub/报告.md
+```
+
+该脚本覆盖模型地址和模型 key 为本机夹具，运行实际 Promptfoo 引擎的 108 项矩阵。夹具故意只生成协议合法内容，不是业务语义金标准。逐样本报告显示机器结果和人工待评审状态，不报告“质量提升百分比”。
+
 在仓库根目录配置原有 `MODEL_*` 环境变量，使用本地安装的 Promptfoo。不要在命令行或配置中写密钥。关闭遥测并将结果保存到忽略目录，不运行 share，不使用托管平台：
 
 ```sh

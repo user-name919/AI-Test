@@ -1,0 +1,40 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { samples } from './samples'
+
+interface Row {provider:{id:string};success:boolean;response?:{output?:string;error?:string};gradingResult?:{reason?:string};vars:{payload:string}}
+export function summarize(rows:Row[]){
+  const entries=rows.map(row=>{
+    let output:Record<string,unknown>|undefined
+    try{output=JSON.parse(row.response?.output??'')}catch{/* Errors are retained as missing output. */}
+    return {row,output,input:JSON.parse(row.vars.payload) as {sampleId:string}}
+  })
+  const modes=new Set(entries.map(entry=>entry.output?.evidenceMode).filter(Boolean))
+  const mode=modes.size===1?[...modes][0]:'混合或缺失，不能比较'
+  const lines=['# 用例生成评估结果','',`证据类型：${mode}；共 ${rows.length} 项。`,'','机器检查通过不代表设计质量通过。以下不计算语义总分，不把夹具结果推断为真实模型提升。人工期望全部待审核。','', '| 样本 | 旧流程机器通过 | 五阶段机器通过 | Skills 机器通过 | 同输入同模型 | 人工覆盖/预期准确性 |','|---|---|---|---|---|---|']
+  for(const sample of samples){
+    const subset=entries.filter(entry=>entry.input.sampleId===sample.id)
+    const cells=['legacy','pipeline','skills'].map(variant=>{
+      const selected=subset.filter(entry=>entry.row.provider.id===`quality-ai-${variant}`)
+      return `${selected.filter(entry=>entry.row.success).length}/${selected.length}（期望3）`
+    })
+    const countsComplete=['legacy','pipeline','skills'].every(variant=>subset.filter(entry=>entry.row.provider.id===`quality-ai-${variant}`).length===3)
+    const hashConsistent=countsComplete&&subset.length===9&&subset.every(entry=>typeof entry.output?.inputHash==='string'&&typeof entry.output?.modelConfigHash==='string')&&new Set(subset.map(entry=>entry.output?.inputHash)).size===1&&new Set(subset.map(entry=>entry.output?.modelConfigHash)).size===1
+    lines.push(`| ${sample.id} · ${sample.title} | ${cells.join(' | ')} | ${hashConsistent?'一致':'缺失或不一致'} | 待人工评审 |`)
+  }
+  lines.push('','## 问题与能力边界','')
+  for(const {row,input} of entries.filter(entry=>!entry.row.success))lines.push(`- ${input.sampleId} / ${row.provider.id}：${String(row.response?.error??row.gradingResult?.reason??'失败原因缺失').replace(/\n/g,' ')}`)
+  if(entries.every(entry=>entry.row.success))lines.push('- 本轮未触发机器结构断言失败；不能据此得出不存在业务语义错误。')
+  lines.push('- 旧生成器没有新流程的文档块引用结构，不能用新流程引用存在率直接冒充旧流程得分。','- 生成审查问题只代表模型/规则建议，人工是否采纳和能否实际执行仍未确定。','- 发布与执行契约一致性由闭环验收证明，不能由未执行的 Promptfoo 输出声称达到 100%。','- 本地夹具故意仅生成协议合法的通用结果，不覆盖真实语义推理，禁止将此报告作为公司模型效果结论。','', '## 人工复核候选','')
+  for(const sample of samples)lines.push(`### ${sample.title}`,`- 显式材料：${sample.expectations.explicitFacts}`,`- 必须覆盖候选：${sample.expectations.mustCover}`,`- 禁止编造：${sample.expectations.forbidden}`,`- 允许多解：${sample.expectations.alternatives}`,'- 评审人 / 日期 / 逐项结论 / 改善或退化：待填写','')
+  return lines.join('\n')
+}
+if(process.argv[1]&&resolve(process.argv[1])===import.meta.filename){
+  const path=process.argv[2]
+  if(!path)throw new Error('请提供 Promptfoo 导出的 results.json 路径')
+  const file=JSON.parse(readFileSync(path,'utf8'))
+  if(!Array.isArray(file.results?.results))throw new Error('不是可识别的 Promptfoo 结果')
+  const report=summarize(file.results.results)
+  const destination=process.argv[3]
+  if(destination)writeFileSync(destination,report+'\n');else console.log(report)
+}
