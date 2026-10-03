@@ -18,12 +18,22 @@ let release: (()=>void) | undefined
 let received = 0
 let failAt = -1
 const instructions: string[] = []
+let omitModelFact = false
+let omitScenarios = false
 const model = createServer(async (request,response) => {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.from(chunk))
   const body = JSON.parse(Buffer.concat(chunks).toString())
   instructions.push(body.instructions)
   const message = body.input[0].content as string
+  if (body.instructions.includes('阶段：modeling') || body.instructions.includes('阶段：planning')) {
+    const input = JSON.parse(message.split('\n\nReturn only')[0])
+    const output = body.instructions.includes('阶段：modeling')
+      ? {consolidatedFacts:omitModelFact?[]:input.facts.map((fact: {id:string},index:number)=>({...fact,id:`m${index+1}`,sourceFactIds:[fact.id]})),conflicts:[]}
+      : {scenarios:omitScenarios?[]:[{id:'s1',factIds:[input.facts[0].id],questionIds:[],title:'搜索场景',testIntent:'验证搜索能力',coverage:'positive'}]}
+    response.writeHead(200,{'content-type':'application/json'})
+    response.end(JSON.stringify({output_text:JSON.stringify(output)})); return
+  }
   const input = JSON.parse(message.slice(message.indexOf('：')+1).split('\n\nReturn only')[0])
   const block = input.blocks[0]
   received += 1
@@ -122,4 +132,33 @@ test('skills can be disabled for reproducible evaluation without changing input 
   assert.deepEqual(run.skills,[])
   assert.equal(instructions.at(-1)!.includes('平台技能'),false)
   assert.equal(run.inputHash,design.inputHash)
+})
+
+test('modeling and planning bind compatible upstream runs and reject silent fact omission',async()=> {
+  const design=await create()
+  assert.equal((await post(`/api/case-designs/${design.id}/runs`,{stage:'planning',expectedRevision:1})).status,409)
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'extracting',expectedRevision:1})
+  const extracted=await waitFor(design.id,'completed')
+  omitModelFact=true
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'modeling',expectedRevision:1,upstreamRunId:extracted.id})
+  const failed=await waitFor(design.id,'failed')
+  assert.match(failed.error!,/遗漏原始事实/)
+  assert.equal(failed.output.facts.length,1)
+  omitModelFact=false
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'modeling',expectedRevision:1,upstreamRunId:extracted.id})
+  const modeled=await waitFor(design.id,'completed')
+  assert.equal(modeled.upstreamRunId,extracted.id)
+  assert.equal(modeled.output.factModel?.consolidatedFacts.length,1)
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'planning',expectedRevision:1,upstreamRunId:modeled.id})
+  const planned=await waitFor(design.id,'completed')
+  assert.equal(planned.upstreamRunId,modeled.id)
+  assert.deepEqual(planned.output.scenarios?.[0].factIds,['m1'])
+  assert.deepEqual(planned.output.uncoveredFactIds,[])
+  assert.equal(listDesignRuns(design.id).find(run=>run.id===extracted.id)?.output.factModel,undefined)
+  omitScenarios=true
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'planning',expectedRevision:1,upstreamRunId:modeled.id})
+  const uncovered=await waitFor(design.id,'completed')
+  assert.deepEqual(uncovered.output.uncoveredFactIds,['m1'])
+  assert.equal(uncovered.output.scenarios?.length,0)
+  omitScenarios=false
 })

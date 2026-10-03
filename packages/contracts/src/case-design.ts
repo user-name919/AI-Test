@@ -35,6 +35,17 @@ export const factExtractionSchema = z.object({
   questions: z.array(z.object({ id: z.string().min(1), question: z.string().min(1), evidence: z.array(evidenceRefSchema) })),
 })
 export type FactExtraction = z.infer<typeof factExtractionSchema>
+export const factModelSchema = z.object({
+  consolidatedFacts: z.array(requirementFactSchema.extend({ sourceFactIds: z.array(z.string()).min(1) })),
+  conflicts: z.array(z.object({ id:z.string().min(1), factIds:z.array(z.string()).min(2), question:z.string().min(1), evidence:z.array(evidenceRefSchema).min(2) })),
+})
+export const scenarioSchema = z.object({
+  id:z.string().min(1), factIds:z.array(z.string()).min(1), questionIds:z.array(z.string()), title:z.string().min(1),
+  testIntent:z.string().min(1), coverage:z.enum(['positive','negative','boundary','state_transition']),
+})
+export const scenarioPlanSchema = z.object({scenarios:z.array(scenarioSchema)})
+export type FactModel = z.infer<typeof factModelSchema>
+export type ScenarioDraft = z.infer<typeof scenarioSchema> & { requiresReview: boolean }
 export interface DesignRun {
   id: string
   designId: string
@@ -43,6 +54,7 @@ export interface DesignRun {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
   inputRevision: number
   inputHash: string
+  upstreamRunId?: string
   model: string
   modelConfigHash: string
   protocol: string
@@ -51,6 +63,6 @@ export interface DesignRun {
   createdAt: string
   updatedAt: string
   error?: string
-  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[] }
+  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[] }
   statistics: { calls: number; inputCharacters: number; outputCharacters: number }
 }
