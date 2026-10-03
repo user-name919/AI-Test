@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { summarize } from './report'
+import { summarize, failureCategory } from './report'
 
 test('报告明确区别机器通过与人工评审，不将缺失运行视为可比',()=>{
   const row={provider:{id:'quality-ai-legacy'},success:true,response:{output:JSON.stringify({evidenceMode:'stub',inputHash:'i',modelConfigHash:'m'})},vars:{payload:JSON.stringify({sampleId:'full-search'})}}
@@ -41,4 +41,20 @@ test('请求失败保留已完成阶段，断言失败不冒充模型失败',()=
   assert.match(report,/已完成阶段：extracting、modeling/)
   assert.match(report,/评估断言层：引用不存在/)
   assert.match(report,/具体失败层需核对错误/)
+})
+
+test('真实矩阵错误按保存的表现分类，兼容顶层错误且不把失败计为通过',()=>{
+  const base={provider:{id:'quality-ai-pipeline'},success:false,vars:{payload:JSON.stringify({sampleId:'full-search'})}}
+  const strategy={...base,error:JSON.stringify([{code:'custom',path:['cases',0,'contract','dataBindings',0,'strategy'],message:'运行时 DOM 数据必须声明搜索策略'}])}
+  const value={...base,response:{error:JSON.stringify([{code:'invalid_type',path:['cases',0,'contract','dataBindings',0,'manual','value'],message:'expected string'}])}}
+  const timeout={...base,provider:{id:'quality-ai-skills'},response:{error:'The operation was aborted due to timeout'}}
+  assert.equal(failureCategory(strategy),'数据绑定缺少运行时策略')
+  assert.equal(failureCategory(value),'数据绑定取值类型错误')
+  const report=summarize([strategy,value,timeout])
+  assert.match(report,/数据绑定缺少运行时策略 \| 0 \| 1 \| 0 \| 1/)
+  assert.match(report,/请求超时 \| 0 \| 0 \| 1 \| 1/)
+  assert.match(report,/0\/2（期望3）/)
+  assert.match(report,/运行时 DOM 数据必须声明搜索策略/)
+  assert.equal(failureCategory({...base,error:'未知错误'}),'其他调用或处理错误')
+  assert.equal(failureCategory({...base,success:true}),'机器检查通过')
 })

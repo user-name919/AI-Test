@@ -20,7 +20,7 @@ node --import tsx evals/case-design/report.ts outputs/case-design-stub/results.j
 在仓库根目录配置原有 `MODEL_*` 环境变量，使用本地安装的 Promptfoo。不要在命令行或配置中写密钥。关闭遥测并将结果保存到忽略目录，不运行 share，不使用托管平台：
 
 ```sh
-PROMPTFOO_DISABLE_TELEMETRY=1 pnpm exec promptfoo eval -c evals/case-design/promptfooconfig.yaml --no-cache -o outputs/case-design-eval.json
+PROMPTFOO_DISABLE_TELEMETRY=1 PROMPTFOO_CONFIG_DIR=/private/tmp/quality-ai-promptfoo-real-full QUALITY_AI_EVAL_MODE=real-model pnpm exec promptfoo eval --env-file .env.local -c evals/case-design/promptfooconfig.yaml --no-cache --no-share --no-write --no-table --no-progress-bar -o outputs/case-design-eval.json
 ```
 
 该命令会实际调用已配置模型，12 × 3 × 3 个评估项，新流程每项包含多次模型请求。只有显式设置 `QUALITY_AI_EVAL_MODE=stub` 并使用本地合成模型地址时才能记录为夹具测试；该标记不会自动替换模型。运行前应检查模型地址，不能把 stub 结果标为真实质量证据。
@@ -31,6 +31,8 @@ PROMPTFOO_DISABLE_TELEMETRY=1 pnpm exec promptfoo eval -c evals/case-design/prom
 node --import tsx --test evals/case-design/assertions.test.ts evals/case-design/report.test.ts
 ```
 
-这些是已知结构及样本规则，不是理解任意自然语言的通用防幻觉保证。旧流程没有结构化数据绑定，目前仅检查旧 schema，固定值等语义仍需人工复核。结果名称刻意标为“机器结构检查_非质量通过”。真实模型矩阵及人工评审仍未完成，当前尚未完成 G4 验收。
+这些是已知结构及样本规则，不是理解任意自然语言的通用防幻觉保证。旧流程没有结构化数据绑定，目前仅检查旧 schema，固定值等语义仍需人工复核。结果名称刻意标为“机器结构检查_非质量通过”。
+
+2026-10-04 完整真实矩阵已结束：108 项中 86 项机器检查通过、22 项错误（16 项数据绑定缺策略、4 项取值类型错误、2 项超时）。报告支持 Promptfoo 顶层和 response 内错误，并按错误表现分类，保留已完成阶段。分类不是语义根因判定；失败记录元数据不全时不宣称同条件验证通过。详情见 `docs/后续建设计划/用例生成评估结果.md`。人工评审仍未完成，G4 未验收。复验使用新的输出文件名，保留原始 full 结果。
 
 参考：[Promptfoo 自定义 Provider](https://www.promptfoo.dev/docs/providers/custom-api/) 与[配置参考](https://www.promptfoo.dev/docs/configuration/reference/)。
