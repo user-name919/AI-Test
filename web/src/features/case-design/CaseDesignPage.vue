@@ -71,6 +71,15 @@ function locate(value:EvidenceRef) { reference.value=value; showSource.value=tru
         <template v-if="design">
           <section class="card"><h2>生成阶段</h2><div class="stages"><div v-for="(stage,index) in stages" :key="stage.id"><button :disabled="Boolean(unavailable(index))" @click="start(stage.id)">{{ stage.name }}</button><small>{{ unavailable(index) || '可运行或重新生成；将创建新记录' }}</small></div></div><p v-if="active" role="status">{{ stages.find(stage=>stage.id===active?.stage)?.name }} · {{ statusNames[active.status] }} · 最近更新 {{ active.updatedAt }} <button :disabled="busy" @click="cancel">取消生成</button></p></section>
           <section class="card"><label>查看阶段产物<select aria-label="查看阶段产物" :value="selected?.id ?? ''" @change="router.replace({query:{...route.query,runId:($event.target as HTMLSelectElement).value}})"><option v-for="run in runs" :key="run.id" :value="run.id">第 {{ run.attempt }} 次 · {{ stages.find(stage=>stage.id===run.stage)?.name }} · {{ statusNames[run.status] }}</option></select></label><p v-if="route.query.runId && !selected" role="alert">指定的阶段记录不存在，请重新选择。</p><p v-if="selected?.error" role="alert" class="error">{{ selected.error }}</p><p v-if="selected">使用方法：{{ selected.skills.map(skill=>`${skill.id}@${skill.version}`).join('、') || '未启用 Skills' }} · 调用 {{ selected.statistics.calls }} 次</p><button @click="showSource=!showSource">{{ showSource?'收起原文':'显示原文' }}</button></section>
+          <section v-if="selected?.output.generationAttempts?.length" class="card" aria-label="生成格式修复记录">
+            <h2>生成与格式修复记录</h2><p>每个场景最多生成两次。结构有效仅表示字段校验通过，不代表业务含义正确；请结合原始依据和最终用例审核。</p>
+            <details v-for="attempt in selected.output.generationAttempts" :key="`${attempt.scenarioId}-${attempt.attempt}`">
+              <summary>场景 {{ attempt.scenarioId }} · 第 {{ attempt.attempt }} 次 · {{ attempt.status==='invalid'?'结构校验失败':'结构校验通过，待语义审核' }}</summary>
+              <p v-if="attempt.error" class="error">{{ attempt.error }}</p>
+              <p v-if="attempt.responseTruncated">响应过长，仅保留前 64000 字符；不能视为完整原文。</p>
+              <pre>{{ attempt.response }}</pre>
+            </details>
+          </section>
           <div class="evidence-layout" :class="{single:!showSource}">
             <SourceViewer v-if="showSource" :documents="design.documents" :reference="reference" />
             <section class="card results"><h2>需求事实与场景</h2><p v-if="!selected">材料已保存，请先提取需求事实。</p>

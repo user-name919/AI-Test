@@ -121,8 +121,13 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.getByRole('button',{name:'使用指引',exact:true}).click()
     await page.getByRole('heading',{name:'如何使用',exact:true}).waitFor()
     runs.unshift({...structuredClone(runs[0]),id:'checked',stage:'checking',attempt:2,output:{...structuredClone(runs[0].output),modelReviewCompleted:true,cases:[{id:'case-1',title:'部分关键词搜索',scenarioId:'s1',factIds:['f1'],questionIds:[],verification:'browser',verificationReason:'页面可观察',requiresReview:true,contract:{objective:'AI建议目标',preconditions:['打开搜索框'],steps:['从实际选项选择部分词'],expectedAssertions:['选项保留'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}}]}})
+    runs[0].output.generationAttempts=[{scenarioId:'s1',attempt:1,status:'invalid',response:'{"cases":[]}',responseTruncated:false,error:'至少需要一条用例'},{scenarioId:'s1',attempt:2,status:'validated',response:'合成修复响应',responseTruncated:true}]
     await page.reload()
     await page.getByLabel('查看阶段产物',{exact:true}).selectOption('checked')
+    await page.getByText('场景 s1 · 第 1 次 · 结构校验失败',{exact:true}).click()
+    await page.getByText('至少需要一条用例',{exact:true}).waitFor()
+    await page.getByText('场景 s1 · 第 2 次 · 结构校验通过，待语义审核',{exact:true}).click()
+    await page.getByText('响应过长，仅保留前 64000 字符；不能视为完整原文。',{exact:true}).waitFor()
     await page.getByLabel('测试目标',{exact:true}).fill('人工修改后的目标')
     await page.getByLabel('预期断言（每行一项）',{exact:true}).fill('匹配部分高亮\n来源选项仍存在')
     await page.getByLabel('审核状态',{exact:true}).selectOption('confirmed')
