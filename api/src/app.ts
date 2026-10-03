@@ -10,6 +10,7 @@ import { initializeDesignJobs } from './modules/case-design/jobs'
 import { initializeExecutionJobs } from './modules/executions/jobs'
 import { initializeChangeSets } from './modules/regressions/change-sets'
 import { handleRegressionRoutes } from './modules/regressions/routes'
+import { initializeManagedWorktrees } from './integrations/git/worktree-manager'
 
 const handlers = [handleProjectRoutes, handleEnvironmentRoutes, handleCaseDesignRoutes, handleCaseRoutes, handleRequirementRoutes, handleExecutionRoutes, handleRegressionRoutes]
 
@@ -17,6 +18,7 @@ export function createApiServer() {
   initializeDesignJobs()
   initializeExecutionJobs()
   initializeChangeSets()
+  initializeManagedWorktrees()
   return createServer(async (request, response) => {
     try {
       if (request.method === 'GET' && request.url === '/api/health') {
