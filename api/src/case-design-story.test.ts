@@ -80,8 +80,12 @@ test('故事 A 后端：冲突材料到三类搜索、人工口径、局部重�
     const first:DesignPublication=(await request(root+'/publish',{expectedRevision:1})).publication
     const assets=(await request(`/api/cases?sourceType=case_design&sourceId=${design.id}`)).cases
     assert.equal(assets.length,3)
-    assert.ok(assets.every((asset:{resolved:{readiness:{agent:{executable:boolean};plan:{executable:boolean}}}})=>asset.resolved.readiness.agent.executable&&!asset.resolved.readiness.plan.executable))
+    assert.ok(assets.every((asset:{resolved:{readiness:{agent:{executable:boolean};plan:{executable:boolean}}}})=>asset.resolved.readiness.agent.executable&&asset.resolved.readiness.plan.executable),'完整运行时策略在两种模式中都应可进入执行准备，实际动作能力仍须执行时验证')
     assert.deepEqual(assets.map((asset:{finalContract:unknown})=>asset.finalContract),first.snapshot.cases.map(item=>item.contract))
+    for(const mode of ['agent','plan']){
+      const prepared=await request('/api/cases/prepare-execution',{mode,targetUrl:'https://example.test/search',cases:assets.map((asset:{id:string;revision:number;resolved:{contractFingerprint:string}})=>({caseId:asset.id,revision:asset.revision,contractFingerprint:asset.resolved.contractFingerprint}))})
+      assert.deepEqual(prepared.preparation.snapshots.map((snapshot:{resolved:{contract:unknown}})=>snapshot.resolved.contract),first.snapshot.cases.map(item=>item.contract),`${mode} 执行预览必须与发布版本一致`)
+    }
     const markdown=await (await fetch(origin+root+`/publications/${first.id}/markdown`)).text()
     assert.match(markdown,/人工修改的完整搜索目标/)
     assert.match(markdown,/区分大小写/)
