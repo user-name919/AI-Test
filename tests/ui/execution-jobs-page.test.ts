@@ -22,7 +22,7 @@ test('后台任务刷新找回、关闭重开预览、历史合并及完整用�
       const url=new URL(route.request().url())
       if(url.pathname.endsWith('/cancel')){status='cancelled';executionId='job';await route.fulfill({json:{job:{id:'job',status,mode:'agent',snapshots,targetUrl:'https://example.test',executionId}}});return}
       if(url.pathname.endsWith('/events')){const events=Number(url.searchParams.get('after'))?[]:history;await route.fulfill({json:{events,nextCursor:2,frame:{type:'browser_frame',capturedAt:'2026-10-04T00:00:00Z',dataUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='}}});return}
-      if(url.pathname==='/api/executions/job'){await route.fulfill({json:{execution:{id:'job',status:'cancelled',caseResults:snapshots.map((item,index)=>({caseKey:item.resolved.caseKey,status:index?'not_run':'passed',passedAssertions:index?[]:['verified'],error:index?'批次取消，尚未开始':undefined,startedFromUrl:index?'':'https://example.test',resolvedDataBindings:[],steps:[],trajectory:[]}))}}});return}
+      if(url.pathname==='/api/executions/job'){await route.fulfill({json:{execution:{id:'job',status:'cancelled',caseResults:snapshots.map((item,index)=>({caseKey:item.resolved.caseKey,status:index?'not_run':'passed',passedAssertions:index?[]:['verified'],error:index?'批次取消，尚未开始':undefined,startedFromUrl:index?'':'https://example.test',resolvedDataBindings:[],steps:[],trajectory:index?[]:[{iteration:1,snapshotId:'snapshot-before',decision:{type:'action',reason:'展开可搜索选项',action:{action:'click',elementRef:'e10'}},result:{ok:false,message:'控件重新渲染',durationMs:10},recovery:{attempt:1,limit:2,status:'reobserved',reason:'控件重新渲染'}}]}))}}});return}
       const job={id:'job',status,mode:'agent',snapshots,targetUrl:'https://example.test',executionId,updatedAt:'now',deploymentConfirmation}
       await route.fulfill({json:url.pathname==='/api/execution-jobs'?{jobs:[job]}:{job}})
     })
@@ -40,6 +40,12 @@ test('后台任务刷新找回、关闭重开预览、历史合并及完整用�
     page.once('dialog',dialog=>dialog.accept())
     await page.getByRole('button',{name:'取消执行',exact:true}).click()
     await page.getByText('通过 / 选中总数：1 / 2',{exact:false}).waitFor()
+    await page.locator('summary').filter({hasText:'部分搜索 · 通过'}).click()
+    await page.getByRole('heading',{name:'第 1 步 · 展开可搜索选项'}).waitFor()
+    await page.getByText('本步失败：控件重新渲染 · 10 ms',{exact:true}).waitFor()
+    await page.getByText(/技术恢复 1\/2：已重新观察页面/).waitFor()
+    await page.getByText('查看本步技术动作与观察',{exact:true}).click()
+    await page.locator('.case-result').filter({has:page.getByRole('heading',{name:'第 1 步 · 展开可搜索选项'})}).getByText('查看原始执行数据（排障）',{exact:true}).waitFor()
     await page.locator('summary').filter({hasText:'后续验证 · 未执行'}).click()
     await page.getByText('批次取消，尚未开始').waitFor()
     await page.getByRole('button',{name:'使用指引'}).click()
