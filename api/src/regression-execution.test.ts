@@ -36,6 +36,7 @@ test('回归审核经部署校验后实际执行，冻结子项目源码和报�
   writeFileSync(join(projectRoot, 'page.ts'), 'export const value = "frozen"'); git('add', '.'); git('commit', '-m', 'target')
   const sha = git('rev-parse', 'HEAD')
   const modelInputs: string[] = []
+  const dynamicInputs:string[]=[]
   let release = () => {}
   let gate = Promise.resolve()
   let visits = 0
@@ -43,7 +44,20 @@ test('回归审核经部署校验后实际执行，冻结子项目源码和报�
     if (request.method === 'POST') {
       const chunks: Buffer[] = []
       for await (const chunk of request) chunks.push(Buffer.from(chunk))
-      modelInputs.push(Buffer.concat(chunks).toString())
+      const raw=Buffer.concat(chunks).toString()
+      const body=JSON.parse(raw)
+      if(String(body.instructions).includes('单步决策器')){
+        dynamicInputs.push(raw)
+        const content=String(body.input[0].content)
+        const context=JSON.parse(content.slice(content.indexOf('当前输入：\n')+'当前输入：\n'.length).split('\n\nReturn only a valid json object.')[0]!)
+        const snapshot=context.currentSnapshot
+        const count=context.recentTrajectory.length
+        const decision=count===0?{type:'action',snapshotId:snapshot.snapshotId,reason:'点击当前可见按钮',action:{action:'click',elementRef:snapshot.elements.find((item:{name:string})=>item.name==='继续').ref}}
+          :count===1?{type:'action',snapshotId:snapshot.snapshotId,reason:'验证原始人工预期',action:{action:'expectText',text:'已继续',assertionId:context.goal.requiredAssertions[0].id}}
+          :{type:'finish',summary:'真实页面已验证人工预期'}
+        response.setHeader('content-type','application/json');response.end(JSON.stringify({output_text:JSON.stringify(decision)}));return
+      }
+      modelInputs.push(raw)
       await gate
       response.setHeader('content-type', 'application/json')
       response.end(JSON.stringify({ output_text: JSON.stringify({ name: '公开合成回归', targetUrl: target, steps: [{ action: 'click', locator: { by: 'text', value: '继续' } }, { action:'expectText',assertionIndex:0, text: '已继续' }] }) }))
@@ -125,10 +139,47 @@ test('回归审核经部署校验后实际执行，冻结子项目源码和报�
   const markdown = await (await fetch(`${url}/api/executions/${job.id}/report.md`)).text()
   assert.match(markdown, /未核实，不得作为版本匹配证明/)
   assert.match(markdown, new RegExp(sha))
+  const memoryPost=(path:string,body:unknown)=>fetch(url+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+  const memoryResponse=await memoryPost('/api/memories',{executionId:job.id,caseKey:asset.resolved.caseKey,lesson:'先核对继续按钮可见，再按人工断言验证完成文字'})
+  assert.equal(memoryResponse.status,201)
+  const memory=(await memoryResponse.json()).memory
+  assert.equal((await memoryPost(`/api/memories/${memory.id}/review`,{expectedRevision:1,status:'adopted',reason:'已核对当前合成页面与冻结源码，仅辅助操作'})).status,200)
+  const withMemory=(await(await post(input)).json()).job
+  await waitFor(async()=>['completed','failed'].includes((await detail(withMemory.id)).status))
+  assert.equal((await detail(withMemory.id)).status,'completed')
+  const memoryReport=(await(await fetch(`${url}/api/executions/${withMemory.id}`)).json()).execution
+  assert.equal(memoryReport.status,'passed')
+  assert.equal(memoryReport.memoryHints.length,1)
+  assert.equal(memoryReport.memoryHints[0].id,memory.id)
+  assert.equal(memoryReport.memoryHints[0].revision,2)
+  assert.equal(memoryReport.memoryHints[0].sourceCommit,sha)
+  assert.deepEqual((await detail(withMemory.id)).memoryHints,memoryReport.memoryHints)
+  assert.match(modelInputs[1]!,/先核对继续按钮可见/)
+  const memoryMarkdown=await(await fetch(`${url}/api/executions/${withMemory.id}/report.md`)).text()
+  assert.match(memoryMarkdown,/本次提供给模型的历史经验/)
+  assert.match(memoryMarkdown,/先核对继续按钮可见/)
+  const dynamicJob=(await(await post({...input,mode:'agent'})).json()).job
+  assert.ok(dynamicJob?.id,'动态任务应成功创建')
+  await waitFor(async()=>['completed','failed'].includes((await detail(dynamicJob.id)).status))
+  assert.equal((await detail(dynamicJob.id)).status,'completed',(await detail(dynamicJob.id)).error)
+  const dynamicReport=(await(await fetch(`${url}/api/executions/${dynamicJob.id}`)).json()).execution
+  assert.equal(dynamicReport.status,'passed',dynamicReport.error)
+  assert.equal(dynamicReport.caseResults[0].passedAssertions.length,1)
+  assert.deepEqual(dynamicReport.memoryHints,memoryReport.memoryHints)
+  assert.ok(dynamicInputs.length>=2)
+  for(const request of dynamicInputs)assert.match(request,/先核对继续按钮可见/)
+  assert.equal((await memoryPost(`/api/memories/${memory.id}/review`,{expectedRevision:2,status:'invalid',reason:'停止自动参考，核对后再决定'})).status,200)
+  const afterInvalid=(await(await post(input)).json()).job
+  await waitFor(async()=>['completed','failed'].includes((await detail(afterInvalid.id)).status))
+  assert.equal((await detail(afterInvalid.id)).status,'completed')
+  const invalidReport=(await(await fetch(`${url}/api/executions/${afterInvalid.id}`)).json()).execution
+  assert.deepEqual(invalidReport.memoryHints,[])
+  assert.doesNotMatch(modelInputs[2]!,/先核对继续按钮可见/)
+  assert.deepEqual((await(await fetch(`${url}/api/executions/${withMemory.id}`)).json()).execution,memoryReport,'经验失效不回写已保存报告')
   // 计划生成过程中部署确认发生变化，启动浏览器前必须再次校验。
   gate = new Promise<void>(resolve => { release = resolve })
   const pending = (await (await post(input)).json()).job
-  await waitFor(async () => modelInputs.length === 2)
+  await waitFor(async () => modelInputs.length === 4)
   const visitsBefore = visits
   saveDeploymentConfirmation(analysis.id, { ...confirmationInput, deployedSha: base })
   release()

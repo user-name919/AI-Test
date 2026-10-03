@@ -28,6 +28,7 @@ test('失败报告保留上传快照与真实下载，附件读取可重试、�
   const sha256 = createHash('sha256').update(body).digest('hex')
   const fixture = { id: randomUUID(), name: '输入样本.csv', mimeType: 'text/csv', size: 4, sha256: 'a'.repeat(64), createdAt: '2026-10-04' }
   const record: ExecutionRecord = {
+    memoryHints:[{id:'11111111-1111-4111-8111-111111111111',revision:2,lesson:'导出后核对真实文件内容，不把下载完成视为业务通过',executionId:'22222222-2222-4222-8222-222222222222',projectId:'fixture',targetUrl:'https://example.test',sourceCommit:'a'.repeat(40)}],
     id, name: '合成导出失败报告', targetUrl: 'https://example.test', mode: 'agent', status: 'failed', startedAt: 'now', finishedAt: 'now', durationMs: 1, steps: [], screenshots: [], caseKeys: ['case'],
     caseResults: [{ caseKey: 'case', title: '核对导出内容', contractFingerprint: 'frozen', status: 'failed', startedFromUrl: 'https://example.test', continuation: 'reused_current_page', resolvedDataBindings: [], passedAssertions: [], trajectory: [], steps: [], screenshots: [join(root, 'missing.png')], error: '下载内容与原预期不符', usedFixtures: [fixture], downloads: [{ downloadId: 'report', name: '分析报告.csv', size: Buffer.byteLength(body), sha256, path }] }],
   }
@@ -92,6 +93,10 @@ test('失败报告保留上传快照与真实下载，附件读取可重试、�
     requests.length=0
     await page.goto(`http://127.0.0.1:${web.port}/#/executions/${id}`)
     await page.getByRole('heading',{name:'合成导出失败报告',exact:true}).waitFor()
+    await page.getByText('本次模型参考经验（1 条）',{exact:true}).click()
+    await page.getByText('导出后核对真实文件内容，不把下载完成视为业务通过 · 审核版本 2',{exact:true}).waitFor()
+    assert.equal(await page.getByRole('link',{name:'查看当前记忆',exact:true}).getAttribute('href'),'#/memory?memoryId=11111111-1111-4111-8111-111111111111')
+    assert.equal(await page.getByRole('link',{name:'查看来源报告',exact:true}).getAttribute('href'),'#/executions/22222222-2222-4222-8222-222222222222')
     await page.locator('summary').filter({hasText:'核对导出内容 · 验证失败'}).click()
     await page.getByText('输入样本.csv',{exact:true}).waitFor()
     await page.getByRole('link',{name:'下载文件',exact:true}).waitFor()
