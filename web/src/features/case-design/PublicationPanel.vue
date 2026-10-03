@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { DesignPublication, DesignReview } from '@quality-ai/contracts/case-design'
 import { designRequest } from './useCaseDesign'
 import ContractView from './ContractView.vue'
+import PublicationExecution from '../executions/PublicationExecution.vue'
 const props=defineProps<{designId:string;review?:DesignReview;dirty:boolean;disabled:boolean}>()
 const route=useRoute();const router=useRouter()
 const publications=ref<DesignPublication[]>([])
@@ -51,6 +52,7 @@ async function download(){
     <p v-if="!publications.length&&!loading">尚未发布。请先完成并保存人工审核。</p><p v-if="route.query.publicationId&&!selected" role="alert">指定发布版本不存在，请重新选择。</p>
     <article v-if="selected" class="publication-preview"><h3>发布 v{{ selected.version }} · 只读快照</h3><p>发布时间：{{ selected.createdAt }} · 材料 v{{ selected.snapshot.design.revision }} · 审核 v{{ selected.snapshot.review.revision }}</p><details><summary>内容校验标识</summary><code>{{ selected.contentHash }}</code></details>
       <a :href="`/api/case-designs/${designId}/publications/${selected.id}/markdown`" :aria-disabled="downloading" @click.prevent="download">{{ downloading?'正在准备下载…':'下载此版本 Markdown' }}</a>
+      <PublicationExecution :key="selected.id" :publication="selected" />
       <details v-for="item in selected.snapshot.cases" :key="item.id" open><summary>{{ item.title }} · {{ {browser:'浏览器验证',api:'接口验证',manual:'人工验证'}[item.verification] }}</summary><p>验证方式依据：{{ item.verificationReason }}</p><ContractView :contract="item.contract" />
         <h4>冻结的原文依据</h4><section v-for="fact in selected.snapshot.run.output.factModel?.consolidatedFacts.filter(fact=>item.factIds.includes(fact.id))" :key="fact.id"><p>{{ fact.statement }}（{{ fact.kind }}）</p><blockquote v-for="(ref,index) in fact.evidence" :key="index">{{ ref.quote }}<small>{{ selected.snapshot.design.documents.find(document=>document.id===ref.documentId)?.fileName }} · {{ ref.blockId }}</small></blockquote></section>
         <p v-for="id in item.questionIds" :key="id">人工决定 {{ id }}：{{ selected.snapshot.review.content.questionDecisions[id] }}</p>

@@ -19,6 +19,7 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
   const publications:DesignPublication[]=[]
   let publishBlocked=true
   let invalidDownload=true
+  let executionInput:Record<string,unknown>|undefined
   const server=await createServer({root:new URL('../../web',import.meta.url).pathname,configFile:false,plugins:[vue()],server:{host:'127.0.0.1',port:0}})
   let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined
   try {
@@ -29,6 +30,23 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     const errors:string[]=[]; page.on('pageerror',error=>errors.push(error.message))
     await page.route('**/api/**',async route=> {
       const path=new URL(route.request().url()).pathname
+      if(path.startsWith('/api/cases/published')&&path.endsWith('/contract')){
+        const published=publications[0];const item=published.snapshot.cases[0]
+        assert.equal(decodeURIComponent(path),`/api/cases/published:${published.id}:${item.id}/contract`)
+        await route.fulfill({json:{asset:{id:`published:${published.id}:${item.id}`,title:item.title,revision:published.version,source:{type:'case_design',publicationId:published.id},resolved:{caseKey:'published:published:case-1',title:item.title,contract:item.contract,contractFingerprint:'published-fingerprint',readiness:{agent:{executable:true},plan:{executable:false,reason:'固定计划需要运行时数据预检'}}}}}});return
+      }
+      if(path==='/api/environments/latest'){await route.fulfill({json:{environment:null}});return}
+      if(path==='/api/projects'){await route.fulfill({json:{projects:[{id:'source',name:'合成源码',connected:true,targetOrigins:['https://example.test'],branch:'local',commit:'abc'}]}});return}
+      if(path==='/api/cases/prepare-execution'){
+        const body=route.request().postDataJSON();assert.equal(body.cases[0].contractFingerprint,'published-fingerprint')
+        assert.equal(body.cases[0].caseId,'published:published:case-1')
+        await route.fulfill({json:{preparation:{snapshots:[{caseId:body.cases[0].caseId,revision:1,resolved:{title:publications[0].snapshot.cases[0].title,contract:publications[0].snapshot.cases[0].contract,contractFingerprint:'published-fingerprint',resolvedQuestions:[]}}]}}});return
+      }
+      if(path==='/api/execution-jobs'&&route.request().method()==='POST'){
+        executionInput=route.request().postDataJSON();await route.fulfill({status:202,json:{job:{id:'job-fixture'}}});return
+      }
+      if(path==='/api/execution-jobs/job-fixture'){await route.fulfill({json:{job:{id:'job-fixture',status:'queued',mode:'agent',snapshots:[],targetUrl:'https://example.test'}}});return}
+      if(path==='/api/execution-jobs/job-fixture/events'){await route.fulfill({json:{events:[],nextCursor:0,frame:null}});return}
       if(path.endsWith('/review-draft')){const run=runs.find(item=>path.includes(`/runs/${item.id}/`))!;await route.fulfill({json:{draft:buildReviewDraft(run,runs,reviews)}});return}
       if(path.endsWith('/comparison')){
         const run=runs.find(item=>path.includes(`/runs/${item.id}/`))!
@@ -200,6 +218,25 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.getByRole('button',{name:'审查这次局部生成',exact:true}).click()
     await page.getByRole('heading',{name:'人工审核用例',exact:true}).waitFor()
     assert.match(page.url(),/runId=partial-checked/)
+    await page.getByRole('button',{name:'配置并执行此发布版本',exact:true}).click()
+    const launcher=page.locator('.publication-execution')
+    await launcher.locator('input[type=checkbox]').first().check()
+    await launcher.getByLabel('测试页面地址',{exact:true}).fill('https://example.test/search')
+    await launcher.getByLabel('执行模式',{exact:true}).selectOption('plan')
+    assert.equal(await launcher.getByRole('button',{name:'预览最终执行口径',exact:true}).isDisabled(),true)
+    await launcher.getByLabel('执行模式',{exact:true}).selectOption('agent')
+    await launcher.getByLabel('源码项目',{exact:true}).selectOption('source')
+    await launcher.getByRole('button',{name:'预览最终执行口径',exact:true}).click()
+    await launcher.getByRole('button',{name:'确认口径并启动后台执行',exact:true}).waitFor()
+    await launcher.getByLabel('测试页面地址',{exact:true}).fill('https://example.test/changed')
+    assert.equal(await launcher.getByRole('button',{name:'确认口径并启动后台执行',exact:true}).count(),0,'配置变更使旧预览失效')
+    await launcher.getByRole('button',{name:'预览最终执行口径',exact:true}).click()
+    page.once('dialog',dialog=>dialog.accept())
+    await launcher.getByRole('button',{name:'确认口径并启动后台执行',exact:true}).click()
+    await page.waitForURL('**/#/execution-jobs/job-fixture')
+    assert.equal(executionInput?.targetUrl,'https://example.test/changed')
+    assert.equal(executionInput?.projectId,'source')
+    assert.equal(executionInput?.contract,undefined)
     assert.deepEqual(errors,[])
   } finally {await browser?.close();await server.close()}
 })
