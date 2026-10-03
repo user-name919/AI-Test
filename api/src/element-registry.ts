@@ -45,6 +45,11 @@ export class ElementRegistry {
     if (snapshotId !== this.snapshotId) throw new Error('框架切换引用了过期快照')
     const frame = this.frames.get(ref)
     if (!frame || frame.isDetached()) throw new Error('当前快照不存在可用框架引用')
+    this.focusFrame(frame.page(), frame)
+  }
+
+  focusFrame(page: Page, frame: Frame) {
+    if(frame.isDetached() || frame.page() !== page) throw new Error('目标框架不属于当前页面或已失效')
     this.selectedFrame = frame
     this.invalidate()
   }

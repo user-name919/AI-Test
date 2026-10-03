@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Page } from 'playwright'
+import type { Frame, Page } from 'playwright'
 import { pageSnapshotSchema, type PageSnapshot, type SemanticElement } from '@quality-ai/contracts'
 import { ElementRegistry } from './element-registry'
 import { observePageInBrowser } from './page-observer-browser.js'
@@ -50,7 +50,8 @@ export class PageObserver {
 
   constructor(private readonly options: ObserverOptions = {}) {}
 
-  async observe(page: Page): Promise<PageSnapshot> {
+  async observe(page: Page, frame?: Frame): Promise<PageSnapshot> {
+    if(frame) this.registry.focusFrame(page,frame)
     this.registry.invalidate()
     const frames = await this.registry.observeFrames(page)
     const root = this.registry.activeRoot(page)

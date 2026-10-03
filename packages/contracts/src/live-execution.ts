@@ -233,6 +233,11 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
     title = `保存当前页面截图${quoted(step.name)}`
     technicalAction = `screenshot ${step.name}`
   }
+  const framePath = 'locator' in step ? step.locator.framePath : 'framePath' in step ? step.framePath : undefined
+  if(framePath?.length){
+    title = `在嵌入页面${framePath.map(frame=>quoted(frame.name??frame.value)).join(' → ')}内：${title}`
+    technicalAction = JSON.stringify(step)
+  }
   if ('locator' in step && step.locator.scope?.length) {
     title = `在${step.locator.scope.map(scope=>quoted(scope.name??scope.value)).join(' → ')}范围内：${title}`
     technicalAction = JSON.stringify(step)

@@ -309,6 +309,7 @@ const locatorSelectorSchema = z.object({
 })
 
 export const locatorSchema = locatorSelectorSchema.extend({
+  framePath: z.array(locatorSelectorSchema).min(1).max(4).optional(),
   scope: z.array(locatorSelectorSchema).min(1).max(4).optional(),
 })
 
@@ -330,8 +331,8 @@ export const automationStepSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('expectDownload'), downloadId: z.string().min(1).max(80), assertionIndex: z.number().int().nonnegative().optional(), name: z.string().min(1).optional(), minBytes: z.number().int().nonnegative().default(1), textIncludes: z.string().min(1).optional() }),
   z.object({ action: z.literal('expectChecked'), locator: locatorSchema, checked: z.boolean(), assertionIndex: z.number().int().nonnegative().optional() }),
   z.object({ action: z.literal('fill'), locator: locatorSchema, value: z.string().optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.value!==undefined)!==(item.valueRef!==undefined),'输入值与数据引用必须且只能提供一个'),
-  z.object({ action: z.literal('expectText'), assertionIndex:z.number().int().nonnegative().optional(), text: z.string().min(1).optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.text!==undefined)!==(item.valueRef!==undefined),'预期文本与数据引用必须且只能提供一个'),
-  z.object({ action:z.literal('resolveTestData'), bindingId:z.string().min(1) }),
+  z.object({ action: z.literal('expectText'), framePath: z.array(locatorSelectorSchema).min(1).max(4).optional(), assertionIndex:z.number().int().nonnegative().optional(), text: z.string().min(1).optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.text!==undefined)!==(item.valueRef!==undefined),'预期文本与数据引用必须且只能提供一个'),
+  z.object({ action:z.literal('resolveTestData'), bindingId:z.string().min(1), framePath: z.array(locatorSelectorSchema).min(1).max(4).optional() }),
   z.object({ action:z.literal('expectVisible'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),
   z.object({ action:z.literal('expectHidden'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),
   z.object({ action:z.literal('expectEnabled'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),

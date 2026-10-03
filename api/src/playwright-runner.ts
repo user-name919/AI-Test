@@ -3,7 +3,7 @@ import { getRuntimePaths } from './config/paths'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { chromium, type Browser, type Locator, type Page } from 'playwright'
+import { chromium, type Browser, type FrameLocator, type Locator, type Page } from 'playwright'
 import { automationPlanSchema, type AutomationPlan, type CaseExecutionResult, type ExecutionResult, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
 import { validateFixedSelectData } from './fixed-select-option'
@@ -29,7 +29,7 @@ interface AutomationRunnerOptions {
 }
 
 type FixedLocator = Extract<AutomationPlan['steps'][number], {action:'click'}>['locator']
-function selectWithin(root: Page | Locator, selector: Omit<FixedLocator, 'scope'>): Locator {
+function selectWithin(root: Page | FrameLocator | Locator, selector: Omit<FixedLocator, 'scope' | 'framePath'>): Locator {
   if (selector.by === 'role') return root.getByRole(selector.value as never, { name: selector.name, exact: selector.exact })
   if (selector.by === 'label') return root.getByLabel(selector.value, { exact: selector.exact })
   if (selector.by === 'text') return root.getByText(selector.value, { exact: selector.exact })
@@ -37,9 +37,15 @@ function selectWithin(root: Page | Locator, selector: Omit<FixedLocator, 'scope'
 }
 
 function locatorFor(page: Page, locator: FixedLocator): Locator {
-  let root: Page | Locator = page
+  let root: Page | FrameLocator | Locator = frameRootFor(page, locator.framePath)
   for (const scope of locator.scope ?? []) root = selectWithin(root, scope)
   return selectWithin(root, locator)
+}
+
+function frameRootFor(page: Page, framePath: FixedLocator['framePath']): Page | FrameLocator {
+  let root: Page | FrameLocator = page
+  for (const selector of framePath ?? []) root = selectWithin(root, selector).contentFrame()
+  return root
 }
 
 export async function runAutomationPlan(input: unknown, storageStatePath?: string, options: AutomationRunnerOptions = {}): Promise<ExecutionResult> {
@@ -176,19 +182,27 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
                 const binding=casePlan.contract?.dataBindings.find(item=>item.id===step.valueRef)
                 const resolved=checkpoint.resolvedDataBindings.find(item=>item.bindingId===step.valueRef)
                 if(binding?.constraints.mustRemainAfterFiltering&&resolved){
-                  try{await page.getByRole('option',{name:resolved.sourceText,exact:true}).first().waitFor({state:'visible',timeout:10_000})}
+                  try{await frameRootFor(page,step.locator.framePath).getByRole('option',{name:resolved.sourceText,exact:true}).first().waitFor({state:'visible',timeout:10_000})}
                   catch{throw new Error(`产品筛选行为不符合已确认契约：输入“${value}”后来源 option“${resolved.sourceText}”未保留`)}
                 }
               }
             } else if (step.action === 'expectText') {
               const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.text
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`断言引用尚未解析：${step.valueRef}`)
-              await page.getByText(value).first().waitFor({ state: 'visible', timeout: 10_000 })
+              await frameRootFor(page,step.framePath).getByText(value).first().waitFor({ state: 'visible', timeout: 10_000 })
               checkpoint.passedAssertions.push(step.assertionIndex===undefined?`step-${index+1}`:`assertion-${step.assertionIndex}`)
             } else if(step.action==='resolveTestData'){
               const binding=casePlan.contract?.dataBindings.find(item=>item.id===step.bindingId)
               if(!binding||!options.resolveTestData)throw new RuntimeDataBindingBlockedError('缺少运行时数据契约或解析能力')
-              const snapshot=await new PageObserver().observe(page)
+              const root=frameRootFor(page,step.framePath)
+              const document=await root.locator('html').elementHandle({timeout:10_000})
+              if(!document)throw new RuntimeDataBindingBlockedError('测试数据框架尚未加载')
+              let snapshot:PageSnapshot
+              try{
+                const frame=await document.ownerFrame()
+                if(!frame)throw new RuntimeDataBindingBlockedError('测试数据框架已失效')
+                snapshot=await new PageObserver().observe(page,frame)
+              }finally{await document.dispose()}
               const proposal=await options.resolveTestData(binding,snapshot)
               options.signal?.throwIfAborted()
               const resolved=resolveRuntimeDataBinding(binding,snapshot,proposal)
