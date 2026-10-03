@@ -35,8 +35,8 @@ test('故事 A 后端：冲突材料到三类搜索、人工口径、局部重�
     let output:unknown
     if(stage==='extracting')output={facts:input.blocks.map((block:{documentId:string;id:string;text:string},index:number)=>({id:`f${index}`,statement:block.text,kind:'explicit',evidence:[{documentId:block.documentId,blockId:block.id,quote:block.text}],relatedQuestionIds:[]})),questions:[]}
     else if(stage==='modeling'){
-      const facts=(input.facts as RequirementFact[]).map((fact,index)=>({...fact,id:`m${index}`,sourceFactIds:[fact.id]}))
-      output={consolidatedFacts:facts,conflicts:[{id:'conflict',factIds:facts.map(item=>item.id),question:'匹配是否区分大小写？',evidence:facts.flatMap(item=>item.evidence)}]}
+      const facts=(input.facts as Array<RequirementFact & {evidenceRefs:string[]}>).map((fact,index)=>({...fact,id:`m${index}`,sourceFactIds:[fact.id]}))
+      output={consolidatedFacts:facts,conflicts:[{id:'conflict',factIds:facts.map(item=>item.id),question:'匹配是否区分大小写？',evidenceRefs:facts.flatMap(item=>item.evidenceRefs)}]}
     }else if(stage==='planning')output={scenarios:strategies.map((strategy,index)=>({id:`s${index}`,factIds:input.facts.map((item:{id:string})=>item.id),questionIds:['conflict'],title:strategy,testIntent:`验证 ${strategy}`,coverage:index===2?'negative':'positive'}))}
     else if(stage==='generating'){
       const strategy=strategies[Number(input.scenario.id.slice(1))]

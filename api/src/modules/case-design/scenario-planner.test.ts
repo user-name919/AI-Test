@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { CaseDesign, DesignRun, FactModel } from '@quality-ai/contracts/case-design'
 import { createEvidenceDocuments } from './documents'
 import { validateFactModel, planFromFacts } from './scenario-planner'
-import { encodeFactInput } from './fact-input'
+import { encodeFactInput,decodeFactModel } from './fact-input'
 import { createServer } from 'node:http'
 import { getModelConfig } from '../../model-config'
 
@@ -14,6 +14,12 @@ function fixture() {
   const run:DesignRun={id:'run',designId:design.id,attempt:1,stage:'modeling',status:'running',inputRevision:1,inputHash:'hash',model:'fixture',modelConfigHash:'hash',protocol:'openai-responses',promptVersion:'test',skills:[],createdAt:'now',updatedAt:'now',statistics:{calls:0,inputCharacters:0,outputCharacters:0},output:{facts,questions:[],processedBlockIds:[],unprocessedBlockIds:[]}}
   const model:FactModel={consolidatedFacts:facts.map(fact=>({...structuredClone(fact),id:'m'+fact.id,sourceFactIds:[fact.id]})),conflicts:[{id:'q-conflict',factIds:['mf1','mf2'],question:'确认上传限制',evidence:facts.flatMap(fact=>fact.evidence)}]}
   return {design,run,model}
+}
+function referenceModel(model:FactModel){
+  return {
+    consolidatedFacts:model.consolidatedFacts.map((fact,index)=>({id:fact.id,sourceFactIds:fact.sourceFactIds,statement:fact.statement,kind:fact.kind,relatedQuestionIds:fact.relatedQuestionIds,evidenceRefs:[`evidence-${index+1}`]})),
+    conflicts:model.conflicts.map(conflict=>({id:conflict.id,factIds:conflict.factIds,question:conflict.question,evidenceRefs:['evidence-1','evidence-2']})),
+  }
 }
 test('cross-document conflicts preserve both sides and become explicit question dependencies',()=> {
   const {design,run,model}=fixture()
@@ -53,6 +59,22 @@ test('证据重复引用无损去重，保留不同块及所有独立事实',()=
   assert.deepEqual(run,before,'编码不改变持久事实')
 })
 
+test('引用输出还原原文并拒绝未知依据，遗漏仍被来源校验拒绝',()=>{
+  const {design,run,model}=fixture()
+  const input=encodeFactInput(run)
+  const referenced=referenceModel(model)
+  const restored=decodeFactModel(referenced,input)
+  assert.deepEqual(restored,model)
+  validateFactModel(restored,design,run)
+  const invalid=structuredClone(referenced)
+  invalid.consolidatedFacts[0].evidenceRefs=['unknown']
+  assert.throws(()=>decodeFactModel(invalid,input),/未知原文依据/)
+  invalid.consolidatedFacts[0].evidenceRefs=[]
+  assert.throws(()=>validateFactModel(decodeFactModel(invalid,input),design,run),/丢失原始依据/)
+  assert.deepEqual(decodeFactModel(model,input),model,'兼容完整原文输出，不改变原证据')
+  assert.throws(()=>decodeFactModel({...model,consolidatedFacts:model.consolidatedFacts.map(fact=>({...fact,evidenceRefs:['unknown']}))},input),'拒绝同时提供矛盾的完整依据与引用')
+})
+
 test('合并与规划请求使用证据表，输出仍校验完整原文及冲突双方',async()=>{
   const {design,run,model}=fixture()
   let calls=0
@@ -65,7 +87,8 @@ test('合并与规划请求使用证据表，输出仍校验完整原文及冲�
     assert.match(body.instructions,/无损证据引用/)
     calls++
     response.setHeader('content-type','application/json')
-    response.end(JSON.stringify({output_text:JSON.stringify(calls===1?model:{scenarios:[{id:'s1',factIds:['mf1','mf2'],questionIds:[],title:'核对上传限制',testIntent:'确认冲突后验证',coverage:'boundary'}]})}))
+    const referenced=referenceModel(model)
+    response.end(JSON.stringify({output_text:JSON.stringify(calls===1?referenced:{scenarios:[{id:'s1',factIds:['mf1','mf2'],questionIds:[],title:'核对上传限制',testIntent:'确认冲突后验证',coverage:'boundary'}]})}))
   })
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve))
   const address=server.address();assert.ok(address&&typeof address!=='string')

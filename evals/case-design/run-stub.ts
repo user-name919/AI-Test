@@ -22,8 +22,8 @@ const server=createServer(async(request,response)=>{
       const input=JSON.parse(text)
       if(stage==='extracting')output={facts:input.blocks.map((block:{documentId:string;id:string;text:string},index:number)=>({id:`f${index}`,statement:block.text,kind:'explicit',evidence:[{documentId:block.documentId,blockId:block.id,quote:block.text}],relatedQuestionIds:[]})),questions:[]}
       else if(stage==='modeling'){
-        const facts=(input.facts as RequirementFact[]).map((fact,index)=>({...fact,id:`m${index}`,sourceFactIds:[fact.id]}))
-        output={consolidatedFacts:facts,conflicts:facts.length>1?[{id:'conflict',factIds:facts.map(item=>item.id),question:'合成材料冲突待人工确认',evidence:facts.flatMap(item=>item.evidence)}]:[]}
+        const facts=(input.facts as Array<RequirementFact & {evidenceRefs:string[]}>).map((fact,index)=>({...fact,id:`m${index}`,sourceFactIds:[fact.id]}))
+        output={consolidatedFacts:facts,conflicts:facts.length>1?[{id:'conflict',factIds:facts.map(item=>item.id),question:'合成材料冲突待人工确认',evidenceRefs:facts.flatMap(item=>item.evidenceRefs)}]:[]}
       }else if(stage==='planning')output={scenarios:[{id:'s1',title:'夹具场景',testIntent:'验证生成协议',factIds:input.facts.map((fact:RequirementFact)=>fact.id),questionIds:[],coverage:'positive'}]}
       else if(stage==='generating'){
         const text=input.facts.map((fact:RequirementFact)=>fact.statement).join('\n')

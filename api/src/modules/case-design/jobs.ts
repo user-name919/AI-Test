@@ -40,7 +40,7 @@ export function startDesignRun(designId: string, expectedRevision: number, skill
     regeneration: regeneration ?? (stage === 'checking' ? upstream?.regeneration : undefined),
     inputRevision: design.revision, inputHash: design.inputHash, model: config.model, protocol: config.protocol,
     modelConfigHash: createHash('sha256').update(JSON.stringify({model:config.model,baseUrl:config.baseUrl,protocol:config.protocol,userAgent:config.userAgent,originator:config.originator})).digest('hex'),
-    promptVersion: stage==='extracting'?factsPromptVersion:stage==='generating'?generatingPromptVersion:stage==='checking'?checkingPromptVersion:`${stage}-v2-evidence-refs`, skills: skills.map(({id,version,hash})=>({id,version,hash})), createdAt: now, updatedAt: now,
+    promptVersion: stage==='extracting'?factsPromptVersion:stage==='generating'?generatingPromptVersion:stage==='checking'?checkingPromptVersion:`${stage}-v3-evidence-refs`, skills: skills.map(({id,version,hash})=>({id,version,hash})), createdAt: now, updatedAt: now,
     output: upstream ? structuredClone(upstream.output) : { facts: [], questions: [], processedBlockIds: [], unprocessedBlockIds: design.documents.flatMap(document=>document.blocks.map(block=>block.id)) },
     statistics: { calls: 0, inputCharacters: 0, outputCharacters: 0 },
   }
