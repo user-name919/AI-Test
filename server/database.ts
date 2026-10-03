@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import type { AnalysisSummary, AutomationPlan, ExecutionRecord, ExecutionResult, PrdAnalysis, ReviewState, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
 import { isQuestionReviewResolved, normalizeReviewState } from '../shared/review-state'
 
-const databasePath = resolve('data/quality-ai.sqlite')
+const databasePath = resolve(process.env.QUALITY_AI_DATABASE_PATH ?? 'data/quality-ai.sqlite')
 mkdirSync(dirname(databasePath), { recursive: true })
 
 const database = new DatabaseSync(databasePath)
@@ -25,6 +25,7 @@ database.exec(`
     confirmed_questions_json TEXT NOT NULL DEFAULT '[]',
     selected_cases_json TEXT NOT NULL DEFAULT '[]',
     question_reviews_json TEXT NOT NULL DEFAULT '{}',
+    case_reviews_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL,
     FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE
   );
@@ -56,6 +57,9 @@ database.exec(`
 const reviewColumns = database.prepare('PRAGMA table_info(analysis_reviews)').all() as Array<{ name: string }>
 if (!reviewColumns.some(column => column.name === 'question_reviews_json')) {
   database.exec("ALTER TABLE analysis_reviews ADD COLUMN question_reviews_json TEXT NOT NULL DEFAULT '{}'")
+}
+if (!reviewColumns.some(column => column.name === 'case_reviews_json')) {
+  database.exec("ALTER TABLE analysis_reviews ADD COLUMN case_reviews_json TEXT NOT NULL DEFAULT '{}'")
 }
 
 const analysisColumns = database.prepare('PRAGMA table_info(analyses)').all() as Array<{ name: string }>
@@ -121,6 +125,7 @@ function mapAnalysisRow(row: Record<string, string> | undefined): SavedAnalysis 
       confirmedQuestions: JSON.parse(row.confirmed_questions_json || '[]') as string[],
       selectedCases: JSON.parse(row.selected_cases_json || '[]') as string[],
       questionReviews: JSON.parse(row.question_reviews_json || '{}') as ReviewState['questionReviews'],
+      caseReviews: JSON.parse(row.case_reviews_json || '{}') as ReviewState['caseReviews'],
       updatedAt: row.updated_at ?? null,
     }),
   }
@@ -128,7 +133,7 @@ function mapAnalysisRow(row: Record<string, string> | undefined): SavedAnalysis 
 
 const analysisSelect = `
   SELECT a.id, a.file_name, a.file_names_json, a.provider, a.model, a.result_json, a.created_at,
-         r.confirmed_questions_json, r.selected_cases_json, r.question_reviews_json, r.updated_at
+         r.confirmed_questions_json, r.selected_cases_json, r.question_reviews_json, r.case_reviews_json, r.updated_at
   FROM analyses a LEFT JOIN analysis_reviews r ON r.analysis_id = a.id
 `
 
@@ -170,15 +175,28 @@ export function saveReview(analysisId: string, review: Omit<ReviewState, 'update
   if (!exists) throw new Error('解析记录不存在')
   const updatedAt = new Date().toISOString()
   database.prepare(`
-    INSERT INTO analysis_reviews (analysis_id, confirmed_questions_json, selected_cases_json, question_reviews_json, updated_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO analysis_reviews (analysis_id, confirmed_questions_json, selected_cases_json, question_reviews_json, case_reviews_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(analysis_id) DO UPDATE SET
       confirmed_questions_json = excluded.confirmed_questions_json,
       selected_cases_json = excluded.selected_cases_json,
       question_reviews_json = excluded.question_reviews_json,
+      case_reviews_json = excluded.case_reviews_json,
       updated_at = excluded.updated_at
-  `).run(analysisId, JSON.stringify(review.confirmedQuestions), JSON.stringify(review.selectedCases), JSON.stringify(review.questionReviews ?? {}), updatedAt)
-  return normalizeReviewState({ ...review, questionReviews: review.questionReviews ?? {}, updatedAt })
+  `).run(
+    analysisId,
+    JSON.stringify(review.confirmedQuestions),
+    JSON.stringify(review.selectedCases),
+    JSON.stringify(review.questionReviews ?? {}),
+    JSON.stringify(review.caseReviews ?? {}),
+    updatedAt,
+  )
+  return normalizeReviewState({
+    ...review,
+    questionReviews: review.questionReviews ?? {},
+    caseReviews: review.caseReviews ?? {},
+    updatedAt,
+  })
 }
 
 interface ExecutionContext {

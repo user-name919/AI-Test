@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { Locator, Page } from 'playwright'
-import { toolResultSchema, type AgentAction, type ToolResult } from '../shared/contracts'
+import { toolResultSchema, type AgentAction, type ResolvedDataBinding, type ToolResult } from '../shared/contracts'
 import type { ElementRegistry } from './element-registry'
 
 function safeArtifactName(value: string) {
@@ -30,6 +30,16 @@ async function waitForAssertion<T>(
   if (!matches(actual)) throw new Error(failureMessage(actual))
 }
 
+function actionValue(
+  action: Extract<AgentAction, { action: 'fill' | 'selectOption' | 'expectValue' }>,
+  bindings: ReadonlyMap<string, ResolvedDataBinding> | undefined,
+) {
+  if (action.value !== undefined) return action.value
+  const binding = action.valueRef ? bindings?.get(action.valueRef) : undefined
+  if (!binding) throw new Error(`数据引用尚未解析：${action.valueRef ?? ''}`)
+  return binding.value
+}
+
 export class SingleActionExecutor {
   constructor(
     private readonly page: Page,
@@ -38,7 +48,11 @@ export class SingleActionExecutor {
     private readonly artifactDirectory: string,
   ) {}
 
-  async execute(snapshotId: string, action: AgentAction): Promise<ToolResult> {
+  async execute(
+    snapshotId: string,
+    action: AgentAction,
+    bindings?: ReadonlyMap<string, ResolvedDataBinding>,
+  ): Promise<ToolResult> {
     const startedAt = Date.now()
     const previousUrl = this.page.url()
     try {
@@ -53,9 +67,9 @@ export class SingleActionExecutor {
       } else if (action.action === 'click') {
         await this.registry.resolve(snapshotId, action.elementRef).click({ timeout: 10_000 })
       } else if (action.action === 'fill') {
-        await this.registry.resolve(snapshotId, action.elementRef).fill(action.value, { timeout: 10_000 })
+        await this.registry.resolve(snapshotId, action.elementRef).fill(actionValue(action, bindings), { timeout: 10_000 })
       } else if (action.action === 'selectOption') {
-        await this.registry.resolve(snapshotId, action.elementRef).selectOption(action.value, { timeout: 10_000 })
+        await this.registry.resolve(snapshotId, action.elementRef).selectOption(actionValue(action, bindings), { timeout: 10_000 })
       } else if (action.action === 'check') {
         await this.registry.resolve(snapshotId, action.elementRef).check({ timeout: 10_000 })
       } else if (action.action === 'uncheck') {
@@ -96,8 +110,9 @@ export class SingleActionExecutor {
           return ariaChecked === null ? locator.isChecked({ timeout: 10_000 }) : ariaChecked === 'true'
         }, value => value === action.checked, actual => `选中状态断言失败：预期 ${action.checked}，实际 ${actual}`)
       } else if (action.action === 'expectValue') {
+        const expected = actionValue(action, bindings)
         const actual = await this.registry.resolve(snapshotId, action.elementRef).inputValue({ timeout: 10_000 })
-        if (actual !== action.value) throw new Error(`值断言失败：预期“${action.value}”，实际“${actual}”`)
+        if (actual !== expected) throw new Error(`值断言失败：预期“${expected}”，实际“${actual}”`)
       } else if (action.action === 'expectText') {
         await this.page.getByText(action.text, { exact: false }).first().waitFor({ state: 'visible', timeout: 10_000 })
       } else if (action.action === 'expectElementText') {

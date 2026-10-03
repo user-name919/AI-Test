@@ -49,6 +49,23 @@ test('keeps waitFor raw detail while explaining the wait', () => {
   assert.equal(activity.technicalAction, 'waitFor 1000ms')
 })
 
+test('describes a resolved DOM data proposal with its visible source and retained technical detail', () => {
+  const dataSnapshot: PageSnapshot = {
+    ...snapshot,
+    elements: [{ ref: 'e10', tag: 'div', role: 'option', name: '模考数学一', visible: true, enabled: true }],
+  }
+  const decision: AgentDecision = {
+    type: 'resolve_test_data', snapshotId: dataSnapshot.snapshotId, bindingId: 'exam-keyword',
+    sourceElementRef: 'e10', value: '数学', reason: '从真实 option 选择部分关键词',
+  }
+
+  const activity = describeAgentDecision(decision, dataSnapshot, 5)
+
+  assert.equal(activity.title, '从“模考数学一”解析测试数据“数学”')
+  assert.equal(activity.technicalAction, 'resolve_test_data exam-keyword source=e10 value=“数学”')
+  assert.equal(activity.status, 'running')
+})
+
 test('describes a fixed plan step without hiding its Playwright locator', () => {
   const step: AutomationPlan['steps'][number] = {
     action: 'click', locator: { by: 'label', value: '选择考试' },

@@ -3,6 +3,7 @@ import {
   type AgentDecision,
   type AgentTestGoal,
   type PageSnapshot,
+  type ResolvedDataBinding,
   type ToolResult,
 } from '../shared/contracts'
 import type { ProjectKnowledgeProvider } from './project-knowledge/types'
@@ -11,6 +12,7 @@ import type { SingleActionExecutor } from './single-action-executor'
 import { TestPolicy, type AgentRuntimeState } from './test-policy'
 import type { LiveExecutionActivity } from '../shared/contracts'
 import { describeAgentDecision } from '../shared/live-execution'
+import { RuntimeDataBindingBlockedError, resolveRuntimeDataBinding } from './test-data-binding'
 
 export interface AgentTrajectoryItem {
   iteration: number
@@ -26,6 +28,7 @@ export interface AgentTrajectoryItem {
   }
   result?: ToolResult
   projectContext?: unknown
+  resolvedDataBinding?: ResolvedDataBinding
 }
 
 export interface AgentDecisionInput {
@@ -46,6 +49,7 @@ export interface TestAgentResult {
   passedAssertions: string[]
   trajectory: AgentTrajectoryItem[]
   screenshots: string[]
+  resolvedDataBindings?: ResolvedDataBinding[]
 }
 
 interface TestAgentOptions {
@@ -70,6 +74,10 @@ function summarizeSnapshot(snapshot: PageSnapshot): NonNullable<AgentTrajectoryI
   }
 }
 
+function isMalformedResolveTestDataDecision(value: unknown) {
+  return Boolean(value && typeof value === 'object' && 'type' in value && value.type === 'resolve_test_data')
+}
+
 export class TestAgent {
   private readonly policy: TestPolicy
 
@@ -90,6 +98,7 @@ export class TestAgent {
       projectContextRequests: 0,
       passedAssertions: new Set(),
       recentActionFingerprints: [],
+      resolvedDataBindings: new Map(),
     }
     const trajectory: AgentTrajectoryItem[] = []
     const projectContexts: unknown[] = []
@@ -107,20 +116,28 @@ export class TestAgent {
         snapshotId: snapshot.snapshotId,
         status: 'running',
       })
+      let rawDecision: unknown
       let decision: AgentDecision
       try {
-        decision = agentDecisionSchema.parse(await this.decisionProvider.decide({
+        rawDecision = await this.decisionProvider.decide({
           goal: this.goal,
           snapshot,
           trajectory,
           projectContexts,
-        }))
+        })
+        decision = agentDecisionSchema.parse(rawDecision)
       } catch (error) {
+        if (error instanceof RuntimeDataBindingBlockedError || isMalformedResolveTestDataDecision(rawDecision)) {
+          return this.result('blocked', `当前环境不满足测试数据前置条件：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
+        }
         return this.result('failed', `Agent 决策无效：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
       }
       try {
         this.policy.validate(decision, snapshot, state)
       } catch (error) {
+        if (decision.type === 'resolve_test_data') {
+          return this.result('blocked', `当前环境不满足测试数据前置条件：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
+        }
         return this.result('failed', error instanceof Error ? error.message : String(error), state, trajectory, screenshots)
       }
       const activity = describeAgentDecision(decision, snapshot, iteration)
@@ -157,7 +174,22 @@ export class TestAgent {
         continue
       }
 
-      const result = await this.executor.execute(decision.snapshotId, decision.action)
+      if (decision.type === 'resolve_test_data') {
+        const binding = this.goal.executionContract?.contract.dataBindings.find(item => item.id === decision.bindingId)
+        try {
+          if (!binding) throw new RuntimeDataBindingBlockedError(`运行时数据绑定不在当前测试目标中：${decision.bindingId}`)
+          const resolved = resolveRuntimeDataBinding(binding, snapshot, decision)
+          state.resolvedDataBindings?.set(resolved.bindingId, resolved)
+          this.options.onActivity?.({ ...activity, status: 'passed', message: `已使用真实 DOM option“${resolved.sourceText}”解析数据` })
+          trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot), resolvedDataBinding: resolved })
+          continue
+        } catch (error) {
+          trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot) })
+          return this.result('blocked', `当前环境不满足测试数据前置条件：${error instanceof Error ? error.message : String(error)}`, state, trajectory, screenshots)
+        }
+      }
+
+      const result = await this.executor.execute(decision.snapshotId, decision.action, state.resolvedDataBindings)
       this.options.onActivity?.({
         ...activity,
         status: result.ok ? 'passed' : 'failed',
@@ -178,6 +210,12 @@ export class TestAgent {
         continue
       }
       snapshot = await this.observer.observe(page)
+      if (decision.action.action === 'fill' && decision.action.valueRef) {
+        const binding = state.resolvedDataBindings?.get(decision.action.valueRef)
+        if (binding && this.bindingMustRemainAfterFiltering(binding.bindingId) && !this.sourceRemainsVisible(binding, snapshot)) {
+          return this.result('failed', `产品筛选行为不符合已确认契约：输入“${binding.value}”后未筛选后仍保留来源 option“${binding.sourceText}”`, state, trajectory, screenshots)
+        }
+      }
     }
 
     return this.result('failed', 'Agent 决策轮次超过预算', state, trajectory, screenshots)
@@ -206,6 +244,19 @@ export class TestAgent {
       passedAssertions: [...state.passedAssertions],
       trajectory,
       screenshots,
+      resolvedDataBindings: [...(state.resolvedDataBindings?.values() ?? [])],
     }
+  }
+
+  private bindingMustRemainAfterFiltering(bindingId: string) {
+    return this.goal.executionContract?.contract.dataBindings.some(binding =>
+      binding.id === bindingId && binding.constraints.mustRemainAfterFiltering,
+    ) ?? false
+  }
+
+  private sourceRemainsVisible(binding: ResolvedDataBinding, snapshot: PageSnapshot) {
+    return snapshot.elements.some(element =>
+      element.visible && element.role === 'option' && (element.text?.trim() || element.name.trim()) === binding.sourceText,
+    )
   }
 }

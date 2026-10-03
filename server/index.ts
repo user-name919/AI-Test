@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { analyzePrd } from './model'
 import { getAnalysisById, getAutomationPlanById, getEnvironmentById, getExecutionById, getLatestAnalysis, getLatestAutomationPlan, getLatestEnvironment, getLatestExecution, listAnalyses, listExecutions, saveAnalysis, saveAutomationPlan, saveEnvironment, saveExecution, saveReview, setEnvironmentStorageState } from './database'
 import { runAutomationPlan } from './playwright-runner'
@@ -16,7 +17,7 @@ import { runAgentTest } from './agent-test-runner'
 import { parseSourceDocuments } from './source-documents'
 import { openNdjsonResponse } from './ndjson-response'
 import { collectReviewSourceContext, generateReviewExecutionContract } from './review-contract'
-import { collectResolvedReviewContext } from './review-execution-context'
+import { collectResolvedReviewContext, resolveCaseExecutionContract } from './review-execution-context'
 
 const port = Number(process.env.API_PORT ?? 8787)
 const maxBodySize = 30 * 1024 * 1024
@@ -50,8 +51,9 @@ async function readJson(request: IncomingMessage) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
 }
 
-const server = createServer(async (request, response) => {
-  try {
+export function createApiServer() {
+  return createServer(async (request, response) => {
+    try {
     if (request.method === 'GET' && request.url === '/api/health') {
       return json(response, 200, {
         ok: true,
@@ -113,6 +115,19 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'GET' && request.url === '/api/analyses') {
       return json(response, 200, { analyses: listAnalyses() })
+    }
+
+    const caseContractMatch = request.url?.match(/^\/api\/analyses\/([^/]+)\/cases\/([^/]+)\/contract$/)
+    if (request.method === 'GET' && caseContractMatch) {
+      const analysis = getAnalysisById(decodeURIComponent(caseContractMatch[1]))
+      if (!analysis) return json(response, 404, { error: '解析记录不存在' })
+      try {
+        return json(response, 200, {
+          caseContract: resolveCaseExecutionContract(analysis, decodeURIComponent(caseContractMatch[2])),
+        })
+      } catch (error) {
+        return json(response, 400, { error: error instanceof Error ? error.message : '测试用例不存在' })
+      }
     }
 
     const analysisMatch = request.url?.match(/^\/api\/analyses\/([a-f0-9-]+)$/i)
@@ -383,10 +398,17 @@ const server = createServer(async (request, response) => {
         if (!questionReviewsResult.success) return json(response, 400, { error: '人工 Review 格式错误' })
         parsedQuestionReviews = questionReviewsResult.data
       }
+      let parsedCaseReviews = analysis.review.caseReviews ?? {}
+      if (body.caseReviews !== undefined) {
+        const caseReviewsResult = reviewStateSchema.shape.caseReviews.safeParse(body.caseReviews)
+        if (!caseReviewsResult.success) return json(response, 400, { error: '用例 Review 格式错误' })
+        parsedCaseReviews = caseReviewsResult.data
+      }
       return json(response, 200, {
         review: saveReview(decodeURIComponent(reviewMatch[1]), {
           confirmedQuestions, selectedCases,
           questionReviews: parsedQuestionReviews,
+          caseReviews: parsedCaseReviews,
         }),
       })
     }
@@ -426,13 +448,16 @@ const server = createServer(async (request, response) => {
     }
 
     return json(response, 404, { error: '接口不存在' })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '服务处理失败'
-    console.error('[api]', message)
-    return json(response, 500, { error: message })
-  }
-})
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '服务处理失败'
+      console.error('[api]', message)
+      return json(response, 500, { error: message })
+    }
+  })
+}
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`[api] http://127.0.0.1:${port}`)
-})
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  createApiServer().listen(port, '127.0.0.1', () => {
+    console.log(`[api] http://127.0.0.1:${port}`)
+  })
+}

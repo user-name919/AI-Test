@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { chromium } from 'playwright'
-import { agentActionSchema } from '../shared/contracts'
+import { agentActionSchema, type ResolvedDataBinding } from '../shared/contracts'
 import { PageObserver } from './page-observer'
 import { SingleActionExecutor } from './single-action-executor'
 
@@ -58,6 +58,9 @@ test('rejects unsafe keyboard keys and arbitrary assertion attributes', () => {
   assert.equal(agentActionSchema.safeParse({
     action: 'expectAttribute', elementRef: 'e1', name: 'onclick', value: 'attack()', assertionId: 'safe',
   }).success, false)
+  assert.equal(agentActionSchema.safeParse({ action: 'fill', elementRef: 'e1' }).success, false)
+  assert.equal(agentActionSchema.safeParse({ action: 'fill', elementRef: 'e1', value: '数学', valueRef: 'exam-keyword' }).success, false)
+  assert.equal(agentActionSchema.safeParse({ action: 'fill', elementRef: 'e1', valueRef: 'exam-keyword' }).success, true)
 })
 
 test('preserves initial target query parameters when navigating within the same origin', async () => {
@@ -81,6 +84,34 @@ test('preserves initial target query parameters when navigating within the same 
 
     assert.equal(result.ok, true)
     assert.equal(page.url(), 'http://target.test/lvworkbench/mock-exam-batch-manage/?workcode=V001&username=tester')
+  } finally {
+    await browser.close()
+  }
+})
+
+test('resolves valueRef before filling and asserting instead of passing a fabricated action literal', async () => {
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setContent('<label for="search">考试搜索框</label><input id="search">')
+    const observer = new PageObserver()
+    const snapshot = await observer.observe(page)
+    const executor = new SingleActionExecutor(page, observer.registry, 'http://localhost:5173', tmpdir())
+    const inputRef = snapshot.elements.find(element => element.name === '考试搜索框')?.ref ?? ''
+    const bindings = new Map<string, ResolvedDataBinding>([[
+      'exam-keyword', {
+        bindingId: 'exam-keyword', sourceElementRef: 'e2', sourceText: '模考数学一', value: '数学',
+        snapshotId: snapshot.snapshotId, observedAt: snapshot.observedAt, reason: '真实 DOM option',
+      },
+    ]])
+
+    assert.equal((await executor.execute(snapshot.snapshotId, agentActionSchema.parse({
+      action: 'fill', elementRef: inputRef, valueRef: 'exam-keyword',
+    }), bindings)).ok, true)
+    assert.equal((await executor.execute(snapshot.snapshotId, agentActionSchema.parse({
+      action: 'expectValue', elementRef: inputRef, valueRef: 'exam-keyword', assertionId: 'keyword',
+    }), bindings)).ok, true)
+    assert.equal(await page.locator('#search').inputValue(), '数学')
   } finally {
     await browser.close()
   }

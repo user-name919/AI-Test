@@ -66,6 +66,76 @@ export interface QuestionReview {
   updatedAt: string | null
 }
 
+export type TestDataSourceMode = 'runtime_dom' | 'fixture' | 'manual'
+
+export interface TestDataBinding {
+  id: string
+  label: string
+  mode: TestDataSourceMode
+  targetHint: string
+  businessIntent: string
+  strategy?: 'visible_option_substring'
+  constraints: {
+    mustComeFromCurrentDom: boolean
+    mustBePartialOfSource?: boolean
+    mustRemainAfterFiltering?: boolean
+  }
+  fixture?: {
+    value: string
+    evidence: string
+  }
+  manual?: {
+    value: string
+    rationale: string
+  }
+}
+
+export interface CaseExecutionContract {
+  objective: string
+  preconditions: string[]
+  steps: string[]
+  expectedAssertions: string[]
+  dataBindings: TestDataBinding[]
+  forbiddenBehaviors: string[]
+  uncertainties: string[]
+}
+
+export interface CaseReview {
+  status: 'draft' | 'confirmed' | 'needs_data_review'
+  finalContract: CaseExecutionContract
+  updatedAt: string | null
+}
+
+export interface ResolvedDataBinding {
+  bindingId: string
+  sourceElementRef: string
+  sourceText: string
+  value: string
+  snapshotId: string
+  observedAt: string
+  reason: string
+}
+
+export interface ResolvedCaseExecutionContract {
+  caseKey: string
+  requirementIndex: number
+  caseIndex: number
+  title: string
+  contract: CaseExecutionContract
+  resolvedQuestions: Array<{
+    questionKey: string
+    finalStatement: string
+    executionContract?: ReviewExecutionContract
+  }>
+  readiness: {
+    agent: { executable: boolean; reason?: string }
+    plan: { executable: boolean; reason?: string }
+  }
+  contractFingerprint: string
+}
+
+export type ExecutionStatus = 'passed' | 'failed' | 'blocked' | 'infrastructure_failed'
+
 export const reviewExecutionContractSchema = z.object({
   objective: z.string().min(1),
   triggers: z.array(z.string().min(1)),
@@ -82,6 +152,68 @@ export const questionReviewSchema = z.object({
   status: z.enum(['accepted', 'edited', 'deferred']),
   finalStatement: z.string().min(1),
   executionContract: reviewExecutionContractSchema.optional(),
+  updatedAt: z.string().nullable().default(null),
+})
+
+const dataBindingBaseSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  targetHint: z.string().min(1),
+  businessIntent: z.string().min(1),
+  strategy: z.literal('visible_option_substring').optional(),
+  constraints: z.object({
+    mustComeFromCurrentDom: z.boolean(),
+    mustBePartialOfSource: z.boolean().optional(),
+    mustRemainAfterFiltering: z.boolean().optional(),
+  }),
+  fixture: z.object({
+    value: z.string().optional().default(''),
+    evidence: z.string().optional().default(''),
+  }).optional(),
+  manual: z.object({
+    value: z.string().optional().default(''),
+    rationale: z.string().optional().default(''),
+  }).optional(),
+})
+
+export const testDataBindingSchema = dataBindingBaseSchema.extend({
+  mode: z.enum(['runtime_dom', 'fixture', 'manual']),
+}).superRefine((binding, context) => {
+  if (binding.mode === 'runtime_dom') {
+    if (binding.fixture || binding.manual) {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据不能预填固定值', path: ['mode'] })
+    }
+    if (binding.strategy !== 'visible_option_substring') {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须使用可见 option 子串策略', path: ['strategy'] })
+    }
+    if (!binding.constraints.mustComeFromCurrentDom) {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须来自当前 DOM', path: ['constraints', 'mustComeFromCurrentDom'] })
+    }
+    if (!binding.constraints.mustBePartialOfSource) {
+      context.addIssue({ code: 'custom', message: '运行时 DOM 数据必须是来源 option 的子串', path: ['constraints', 'mustBePartialOfSource'] })
+    }
+  }
+  if (binding.mode === 'fixture' && binding.manual) {
+    context.addIssue({ code: 'custom', message: 'fixture 数据不能包含人工值', path: ['manual'] })
+  }
+  if (binding.mode === 'manual' && binding.fixture) {
+    context.addIssue({ code: 'custom', message: 'manual 数据不能包含固定夹具', path: ['fixture'] })
+  }
+})
+
+export const caseExecutionContractSchema = z.object({
+  objective: z.string().min(1),
+  preconditions: z.array(z.string().min(1)),
+  steps: z.array(z.string().min(1)).min(1),
+  expectedAssertions: z.array(z.string().min(1)).min(1),
+  dataBindings: z.array(testDataBindingSchema),
+  forbiddenBehaviors: z.array(z.string().min(1)),
+  uncertainties: z.array(z.string().min(1)),
+})
+
+export const caseReviewSchema = z.object({
+  status: z.enum(['draft', 'confirmed', 'needs_data_review']),
+  finalContract: caseExecutionContractSchema,
   updatedAt: z.string().nullable().default(null),
 })
 
@@ -114,6 +246,7 @@ export interface ReviewState {
   confirmedQuestions: string[]
   selectedCases: string[]
   questionReviews?: Record<string, QuestionReview>
+  caseReviews?: Record<string, CaseReview>
   updatedAt: string | null
 }
 
@@ -121,6 +254,7 @@ export const reviewStateSchema = z.object({
   confirmedQuestions: z.array(z.string()).default([]),
   selectedCases: z.array(z.string()).default([]),
   questionReviews: z.record(z.string(), questionReviewSchema).default({}),
+  caseReviews: z.record(z.string(), caseReviewSchema).default({}),
   updatedAt: z.string().nullable().default(null),
 })
 
@@ -209,6 +343,22 @@ export interface ExecutionResult {
   }
 }
 
+export interface CaseExecutionResult {
+  caseKey: string
+  title: string
+  contractFingerprint: string
+  status: ExecutionStatus
+  startedFromUrl: string
+  startedFromSnapshotId?: string
+  continuation: 'reused_current_page' | 'agent_recovered_page'
+  resolvedDataBindings: ResolvedDataBinding[]
+  passedAssertions: string[]
+  steps: ExecutionResult['steps']
+  screenshots: string[]
+  tracePath?: string
+  error?: string
+}
+
 export interface ExecutionRecord extends ExecutionResult {
   analysisId?: string
   automationPlanId?: string
@@ -220,6 +370,7 @@ export interface ExecutionRecord extends ExecutionResult {
   productName?: string
   environmentName?: string
   rerunOf?: string
+  caseResults?: CaseExecutionResult[]
 }
 
 export interface LiveExecutionActivity {
@@ -308,6 +459,11 @@ export const agentTestGoalSchema = z.object({
     id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
     description: z.string().min(1),
   })).min(1).max(20),
+  executionContract: z.object({
+    caseKey: z.string().regex(/^\d+-TC-\d+$/),
+    contract: caseExecutionContractSchema,
+    contractFingerprint: z.string().min(1),
+  }).optional(),
 })
 
 export const agentRunRequestSchema = z.object({
@@ -348,11 +504,29 @@ const assertableAttributeSchema = z.enum([
   'aria-selected', 'class', 'data-state', 'role',
 ])
 
+const valueReferenceFields = {
+  value: z.string().optional(),
+  valueRef: z.string().min(1).optional(),
+}
+
+function requireExactlyOneValueReference(
+  action: { value?: string; valueRef?: string },
+  context: z.RefinementCtx,
+) {
+  if ((action.value === undefined) === (action.valueRef === undefined)) {
+    context.addIssue({
+      code: 'custom',
+      message: 'value 与 valueRef 必须且只能提供一个',
+      path: ['value'],
+    })
+  }
+}
+
 export const agentActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
   z.object({ action: z.literal('click'), ...elementActionBase }),
-  z.object({ action: z.literal('fill'), ...elementActionBase, value: z.string() }),
-  z.object({ action: z.literal('selectOption'), ...elementActionBase, value: z.string() }),
+  z.object({ action: z.literal('fill'), ...elementActionBase, ...valueReferenceFields }).superRefine(requireExactlyOneValueReference),
+  z.object({ action: z.literal('selectOption'), ...elementActionBase, ...valueReferenceFields }).superRefine(requireExactlyOneValueReference),
   z.object({ action: z.literal('check'), ...elementActionBase }),
   z.object({ action: z.literal('uncheck'), ...elementActionBase }),
   z.object({ action: z.literal('press'), ...elementActionBase, key: keyboardKeySchema }),
@@ -368,7 +542,7 @@ export const agentActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('expectEnabled'), ...elementActionBase, assertionId: z.string().min(1) }),
   z.object({ action: z.literal('expectDisabled'), ...elementActionBase, assertionId: z.string().min(1) }),
   z.object({ action: z.literal('expectChecked'), ...elementActionBase, checked: z.boolean(), assertionId: z.string().min(1) }),
-  z.object({ action: z.literal('expectValue'), ...elementActionBase, value: z.string(), assertionId: z.string().min(1) }),
+  z.object({ action: z.literal('expectValue'), ...elementActionBase, ...valueReferenceFields, assertionId: z.string().min(1) }).superRefine(requireExactlyOneValueReference),
   z.object({ action: z.literal('expectText'), text: z.string().min(1), assertionId: z.string().min(1) }),
   z.object({ action: z.literal('expectElementText'), ...elementActionBase, text: z.string().min(1), exact: z.boolean().default(false), assertionId: z.string().min(1) }),
   z.object({
@@ -417,6 +591,14 @@ export const agentDecisionSchema = z.discriminatedUnion('type', [
     request: projectContextRequestSchema,
     reason: z.string().min(1),
   }),
+  z.object({
+    type: z.literal('resolve_test_data'),
+    snapshotId: z.string().uuid(),
+    bindingId: z.string().min(1),
+    sourceElementRef: z.string().regex(/^e\d+$/),
+    value: z.string().min(1),
+    reason: z.string().min(1),
+  }),
   z.object({ type: z.literal('finish'), summary: z.string().min(1) }),
   z.object({ type: z.literal('blocked'), reason: z.string().min(1) }),
 ])
@@ -435,5 +617,7 @@ export type AgentTestGoal = z.infer<typeof agentTestGoalSchema>
 export type AgentRunRequest = z.infer<typeof agentRunRequestSchema>
 export type AgentAction = z.infer<typeof agentActionSchema>
 export type AgentDecision = z.infer<typeof agentDecisionSchema>
+export type ValueReference = { valueRef: string }
+export type ResolveTestDataDecision = Extract<AgentDecision, { type: 'resolve_test_data' }>
 export type ProjectContextRequest = z.infer<typeof projectContextRequestSchema>
 export type ToolResult = z.infer<typeof toolResultSchema>
