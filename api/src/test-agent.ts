@@ -19,6 +19,7 @@ export interface AgentTrajectoryItem {
   snapshotId: string
   decision: AgentDecision
   observation?: {
+    frameContext?: PageSnapshot['frameContext']
     url: string
     title: string
     elementCount: number
@@ -68,6 +69,7 @@ function summarizeSnapshot(snapshot: PageSnapshot): NonNullable<AgentTrajectoryI
   return {
     url: snapshot.url,
     title: snapshot.title,
+    frameContext: snapshot.frameContext,
     elementCount: snapshot.stats.discoveredElements,
     elements: snapshot.elements.slice(0, 12).map(element => ({ ref: element.ref, role: element.role, name: element.name })),
     dialogs: snapshot.dialogs.map(dialog => dialog.title),

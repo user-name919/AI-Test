@@ -67,8 +67,11 @@ export class SingleActionExecutor {
     let usedFixture: TestFixture | undefined
     let download: DownloadEvidence | undefined
     try {
+      if (snapshotId !== this.registry.activeSnapshotId) throw new Error('页面快照已失效，必须重新观察后执行')
       let screenshotPath: string | undefined
-      if (action.action === 'download') {
+      if (action.action === 'switchFrame') {
+        this.registry.selectFrame(snapshotId, action.frameRef)
+      } else if (action.action === 'download') {
         if (this.downloads.has(action.downloadId)) throw new Error('同一用例下载 ID 不得重复使用')
         const locator = this.registry.resolve(snapshotId, action.elementRef)
         download = await captureDownload(this.page, () => locator.click({ timeout: 10000 }), this.artifactDirectory, action.downloadId, this.signal)
@@ -90,6 +93,7 @@ export class SingleActionExecutor {
           destination.search = initialTarget.search
         }
         await this.page.goto(destination.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+        this.registry.resetFrame()
       } else if (action.action === 'click') {
         await this.registry.resolve(snapshotId, action.elementRef).click({ timeout: 10_000 })
       } else if (action.action === 'fill') {
@@ -110,7 +114,7 @@ export class SingleActionExecutor {
             element.scrollBy({ left: delta.x, top: delta.y, behavior: 'auto' })
           }, { x: action.deltaX, y: action.deltaY })
         } else {
-          await this.page.evaluate(delta => window.scrollBy({ left: delta.x, top: delta.y, behavior: 'auto' }), {
+          await this.registry.activeRoot(this.page).evaluate(delta => window.scrollBy({ left: delta.x, top: delta.y, behavior: 'auto' }), {
             x: action.deltaX,
             y: action.deltaY,
           })
@@ -120,8 +124,8 @@ export class SingleActionExecutor {
       } else if (action.action === 'expectHidden') {
         let locator: Locator
         if (action.target.by === 'elementRef') locator = this.registry.resolve(snapshotId, action.target.elementRef)
-        else if (action.target.by === 'text') locator = this.page.getByText(action.target.text, { exact: action.target.exact }).first()
-        else locator = this.page.getByRole(action.target.role, { name: action.target.name, exact: action.target.exact }).first()
+        else if (action.target.by === 'text') locator = this.registry.activeRoot(this.page).getByText(action.target.text, { exact: action.target.exact }).first()
+        else locator = this.registry.activeRoot(this.page).getByRole(action.target.role, { name: action.target.name, exact: action.target.exact }).first()
         await locator.waitFor({ state: 'hidden', timeout: 10_000 })
       } else if (action.action === 'expectEnabled') {
         const locator = this.registry.resolve(snapshotId, action.elementRef)
@@ -137,7 +141,7 @@ export class SingleActionExecutor {
         const actual = await this.registry.resolve(snapshotId, action.elementRef).inputValue({ timeout: 10_000 })
         if (actual !== expected) throw new Error(`值断言失败：预期“${expected}”，实际“${actual}”`)
       } else if (action.action === 'expectText') {
-        await this.page.getByText(action.text, { exact: false }).first().waitFor({ state: 'visible', timeout: 10_000 })
+        await this.registry.activeRoot(this.page).getByText(action.text, { exact: false }).first().waitFor({ state: 'visible', timeout: 10_000 })
       } else if (action.action === 'expectElementText') {
         const locator = this.registry.resolve(snapshotId, action.elementRef)
         await waitForAssertion(
@@ -153,7 +157,7 @@ export class SingleActionExecutor {
           actual => `属性断言失败：${action.name} 预期${action.match === 'equals' ? '等于' : '包含'}“${action.value}”，实际“${actual ?? 'null'}”`,
         )
       } else if (action.action === 'expectCount') {
-        const scope = action.containerRef ? this.registry.resolve(snapshotId, action.containerRef) : this.page
+        const scope = action.containerRef ? this.registry.resolve(snapshotId, action.containerRef) : this.registry.activeRoot(this.page)
         const locator = scope.getByRole(action.role, { name: action.name, exact: action.exact })
         await waitForAssertion(
           () => locator.count(),
@@ -168,7 +172,7 @@ export class SingleActionExecutor {
         await this.page.screenshot({ path: screenshotPath, fullPage: true })
       }
       const pageChanged = previousUrl !== this.page.url()
-        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile', 'download'].includes(action.action)
+        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile', 'download', 'switchFrame'].includes(action.action)
       return toolResultSchema.parse({
         ok: true,
         code: 'ok',

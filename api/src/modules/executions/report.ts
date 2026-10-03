@@ -56,6 +56,8 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       const decision=turn.decision
       const purpose=decision.type==='finish'?decision.summary:decision.reason
       lines.push(`- 第 ${turn.iteration} 轮 · ${text(decision.type)}：${text(purpose)}；DOM ${text(turn.snapshotId)}`)
+      const frame = turn.observation?.frameContext?.frames.find(frame=>frame.active)
+      if(frame)lines.push(`  - 观察框架：${frame.main?'主页面':'嵌入页面'} / ${text(frame.name||'未命名')} / ${text(frame.ref)} / ${text(turn.observation?.url)}`)
       if(decision.type==='action')lines.push(`  - 技术动作：${text(JSON.stringify(decision.action))}`)
       if(turn.result)lines.push(`  - 实际结果：${turn.result.ok?'操作/断言成功':'操作/断言失败'} · ${text(turn.result.message)} · ${turn.result.durationMs} ms`)
       if(turn.recovery)lines.push(`  - 技术恢复 ${turn.recovery.attempt}/${turn.recovery.limit}：${{reobserved:'重新观察页面后交由模型决策，未盲目重放动作',exhausted:'恢复预算耗尽',observation_failed:'恢复时重新观察页面失败'}[turn.recovery.status]}；原因：${text(turn.recovery.reason)}`)

@@ -20,6 +20,7 @@ const recoveryNames={reobserved:'已重新观察页面，再由 AI 决定下一�
     <h3>操作与验证经过</h3>
     <article v-for="turn in result.trajectory" :key="turn.iteration">
       <h4>第 {{ turn.iteration }} 步 · {{ turn.decision.type==='finish'?turn.decision.summary:turn.decision.reason }}</h4>
+      <p v-if="turn.observation?.frameContext">观察框架：{{ turn.observation.frameContext.frames.find(frame=>frame.active)?.name||'未命名框架' }} · {{ turn.observation.url }}（{{ turn.observation.frameContext.frames.find(frame=>frame.active)?.main?'主页面':'嵌入页面' }}）</p>
       <p v-if="turn.result">{{ turn.result.ok?'本步成功':'本步失败' }}：{{ turn.result.message }} · {{ turn.result.durationMs }} ms</p>
       <p v-else>本步未记录浏览器执行结果，不据此判定通过。</p>
       <p v-if="turn.recovery" class="recovery">技术恢复 {{ turn.recovery.attempt }}/{{ turn.recovery.limit }}：{{ recoveryNames[turn.recovery.status] }}。原因：{{ turn.recovery.reason }}</p>

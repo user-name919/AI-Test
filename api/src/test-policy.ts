@@ -60,6 +60,7 @@ export class TestPolicy {
     if (state.executedSteps >= this.maxSteps) throw new Error(`测试步骤超过上限 ${this.maxSteps}`)
     if (decision.snapshotId !== snapshot.snapshotId) throw new Error(`动作引用了过期页面快照：${decision.snapshotId}`)
     const action = decision.action
+    if (action.action === 'switchFrame' && !snapshot.frameContext?.frames.some(frame => frame.ref === action.frameRef)) throw new Error('框架引用不在当前快照中')
     if (action.action === 'uploadFile') validateFixtureReference(action.fixtureId, this.goal.executionContract?.contract)
     if (this.isValueReferenceAction(action) && action.valueRef) {
       if (!this.runtimeBinding(action.valueRef) || !state.resolvedDataBindings?.has(action.valueRef)) {

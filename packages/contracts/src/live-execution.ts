@@ -90,6 +90,7 @@ function targetName(action: AgentAction, snapshot: PageSnapshot) {
 }
 
 function rawAgentAction(action: AgentAction) {
+  if (action.action === 'switchFrame') return `switchFrame ${action.frameRef}`
   if (action.action === 'goto') return `goto ${action.path}`
   if (action.action === 'waitFor') return `waitFor ${action.durationMs}ms`
   if (action.action === 'screenshot') return `screenshot ${action.name}`
@@ -124,6 +125,10 @@ function rawAgentAction(action: AgentAction) {
 function readableAgentAction(action: AgentAction, snapshot: PageSnapshot) {
   const name = targetName(action, snapshot)
   const value = 'value' in action && action.value !== undefined ? quoted(action.value) : 'valueRef' in action ? `已解析数据“${action.valueRef}”` : ''
+  if (action.action === 'switchFrame') {
+    const frame = snapshot.frameContext?.frames.find(frame=>frame.ref===action.frameRef)
+    return `切换到${frame?.main?'主页面':`嵌入页面${quoted(frame?.name||frame?.url||action.frameRef)}`}，随后重新观察`
+  }
   if (action.action === 'goto') return `打开页面 ${quoted(action.path)}`
   if (action.action === 'click') return `点击${quoted(name)}`
   if (action.action === 'uploadFile') return `向${quoted(name)}上传已确认附件 ${action.fixtureId}`

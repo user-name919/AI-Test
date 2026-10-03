@@ -51,11 +51,14 @@ export class PageObserver {
   constructor(private readonly options: ObserverOptions = {}) {}
 
   async observe(page: Page): Promise<PageSnapshot> {
+    this.registry.invalidate()
+    const frames = await this.registry.observeFrames(page)
+    const root = this.registry.activeRoot(page)
     const snapshotId = randomUUID()
     const maxElements = this.options.maxElements ?? 300
     const maxTextLength = this.options.maxTextLength ?? 160
     const maxTableRows = this.options.maxTableRows ?? 3
-    const raw = await page.evaluate<RawObservation, {
+    const raw = await root.evaluate<RawObservation, {
       selector: string
       snapshotId: string
       refAttribute: string
@@ -76,12 +79,13 @@ export class PageObserver {
       maxTableRows,
     })
 
-    this.registry.replace(snapshotId, page, elementRefAttribute, raw.elements)
+    this.registry.replace(snapshotId, root, elementRefAttribute, raw.elements)
     return pageSnapshotSchema.parse({
       snapshotId,
       observedAt: new Date().toISOString(),
-      url: page.url(),
-      title: await page.title(),
+      url: root.url(),
+      title: await root.title(),
+      frameContext: { pageUrl: page.url(), ...frames },
       loading: raw.loading,
       elements: raw.elements,
       dialogs: raw.dialogs,
