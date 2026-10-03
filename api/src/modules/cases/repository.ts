@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { CaseReview, ReviewState, SavedAnalysis } from '@quality-ai/contracts'
+import type { CaseReview, ExecutionCaseSnapshot, ReviewState, SavedAnalysis } from '@quality-ai/contracts'
 import type { CaseAsset, CaseAssetRevision } from '@quality-ai/contracts/cases'
 import { database } from '../../storage/database'
 import { getAnalysisById, saveReview } from '../requirements/repository'
@@ -114,5 +114,20 @@ export function saveAnalysisReviewWithHistory(analysis: SavedAnalysis, review: O
     const saved = saveReview(analysis.id, review)
     keys.forEach(key => synchronizeAsset({ ...analysis, review: saved }, key))
     return { kind: 'saved' as const, review: saved }
+  })
+}
+
+// 在浏览器启动前固定版本；执行结束后不得重新读取当前 Review 冒充当时依据。
+export function captureExecutionCases(analysisId: string, expected: Array<{ caseKey: string; contractFingerprint: string }>, mode: 'plan' | 'agent'): ExecutionCaseSnapshot[] {
+  if (!expected.length || new Set(expected.map(item => item.caseKey)).size !== expected.length) throw new Error('执行用例不能为空或重复')
+  return transaction(() => {
+    const analysis = getAnalysisById(analysisId)
+    if (!analysis) throw new Error('需求记录不存在，请重新选择用例')
+    return expected.map(item => {
+      const asset = synchronizeAsset(analysis, item.caseKey)
+      if (asset.resolved.contractFingerprint !== item.contractFingerprint) throw new Error(`用例口径已变化，请重新生成执行计划：${item.caseKey}`)
+      if (!asset.resolved.readiness[mode].executable) throw new Error(asset.resolved.readiness[mode].reason ?? '用例尚未就绪')
+      return { caseId: asset.id, revision: asset.revision, analysisId, capturedAt: new Date().toISOString(), resolved: asset.resolved }
+    })
   })
 }

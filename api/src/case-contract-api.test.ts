@@ -15,6 +15,7 @@ writeFileSync(projectsConfigPath, JSON.stringify({
   projects: [{ id: 'test-project', name: '测试源码', root: projectRoot, targetOrigins: [] }],
 }))
 process.env.QUALITY_AI_DATABASE_PATH = join(temporaryDirectory, 'quality-ai.sqlite')
+process.env.QUALITY_AI_DATA_ROOT = temporaryDirectory
 process.env.PROJECTS_CONFIG_PATH = projectsConfigPath
 
 const databaseModule = await import('./database')
@@ -23,6 +24,11 @@ const { createApiServer } = await import('./index')
 const server = createApiServer()
 const modelPrompts: string[] = []
 const modelServer = createServer(async (request, response) => {
+  if (request.method === 'GET' && request.url === '/exams') {
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    response.end('<h1>合成考试页面</h1>')
+    return
+  }
   if (request.method !== 'POST' || request.url !== '/responses') {
     response.writeHead(404).end()
     return
@@ -103,6 +109,7 @@ after(async () => {
   await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
   await new Promise<void>((resolve, reject) => modelServer.close(error => error ? reject(error) : resolve()))
   delete process.env.QUALITY_AI_DATABASE_PATH
+  delete process.env.QUALITY_AI_DATA_ROOT
   delete process.env.PROJECTS_CONFIG_PATH
   delete process.env.MODEL_API_KEY
   delete process.env.MODEL_BASE_URL
@@ -287,4 +294,32 @@ test('generates one ready fixed plan per case and combines them into case checkp
   assert.deepEqual(sentContracts.find(contract => contract.objective === manualContract.objective), JSON.parse(JSON.stringify(caseExecutionContractSchema.parse(manualContract))))
   assert.ok(modelPrompts.every(prompt => !prompt.includes('选择考试状态')))
   assert.equal(modelBaseUrl.startsWith('http://127.0.0.1:'), true)
+})
+
+test('a real local browser run persists the captured case version in its report', async () => {
+  const original = databaseModule.getLatestAutomationPlan()!
+  const plan = { ...original, id: '33333333-3333-4333-8333-333333333333', createdAt: new Date(Date.now() + 1000).toISOString(), plan: { ...original.plan, targetUrl: `${modelBaseUrl}/exams` } }
+  databaseModule.saveAutomationPlan(plan)
+  const response = await fetch(`${baseUrl}/api/automation/run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ automationPlanId: plan.id }) })
+  assert.equal(response.status, 201)
+  const { execution } = await response.json()
+  assert.equal(execution.caseSnapshots.length, 2)
+  assert.equal(execution.caseSnapshots[0].resolved.contractFingerprint, plan.plan.casePlans![0].contractFingerprint)
+  assert.equal(execution.caseSnapshots[0].analysisId, plan.analysisId)
+  assert.ok(execution.caseSnapshots[0].revision >= 1)
+  assert.deepEqual(databaseModule.getExecutionById(execution.id)?.caseSnapshots, execution.caseSnapshots)
+})
+
+test('rejects a saved plan after human semantics change even when the case is still executable', async () => {
+  const plan = databaseModule.getLatestAutomationPlan()!
+  const analysis = databaseModule.getAnalysisById(plan.analysisId)!
+  const old = analysis.review.caseReviews!['0-TC-0']!
+  databaseModule.saveReview(analysis.id, { ...analysis.review, caseReviews: {
+    ...analysis.review.caseReviews, '0-TC-0': { ...old, finalContract: { ...old.finalContract, objective: '新的人工目标，旧计划不能冒充' } },
+  } })
+  for (const endpoint of ['/api/automation/run', '/api/automation/run/stream']) {
+    const response = await fetch(`${baseUrl}${endpoint}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ automationPlanId: plan.id }) })
+    assert.equal(response.status, 409)
+    assert.match((await response.json()).error, /用例口径已变化/)
+  }
 })

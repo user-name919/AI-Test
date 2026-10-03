@@ -9,7 +9,8 @@ import type { PrdAnalysis } from '@quality-ai/contracts'
 const directory = mkdtempSync(join(tmpdir(), 'quality-ai-assets-'))
 process.env.QUALITY_AI_DATABASE_PATH = join(directory, 'test.sqlite')
 const { saveAnalysis, getAnalysisById } = await import('./modules/requirements/repository')
-const { listCaseAssets, getCaseAsset, saveCaseAssetReview, listCaseAssetRevisions, saveAnalysisReviewWithHistory } = await import('./modules/cases/repository')
+const { listCaseAssets, getCaseAsset, saveCaseAssetReview, listCaseAssetRevisions, saveAnalysisReviewWithHistory, captureExecutionCases } = await import('./modules/cases/repository')
+const { saveExecution, getExecutionById } = await import('./modules/executions/repository')
 const { resolveCaseExecutionContract } = await import('./review-execution-context')
 const { database } = await import('./storage/database')
 const { createApiServer } = await import('./app')
@@ -74,6 +75,19 @@ test('不存在的来源或资产不会被创建为假记录', () => {
   assert.deepEqual(listCaseAssets('missing'), [])
   assert.equal(getCaseAsset('missing'), null)
   assert.equal(listCaseAssetRevisions('missing'), null)
+})
+
+test('执行前固定审核版本，后续编辑不污染已保存报告，过期计划拒绝执行', () => {
+  const asset = seed('snapshot')
+  const expected = [{ caseKey: '0-TC-0', contractFingerprint: asset.resolved.contractFingerprint }]
+  const snapshots = captureExecutionCases('snapshot', expected, 'agent')
+  assert.equal(snapshots[0].caseId, asset.id)
+  saveExecution({ id: 'snapshot-result', name: '合成执行', targetUrl: 'https://example.test', status: 'passed', startedAt: '2026-10-04T00:00:00Z', finishedAt: '2026-10-04T00:00:01Z', durationMs: 1000, steps: [], screenshots: [], caseSnapshots: snapshots })
+  saveCaseAssetReview(asset.id, 1, { status: 'confirmed', finalContract: { ...asset.finalContract, objective: '后续修改' } })
+  assert.equal(getExecutionById('snapshot-result')?.caseSnapshots?.[0].revision, 1)
+  assert.equal(getExecutionById('snapshot-result')?.caseSnapshots?.[0].resolved.contract.objective, '筛选用例')
+  assert.throws(() => captureExecutionCases('snapshot', expected, 'plan'), /用例口径已变化/)
+  assert.throws(() => captureExecutionCases('snapshot', [expected[0], expected[0]], 'agent'), /不能为空或重复/)
 })
 
 test('HTTP 审核入口校验版本，返回可供对比的最新资产，历史接口保留原始口径', async () => {

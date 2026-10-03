@@ -29,6 +29,7 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
   const resolved = resolveCaseExecutionContract(analysis, '0-TC-0')
   let asset: CaseAsset = { id: 'fixture-case', title: resolved.title, source: { type: 'requirement', analysisId: analysis.id, caseKey: '0-TC-0' }, revision: 1, reviewStatus: 'confirmed', originalSuggestion: { ...resolved.contract, objective: '原始建议', steps: ['旧示例步骤，不应再展示为执行口径'] }, finalContract: resolved.contract, resolved, createdAt: analysis.createdAt, updatedAt: analysis.createdAt }
   let conflictOnce = true
+  const historicalExecution = { id: '44444444-4444-4444-8444-444444444444', name: '历史执行', targetUrl: 'https://example.test', status: 'passed', mode: 'plan', startedAt: analysis.createdAt, finishedAt: analysis.createdAt, durationMs: 1, steps: [], screenshots: [], caseKeys: ['0-TC-0'], caseSnapshots: [{ caseId: asset.id, revision: 1, analysisId: analysis.id, capturedAt: analysis.createdAt, resolved }] }
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
   try {
     await server.listen()
@@ -57,7 +58,7 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
       const payload: Record<string, unknown> = {
         '/api/health': { configured: true }, '/api/analyses/latest': { analysis }, '/api/analyses': { analyses: [] },
         [`/api/analyses/${analysis.id}`]: { analysis },
-        '/api/executions/latest': { execution: null }, '/api/executions': { executions: [] },
+        '/api/executions/latest': { execution: null }, '/api/executions': { executions: [historicalExecution] },
         '/api/environments/latest': { environment: { id: 'env', name: '合成环境', targetUrl: 'https://example.test/exams' } },
         '/api/projects': { projects: [{ id: 'project', name: '合成项目', connected: true, targetOrigins: ['https://example.test'] }] },
         '/api/cases': { cases: [asset] },
@@ -104,6 +105,12 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
     await page.reload()
     await page.getByRole('heading', { name: '部分关键词搜索', exact: true }).waitFor()
     assert.equal(await page.getByLabel('筛选', { exact: true }).inputValue(), 'ready')
+    await page.goto(`http://127.0.0.1:${address.port}/#/executions/${historicalExecution.id}?sourceId=${analysis.id}`)
+    const evidence = page.getByRole('region', { name: '本次执行的用例版本' })
+    await evidence.getByText('部分关键词搜索 · v1', { exact: true }).waitFor()
+    await evidence.locator('summary').click()
+    await evidence.getByText('人工确认：验证真实考试的部分搜索', { exact: true }).waitFor()
+    assert.equal(await evidence.getByText('人工编辑后的搜索目标', { exact: true }).count(), 0)
     await page.goto(`http://127.0.0.1:${address.port}/#/executions/missing?sourceId=${analysis.id}`)
     await page.getByText('执行记录不存在或尚未加载，未自动替换为其他报告。', { exact: false }).waitFor()
     await page.goto(`http://127.0.0.1:${address.port}/#/cases?sourceId=missing`)

@@ -330,6 +330,14 @@ export const storageStateSchema = z.object({
   })),
 })
 
+export interface ExecutionCaseSnapshot {
+  caseId: string
+  revision: number
+  analysisId: string
+  capturedAt: string
+  resolved: ResolvedCaseExecutionContract
+}
+
 export interface ExecutionResult {
   id: string
   name: string
@@ -344,6 +352,7 @@ export interface ExecutionResult {
   tracePath?: string
   error?: string
   caseResults?: CaseExecutionResult[]
+  caseSnapshots?: ExecutionCaseSnapshot[]
   sourceProject?: { id: string; branch?: string; commit?: string }
   agent?: {
     summary: string

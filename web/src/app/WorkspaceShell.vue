@@ -6,6 +6,7 @@ import { consumeNdjsonChunk, createLiveExecutionState, reduceLiveExecutionState 
 import { useCaseContracts } from '../composables/useCaseContracts'
 import CaseContractDetails from '../components/CaseContractDetails.vue'
 import CaseAssetWorkbench from '../components/CaseAssetWorkbench.vue'
+import ExecutionContractEvidence from '../components/ExecutionContractEvidence.vue'
 import { useWorkspaceNavigation, type WorkspaceView } from './useWorkspaceNavigation'
 
 const { workspaceView, activeTab, activeRequirement, selectedExecutionId } = useWorkspaceNavigation()
@@ -833,6 +834,7 @@ onMounted(loadSavedAnalysis)
               <header><div><span :class="selectedExecution.status">{{ executionStatusText(selectedExecution.status) }}</span><h2>{{ selectedExecution.name }}</h2><p>{{ selectedExecution.targetUrl }}</p></div><span class="action-with-hint" :data-hint="rerunDisabledReason(selectedExecution)"><button :disabled="Boolean(rerunDisabledReason(selectedExecution))" @click="rerunExecution(selectedExecution)">{{ executionRunning ? '执行中…' : selectedExecution.plan ? '重新执行固定计划' : selectedExecution.mode === 'agent' ? '从用例重新发起' : '记录不可重跑' }}</button></span></header>
               <div class="execution-meta"><p><span>执行模式</span><strong>{{ selectedExecution.mode === 'agent' ? '动态 Agent' : '固定计划' }}</strong></p><p><span>源码项目</span><strong>{{ selectedExecution.projectId ?? '未接入源码' }}</strong></p><p><span>关联用例</span><strong>{{ selectedExecution.caseKeys.length }} 条</strong></p><p><span>执行耗时</span><strong>{{ selectedExecution.durationMs }}ms</strong></p></div>
               <div v-if="selectedExecution.rerunOf" class="rerun-note">本次为重新执行 · 来源记录 {{ selectedExecution.rerunOf.slice(0,8) }}</div><div v-if="selectedExecution.error" class="execution-error"><b>{{ selectedExecution.status === 'blocked' ? '受阻原因' : '失败原因' }}</b><code>{{ selectedExecution.error }}</code></div>
+              <ExecutionContractEvidence :snapshots="selectedExecution.caseSnapshots" />
               <section v-if="selectedExecution.mode === 'agent' && selectedExecution.agent" class="agent-trajectory">
                 <header><div><h3>Agent 决策轨迹</h3><p>{{ selectedExecution.agent.summary }}</p></div><span>{{ selectedExecution.agent.trajectory.length }} 轮 · {{ selectedExecution.agent.passedAssertions.length }}/{{ selectedExecution.caseKeys.length }} 个断言通过</span></header>
                 <article v-for="item in selectedExecution.agent.trajectory" :key="`${item.iteration}-${item.snapshotId}`" :class="`decision-${item.decision.type}`">

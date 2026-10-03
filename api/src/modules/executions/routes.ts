@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { json, readJson } from '../../http/response'
 import { basename, resolve } from 'node:path'
 import { createReadStream, existsSync } from 'node:fs'
-import { agentRunRequestSchema, automationPlanSchema, type LiveExecutionEvent } from '@quality-ai/contracts'
+import { agentRunRequestSchema, automationPlanSchema, type ExecutionCaseSnapshot, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { getAnalysisById } from '../requirements/repository'
 import { getExecutionById, getLatestExecution, listExecutions, saveExecution } from '../executions/repository'
 import { getAutomationPlanById, getLatestAutomationPlan } from '../cases/plan-repository'
@@ -15,6 +15,7 @@ import { inspectTargetPage } from '../../page-observer-runner'
 import { openNdjsonResponse } from '../../ndjson-response'
 import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { getRuntimePaths } from '../../config/paths'
+import { captureExecutionCases } from '../cases/repository'
 
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
@@ -40,6 +41,7 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
     const environment = original.environmentId ? getEnvironmentById(original.environmentId) : null
     if (original.environmentId && !environment) return json(response, 409, { error: '原测试环境已不存在，无法安全重跑' })
     const result = await runAutomationPlan(original.plan, environment?.storageStatePath)
+    result.caseSnapshots = original.caseSnapshots
     saveExecution(result, {
       analysisId: original.analysisId, automationPlanId: original.automationPlanId,
       environmentId: original.environmentId, caseKeys: original.caseKeys, plan: original.plan, rerunOf: original.id,
@@ -93,12 +95,19 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
     if (automationPlanId && !savedPlan) return json(response, 404, { error: '自动化计划不存在' })
     const wrappedPlan = automationPlanSchema.parse(savedPlan?.plan ?? body.plan ?? body)
     const planAnalysis = savedPlan ? getAnalysisById(savedPlan.analysisId) : null
+    let caseSnapshots: ExecutionCaseSnapshot[] | undefined
+    if (savedPlan && !planAnalysis) return json(response, 409, { error: '关联需求记录不存在，不能执行此计划' })
     if (savedPlan && planAnalysis) {
       try {
         for (const caseKey of savedPlan.caseKeys) {
           const resolved = resolveCaseExecutionContract(planAnalysis, caseKey)
           if (!resolved.readiness.plan.executable) throw new Error(resolved.readiness.plan.reason ?? `用例不能执行固定计划：${caseKey}`)
         }
+        const checkpoints = wrappedPlan.casePlans
+        if (!checkpoints || checkpoints.length !== savedPlan.caseKeys.length || savedPlan.caseKeys.some(key => !checkpoints.some(item => item.caseKey === key))) {
+          throw new Error('历史计划缺少逐用例契约依据，请重新生成计划')
+        }
+        caseSnapshots = captureExecutionCases(savedPlan.analysisId, checkpoints, 'plan')
       } catch (error) {
         return json(response, 409, { error: error instanceof Error ? error.message : '自动化计划仍未满足执行前置条件' })
       }
@@ -108,6 +117,7 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
       const result = await runAutomationPlan(wrappedPlan, environment?.storageStatePath, {
         onEvent: stream ? (event: LiveExecutionEvent) => stream.send(event) : undefined,
       })
+      result.caseSnapshots = caseSnapshots
       saveExecution(result, {
         analysisId: savedPlan?.analysisId,
         automationPlanId: savedPlan?.id,
@@ -153,8 +163,10 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
       return json(response, 400, { error: `测试页面 Origin 未配置到项目：${target.origin}` })
     }
     let goals
+    let caseSnapshots: ExecutionCaseSnapshot[]
     try {
       goals = input.caseKeys.map(caseKey => buildAgentTestGoal(analysis, caseKey, target.href))
+      caseSnapshots = captureExecutionCases(analysis.id, goals.map(goal => goal.executionContract!), 'agent')
     } catch (error) {
       return json(response, 409, { error: error instanceof Error ? error.message : '测试目标构造失败' })
     }
@@ -165,6 +177,7 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
         onEvent: stream ? (event: LiveExecutionEvent) => stream.send(event) : undefined,
       })
       result.sourceProject = { id: project.id, branch: project.branch, commit: project.commit }
+      result.caseSnapshots = caseSnapshots
       saveExecution(result, {
         analysisId: input.analysisId,
         environmentId: input.environmentId,
