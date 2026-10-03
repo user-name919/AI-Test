@@ -139,6 +139,13 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             break
           }
         }
+        if (checkpoint.status === 'passed' && checkpoint.passedAssertions.length === 0) {
+          checkpoint.status = 'blocked'
+          checkpoint.error = '固定计划完成了操作，但没有执行任何业务断言；不能据此判定用例通过。请补充验证步骤后重新执行'
+          emit({ type: 'activity', executionId: id, caseKey: casePlan.caseKey || undefined, caseTitle: casePlan.title,
+            activity: { id: `${casePlan.caseKey || id}:missing-assertions`, phase: 'observing', title: '缺少断言证据',
+              purpose: '操作成功不等于业务验证通过，保留本次操作事实并继续后续用例', status: 'info', message: checkpoint.error } })
+        }
       } catch (error) {
         checkpoint.status = 'failed'
         checkpoint.error = error instanceof Error ? error.message : String(error)

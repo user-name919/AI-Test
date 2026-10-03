@@ -64,7 +64,10 @@ test('streams the same Playwright page and readable fixed-plan activities', asyn
     ],
   }, undefined, { artifactRoot, onEvent: event => events.push(event) })
 
-  assert.equal(result.status, 'passed')
+  assert.equal(result.status, 'blocked')
+  assert.match(result.error ?? '', /没有执行任何业务断言/)
+  assert.ok(result.steps.every(step => step.status === 'passed'))
+  assert.ok(events.some(event => event.type === 'activity' && event.activity.title === '缺少断言证据'))
   assert.ok(events.some(event => event.type === 'execution_started' && event.mode === 'plan'))
   const frames = events.filter((event): event is Extract<LiveExecutionEvent, { type: 'browser_frame' }> => event.type === 'browser_frame')
   assert.ok(frames.length >= 2, 'a fast plan must still publish a page frame after its initial blank frame')
@@ -96,10 +99,18 @@ test('fixed plans execute real case checkpoints on one continuous page after a f
       { caseKey: '0-TC-1', title: '第二条', contractFingerprint: 'second', steps: [
         { action: 'expectText', text: '已继续' }, { action: 'screenshot', name: '第二条证据' },
       ] },
+      { caseKey: '0-TC-2', title: '只有操作无断言', contractFingerprint: 'third', steps: [
+        { action: 'screenshot', name: '不能作为通过依据' },
+      ] },
+      { caseKey: '0-TC-3', title: '受阻后继续', contractFingerprint: 'fourth', steps: [
+        { action: 'expectText', text: '已继续' },
+      ] },
     ],
   }, undefined, { artifactRoot })
   assert.equal(result.status, 'failed')
-  assert.deepEqual(result.caseResults?.map(item => item.status), ['failed', 'passed'])
+  assert.deepEqual(result.caseResults?.map(item => item.status), ['failed', 'passed', 'blocked', 'passed'])
+  assert.deepEqual(result.caseResults?.[2]?.passedAssertions, [])
+  assert.match(result.caseResults?.[2]?.error ?? '', /没有执行任何业务断言/)
   assert.equal(result.caseResults?.[1]?.startedFromUrl, new URL('/continued', targetUrl).href)
   assert.equal(result.caseResults?.[1]?.continuation, 'reused_current_page')
   assert.equal(result.caseResults?.[1]?.contractFingerprint, 'second')
