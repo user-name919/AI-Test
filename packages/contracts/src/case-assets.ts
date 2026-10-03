@@ -3,7 +3,7 @@ import { caseReviewSchema, type CaseExecutionContract, type CaseReview, type Res
 
 export type CaseSource =
   | { type: 'requirement'; analysisId: string; caseKey: string }
-  | { type: 'change_regression'; regressionId: string; suggestionId: string }
+  | { type: 'change_regression'; regressionId: string; suggestionId: string; reviewRevision?: number; changeSetId?: string }
   | { type: 'case_design'; designId: string; draftId: string; publicationId: string; publicationVersion: number }
 
 export interface CaseAsset {

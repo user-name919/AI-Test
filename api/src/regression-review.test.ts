@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import type { AddressInfo } from 'node:net'
 import type { RegressionAnalysis } from '@quality-ai/contracts/regressions'
 
 const directory = mkdtempSync(join(tmpdir(), 'quality-ai-regression-review-'))
@@ -11,8 +12,11 @@ process.env.QUALITY_AI_DATABASE_PATH = join(directory, 'db.sqlite')
 const { database } = await import('./storage/database')
 const { initializeRegressionJobs, getRegression } = await import('./modules/regressions/jobs')
 const { initializeRegressionReviews, regressionReviewItems, getRegressionReviews, saveRegressionReview } = await import('./modules/regressions/review')
+const { getRegressionCaseAsset, listRegressionCaseAssets } = await import('./modules/cases/regression-assets')
+const { prepareAssetExecution } = await import('./modules/cases/execution-preparation')
+const { createApiServer } = await import('./app')
 
-test('人工范围排除有理由、修改用例独立版本且不覆盖 AI 原文', t => {
+test('人工范围排除有理由、修改用例独立版本且不覆盖 AI 原文', async t => {
   t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }) })
   initializeRegressionJobs(); initializeRegressionReviews()
   const contract = { objective: '原目标', preconditions: [], steps: ['原操作'], expectedAssertions: ['原预期'], dataBindings: [], forbiddenBehaviors: [], uncertainties: [] }
@@ -31,10 +35,31 @@ test('人工范围排除有理由、修改用例独立版本且不覆盖 AI 原�
   assert.throws(() => saveRegressionReview(id, { expectedRevision: 0, content: { ...content, cases: [{ ...content.cases[0], key: 'unrelated' }] } }), /不属于/)
   const first = saveRegressionReview(id, { expectedRevision: 0, content })
   assert.equal(first.revision, 1)
+  const asset = listRegressionCaseAssets(id)[0]!
+  assert.equal(asset.source.type, 'change_regression')
+  assert.deepEqual(asset.finalContract?.steps, ['人工最终操作'])
+  assert.deepEqual(asset.originalSuggestion.steps, ['原操作'])
+  assert.deepEqual(asset.resolved.contract, asset.finalContract)
+  assert.equal(asset.resolved.readiness.agent.executable, false)
+  assert.throws(() => prepareAssetExecution({ mode: 'agent', targetUrl: 'http://localhost', cases: [{ caseId: asset.id, revision: asset.revision, contractFingerprint: asset.resolved.contractFingerprint }] }), /部署版本确认/)
   assert.throws(() => saveRegressionReview(id, { expectedRevision: 0, content }), /版本冲突/)
   const second = saveRegressionReview(id, { expectedRevision: 1, content: { ...content, scopeNote: '新版范围备注' } })
   assert.equal(second.revision, 2)
+  assert.equal(listRegressionCaseAssets(id)[0]!.revision, 2)
+  assert.deepEqual(getRegressionCaseAsset(asset.id), asset, '新审核版本不覆盖旧资产的契约和指纹')
+  assert.notEqual(listRegressionCaseAssets(id)[0]!.resolved.contractFingerprint, asset.resolved.contractFingerprint)
   assert.deepEqual(getRegressionReviews(id)[1], first)
   assert.deepEqual(getRegression(id), analysis, '原始模型产物保持不变')
   assert.throws(() => saveRegressionReview(id, { expectedRevision: 2, content: { ...content, risks: content.risks.map(risk => ({ ...risk, decision: 'exclude', reason: '全部排除' })) } }), /至少关联一个纳入/)
+  const api = createApiServer()
+  await new Promise<void>(resolve => api.listen(0, '127.0.0.1', resolve))
+  try {
+    const url = `http://127.0.0.1:${(api.address() as AddressInfo).port}`
+    const list = await (await fetch(`${url}/api/cases?sourceType=change_regression&sourceId=${id}`)).json()
+    assert.equal(list.cases[0].revision, 2)
+    const detail = await (await fetch(`${url}/api/cases/${encodeURIComponent(asset.id)}/contract`)).json()
+    assert.deepEqual(detail.asset, asset)
+    const immutable = await fetch(`${url}/api/cases/${encodeURIComponent(asset.id)}/review`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' })
+    assert.equal(immutable.status, 409)
+  } finally { await new Promise<void>(resolve => api.close(() => resolve())) }
 })
