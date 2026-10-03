@@ -22,7 +22,7 @@
 | 匹配关键词高亮 | 部分支持 | 部分支持 | 验证明确 class/data-state 等属性；固定 token 匹配、动态属性匹配规则不同。文本出现不能代替高亮，也未验证像素颜色或视觉规范 |
 | 容器中 option 数量为 0 | 部分支持 | 缺失 | 动态 `expectCount` 可带 containerRef；容器必须可被观察/引用。固定无计数动作 |
 | 选择已配置附件并上传 | 部分支持 | 部分支持 | `/#/test-fixtures` 登记不可覆盖附件，两模式 uploadFile 只接受契约授权UUID并保存指纹。动态只操作当前快照中的文件控件，上传异常不自动恢复重试；隐藏输入/文件选择对话框/多文件待扩展，真实input上传不等于业务处理成功 |
-| 点击导出，等待下载并验证文件 | 缺失 | 缺失 | 没有受控 download 监听、文件完成/内容验证及逐用例产物关联。页面出现“下载成功”不是文件已正确生成的证据 |
+| 点击导出，等待下载并验证文件 | 缺失 | 部分支持 | 固定 download 点击前监听，15秒接收期限、10MB证据保存上限，expectDownload 验证名称/大小/UTF-8文本包含；逐用例文件和指纹关联报告。动态、PDF/Excel解析、多文件未接入；页面“下载成功”不能代替文件证据 |
 | iframe 内控件操作 | 缺失 | 缺失 | observer 使用主 Page 的 document；registry 未记录 frame 上下文；固定定位也以 Page 为根。不能用主页面引用代替 frame 内元素 |
 | 新标签页打开、切回原页面 | 缺失 | 缺失 | 没有 page ID/切换动作、弹出页面生命周期或跨页引用失效规则 |
 | Shadow DOM 内控件 | 缺失（观察链） | 部分支持（定位层） | observer 的 document.querySelectorAll 不穿透 shadow root；Playwright 定位器自身能力不能补齐 Agent 观察。固定未作本地场景验收 |
@@ -49,6 +49,7 @@ node --import tsx --test api/src/fixed-select-option.test.ts
 node --import tsx --test api/src/fixed-scope.test.ts
 node --import tsx --test api/src/modules/test-fixtures/store.test.ts
 node --import tsx --test api/src/agent-upload.test.ts
+node --import tsx --test api/src/download-capture.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。

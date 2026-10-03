@@ -6,6 +6,7 @@ const recoveryNames={reobserved:'已重新观察页面，再由 AI 决定下一�
 <template>
   <section class="evidence" aria-label="用例实际执行证据">
     <h3>本次实际使用的数据</h3>
+    <article v-for="download in result.downloads??[]" :key="download.downloadId"><p>实际下载：<strong>{{ download.name }}</strong> · {{ download.size }} 字节</p><p>下载标识：{{ download.downloadId }}</p><small>SHA256：{{ download.sha256 }}</small><p>文件已接收不代表业务验证通过，请查看下载断言结果；文件在报告证据区下载。</p></article>
     <article v-for="(fixture,index) in result.usedFixtures??[]" :key="`${fixture.id}:${index}`">
       <p>上传使用的测试附件：<strong>{{ fixture.name }}</strong> · {{ fixture.size }} 字节</p>
       <p>附件 ID：{{ fixture.id }}</p><small>内容 SHA256：{{ fixture.sha256 }}</small>

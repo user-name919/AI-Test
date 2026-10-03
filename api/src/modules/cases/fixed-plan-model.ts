@@ -14,6 +14,7 @@ export async function generateFixedPlan(targetUrl:string,testCase:ResolvedCaseEx
   const prompt=`你是 Playwright 自动化测试规划器。返回严格 JSON，不输出脚本。
 格式 {"name":"计划名称","targetUrl":"${targetUrl}","steps":[]}。
 允许 goto{path}、click{locator}、fill{locator,value或valueRef}、expectText{text或valueRef}、screenshot{name}、resolveTestData{bindingId}；每步有 action 字段。
+下载用 download{locator,downloadId}：一次点击并监听当前页下载，最多等待15秒、最多保存10MB证据，同一用例ID不能重复；不得先普通click再监听而漏掉事件。完成后使用 expectDownload{downloadId,name可选,minBytes默认1,textIncludes可选,assertionIndex} 验证原契约。name为完整文件名；textIncludes仅验证UTF-8文本（如CSV），不支持PDF/Excel内容解析。下载完成不证明内容正确，不能删除业务内容预期或用页面提示替代；无法表达的文件验证明确受阻。参数必须有契约依据，不编造期望内容，不自动重复触发导出。
 已登记测试附件可用 uploadFile{locator,fixtureId} 上传到真实 input[type=file]。fixtureId 必须是最终契约 fixture/manual 中已确认的附件 UUID，不允许路径、URL或生成文件。此动作会触发 change，网站可能自动上传，须符合人工确认的用例；不额外点击提交。上传动作不证明服务端处理成功，仍需执行契约的业务断言。附件缺失/内容改变时受阻，不替换附件。
 原生 HTML select 可使用 selectOption{locator,value,optionBy:"value|label"}，optionBy 默认 value；显示名称和选项value可能不同，必须明确选择依据。只允许最终契约已声明且有依据的 fixture/manual 值，禁止猜测。此动作不支持搜索策略 valueRef，不替代自定义搜索下拉的 click/fill；不知道原生选项数据时明确受阻。选择动作不计业务断言，随后验证已确认预期。
 表单动作支持 check{locator}、uncheck{locator}、hover{locator}、press{locator,key}；key 只允许 Enter/Escape/Tab/ArrowUp/ArrowDown/ArrowLeft/ArrowRight/Home/End/PageUp/PageDown/Backspace/Delete/Space，不允许任意文本或组合键。check/uncheck 使用明确的选中目标，不用 click 切换代替；操作不是断言。expectChecked{locator,checked:true或false,assertionIndex} 验证真实选中状态。悬停/键盘若引发提交必须符合最终契约，不添加额外提交。

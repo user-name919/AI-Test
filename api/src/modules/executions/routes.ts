@@ -45,8 +45,8 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
     if(!evidenceMatch[2])return json(response,200,{artifacts:artifacts.map(({path,...item})=>{void path;return item})})
     const artifact=artifacts.find(item=>item.id===evidenceMatch[2])
     if(!artifact?.available||!artifact.path)return json(response,404,{error:'附件不存在、已清理或不在允许范围内'})
-    response.writeHead(200,{'content-type':artifact.kind==='trace'?'application/zip':'image/png',
-      'content-disposition':`${artifact.kind==='trace'||url.searchParams.get('download')==='1'?'attachment':'inline'}; filename="${encodeURIComponent(artifact.name)}"`,
+    response.writeHead(200,{'content-type':artifact.kind==='trace'?'application/zip':artifact.kind==='download'?'application/octet-stream':'image/png',
+      'content-disposition':`${artifact.kind!=='screenshot'||url.searchParams.get('download')==='1'?'attachment':'inline'}; filename="${encodeURIComponent(artifact.name)}"`,
       'x-content-type-options':'nosniff'})
     createReadStream(artifact.path).on('error',()=>response.destroy()).pipe(response)
     return true

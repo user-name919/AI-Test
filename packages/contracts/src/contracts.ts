@@ -326,6 +326,8 @@ export const automationStepSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('press'), locator: locatorSchema, key: keyboardKeySchema }),
   z.object({ action: z.literal('selectOption'), locator: locatorSchema, value: z.string(), optionBy: z.enum(['value', 'label']).default('value') }),
   z.object({ action: z.literal('uploadFile'), locator: locatorSchema, fixtureId: z.string().uuid() }),
+  z.object({ action: z.literal('download'), locator: locatorSchema, downloadId: z.string().min(1).max(80) }),
+  z.object({ action: z.literal('expectDownload'), downloadId: z.string().min(1).max(80), assertionIndex: z.number().int().nonnegative().optional(), name: z.string().min(1).optional(), minBytes: z.number().int().nonnegative().default(1), textIncludes: z.string().min(1).optional() }),
   z.object({ action: z.literal('expectChecked'), locator: locatorSchema, checked: z.boolean(), assertionIndex: z.number().int().nonnegative().optional() }),
   z.object({ action: z.literal('fill'), locator: locatorSchema, value: z.string().optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.value!==undefined)!==(item.valueRef!==undefined),'输入值与数据引用必须且只能提供一个'),
   z.object({ action: z.literal('expectText'), assertionIndex:z.number().int().nonnegative().optional(), text: z.string().min(1).optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.text!==undefined)!==(item.valueRef!==undefined),'预期文本与数据引用必须且只能提供一个'),
@@ -435,7 +437,16 @@ export interface ExecutionResult {
   }
 }
 
+export interface DownloadEvidence {
+  downloadId: string
+  name: string
+  size: number
+  sha256: string
+  path: string
+}
+
 export interface CaseExecutionResult {
+  downloads?: DownloadEvidence[]
   usedFixtures?: TestFixture[]
   caseKey: string
   title: string

@@ -195,6 +195,12 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
     const names={check:'勾选',uncheck:'取消勾选',hover:'悬停到',press:'按键操作'}
     title = `${names[step.action]}${quoted(step.locator.name ?? step.locator.value)}${step.action==='press'?`：${step.key}`:''}`
     technicalAction = JSON.stringify(step)
+  } else if (step.action === 'download') {
+    title = `点击${quoted(step.locator.name ?? step.locator.value)}并接收下载 ${step.downloadId}`
+    technicalAction = JSON.stringify(step)
+  } else if (step.action === 'expectDownload') {
+    title = `验证下载 ${step.downloadId} 的${step.textIncludes?'内容、':''}名称与大小`
+    technicalAction = JSON.stringify(step)
   } else if (step.action === 'uploadFile') {
     title = `向${quoted(step.locator.name ?? step.locator.value)}上传已确认附件 ${step.fixtureId}`
     technicalAction = JSON.stringify(step)

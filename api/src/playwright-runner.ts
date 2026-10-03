@@ -7,6 +7,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright'
 import { automationPlanSchema, type AutomationPlan, type CaseExecutionResult, type ExecutionResult, type LiveExecutionEvent } from '@quality-ai/contracts'
 import { describeAutomationStep } from '@quality-ai/contracts/live-execution'
 import { validateFixedSelectData } from './fixed-select-option'
+import { captureDownload, assertDownload } from './download-capture'
 import { loadTestFixture, validateFixtureReference } from './modules/test-fixtures/store'
 import { startLivePageStream } from './live-page-stream'
 import { PageObserver } from './page-observer'
@@ -140,6 +141,13 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               await page.goto(destination.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
             } else if (step.action === 'click') {
               await locatorFor(page, step.locator).click({ timeout: 10_000 })
+            } else if (step.action === 'download') {
+              checkpoint.downloads ??= []
+              if (checkpoint.downloads.some(item => item.downloadId === step.downloadId)) throw new Error('同一用例下载 ID 不得重复使用，请为新下载明确不同 ID')
+              checkpoint.downloads.push(await captureDownload(page, () => locatorFor(page, step.locator).click({ timeout: 10000 }), caseDirectory, step.downloadId, options.signal))
+            } else if (step.action === 'expectDownload') {
+              await assertDownload(checkpoint.downloads?.find(item => item.downloadId === step.downloadId), step)
+              checkpoint.passedAssertions.push(step.assertionIndex===undefined?`step-${index+1}`:`assertion-${step.assertionIndex}`)
             } else if (step.action === 'check' || step.action === 'uncheck' || step.action === 'hover') {
               await locatorFor(page, step.locator)[step.action]({ timeout: 10_000 })
             } else if (step.action === 'press') {

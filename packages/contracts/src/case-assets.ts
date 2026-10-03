@@ -70,7 +70,7 @@ export interface ExecutionJob {
 export interface ExecutionArtifact {
   id:string
   name:string
-  kind:'screenshot'|'trace'
+  kind:'screenshot'|'trace'|'download'
   caseKey?:string
   url:string
   available:boolean
