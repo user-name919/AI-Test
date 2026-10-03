@@ -4,11 +4,16 @@ import { parseSourceDocuments } from '../../source-documents'
 import { createEvidenceDocuments } from './documents'
 import { createCaseDesign, getCaseDesign, listCaseDesigns, listDesignRuns } from './repository'
 import { cancelDesignRun, startDesignRun } from './jobs'
-import { designReviewRequestSchema } from '@quality-ai/contracts/case-design'
-import { listDesignReviews, saveDesignReview } from './review'
+import { designReviewRequestSchema, regenerationRequestSchema } from '@quality-ai/contracts/case-design'
+import { getRegenerationComparison, listDesignReviews, saveDesignReview } from './review'
 import { exportPublicationMarkdown, listDesignPublications, publishDesign } from './publisher'
 
 export async function handleCaseDesignRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const comparisonMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/runs\/([^/?]+)\/comparison$/)
+  if (comparisonMatch && request.method === 'GET') {
+    const comparison = getRegenerationComparison(decodeURIComponent(comparisonMatch[1]), decodeURIComponent(comparisonMatch[2]))
+    return comparison ? json(response, 200, { comparison }) : json(response, 404, { error: '局部重生成对比不存在' })
+  }
   const publishMatch = request.url?.match(/^\/api\/case-designs\/([^/?]+)\/publish$/)
   if (publishMatch && request.method === 'POST') {
     const id = decodeURIComponent(publishMatch[1])
@@ -61,7 +66,9 @@ export async function handleCaseDesignRoutes(request: IncomingMessage, response:
     if ((body.stage !== 'extracting' && body.stage !== 'modeling' && body.stage !== 'planning' && body.stage !== 'generating' && body.stage !== 'checking') || !Number.isInteger(body.expectedRevision)) return json(response,400,{error:'请提供 extracting/modeling/planning/generating/checking 阶段及 expectedRevision'})
     if (body.skillsEnabled !== undefined && typeof body.skillsEnabled !== 'boolean') return json(response,400,{error:'skillsEnabled 必须为布尔值'})
     if(body.upstreamRunId !== undefined && typeof body.upstreamRunId !== 'string') return json(response,400,{error:'upstreamRunId 必须为运行 ID'})
-    try { return json(response,202,{run:startDesignRun(id,Number(body.expectedRevision),body.skillsEnabled !== false,body.stage,body.upstreamRunId as string|undefined)}) }
+    const regeneration = body.regeneration === undefined ? undefined : regenerationRequestSchema.safeParse(body.regeneration)
+    if (regeneration && !regeneration.success) return json(response, 400, { error: '局部重生成需要 baseRunId 与非空、不重复的 scenarioIds' })
+    try { return json(response,202,{run:startDesignRun(id,Number(body.expectedRevision),body.skillsEnabled !== false,body.stage,body.upstreamRunId as string|undefined,regeneration?.success ? regeneration.data : undefined)}) }
     catch (error) { return json(response,409,{error:error instanceof Error ? error.message : '无法创建生成任务'}) }
   }
   const match = request.url?.match(/^\/api\/case-designs\/([^/?]+)$/)

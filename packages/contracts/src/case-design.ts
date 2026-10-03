@@ -77,6 +77,10 @@ export const designReviewContentSchema = z.object({
   excludedFacts: z.record(z.string(), z.string().trim().min(1)),
 })
 export const designReviewRequestSchema = z.object({ expectedRevision: z.number().int().nonnegative(), runId: z.string().min(1), review: designReviewContentSchema })
+export const regenerationRequestSchema = z.object({
+  baseRunId: z.string().min(1),
+  scenarioIds: z.array(z.string().min(1)).min(1).refine(ids => new Set(ids).size === ids.length, '场景不能重复'),
+})
 export type DesignReviewContent = z.infer<typeof designReviewContentSchema>
 export interface DesignReview {
   id: string
@@ -117,6 +121,7 @@ export interface DesignRun {
   inputRevision: number
   inputHash: string
   upstreamRunId?: string
+  regeneration?: z.infer<typeof regenerationRequestSchema>
   model: string
   modelConfigHash: string
   protocol: string

@@ -223,6 +223,33 @@ test('generating consumes test-data skill, fixes provenance and retains earlier 
   assert.deepEqual(partial.output.processedScenarioIds,['s1'])
   assert.deepEqual(partial.output.unprocessedScenarioIds,['s2'])
   assert.equal(partial.statistics.calls,2)
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'generating',expectedRevision:1,upstreamRunId:planned.id})
+  const full=await waitFor(design.id,'completed')
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'checking',expectedRevision:1,upstreamRunId:full.id})
+  const reviewRun=await waitFor(design.id,'completed')
+  const firstCase=full.output.cases!.find(item=>item.scenarioId==='s1')!
+  const untouched=full.output.cases!.find(item=>item.scenarioId==='s2')!
+  const reviewResponse=await post(`/api/case-designs/${design.id}/reviews`,{expectedRevision:0,runId:reviewRun.id,review:{cases:{[firstCase.id]:{title:'人工保留标题',contract:{...firstCase.contract,objective:'人工口径不能被重生成覆盖'},verification:'browser',verificationReason:'页面观察',status:'draft'}},questionDecisions:{},issueDecisions:{},excludedFacts:{}}})
+  assert.equal(reviewResponse.status,201)
+  const savedReview=(await reviewResponse.json()).review
+  const request={stage:'generating',expectedRevision:1,upstreamRunId:planned.id,regeneration:{baseRunId:full.id,scenarioIds:['s1']}}
+  assert.equal((await post(`/api/case-designs/${design.id}/runs`,{...request,regeneration:{...request.regeneration,scenarioIds:['missing']}})).status,409)
+  assert.equal((await post(`/api/case-designs/${design.id}/runs`,{...request,regeneration:{...request.regeneration,scenarioIds:['s1','s1']}})).status,400)
+  assert.equal((await post(`/api/case-designs/${design.id}/runs`,request)).status,202)
+  const regenerated=await waitFor(design.id,'completed')
+  assert.equal(regenerated.statistics.calls,1)
+  assert.deepEqual(regenerated.output.cases!.find(item=>item.scenarioId==='s2'),untouched)
+  assert.notEqual(regenerated.output.cases!.find(item=>item.scenarioId==='s1')!.id,firstCase.id)
+  assert.deepEqual((await (await fetch(`${url}/api/case-designs/${design.id}/reviews`)).json()).reviews,[savedReview])
+  const comparison=(await (await fetch(`${url}/api/case-designs/${design.id}/runs/${regenerated.id}/comparison`)).json()).comparison
+  assert.equal(comparison.scenarios[0].before[0].id,firstCase.id)
+  assert.equal(comparison.scenarios[0].suggestions.length,1)
+  assert.equal(comparison.scenarios[0].human[0].review.contract.objective,'人工口径不能被重生成覆盖')
+  assert.equal(comparison.reviewRevision,1)
+  const changed=structuredClone(planned)
+  changed.output.factModel!.consolidatedFacts[0].statement='改写上游规则'
+  saveDesignRun(changed)
+  assert.equal((await post(`/api/case-designs/${design.id}/runs`,request)).status,409)
 })
 
 test('modeling and planning bind compatible upstream runs and reject silent fact omission',async()=> {

@@ -8,6 +8,22 @@ export function listDesignReviews(designId: string): DesignReview[] {
   return rows.map(row => JSON.parse(row.review_json))
 }
 
+export function getRegenerationComparison(designId: string, runId: string) {
+  const runs = listDesignRuns(designId)
+  const run = runs.find(item => item.id === runId)
+  if (!run?.regeneration) return null
+  const base = runs.find(item => item.id === run.regeneration!.baseRunId)
+  if (!base) return null
+  const review = listDesignReviews(designId).find(item => item.inputHash === run.inputHash && item.inputRevision === run.inputRevision)
+  return {
+    runId: run.id, status: run.status, baseRunId: base.id, reviewId: review?.id ?? null, reviewRevision: review?.revision ?? 0,
+    scenarios: run.regeneration.scenarioIds.map(id => {
+      const before = base.output.cases?.filter(item => item.scenarioId === id) ?? []
+      return { scenarioId: id, before, suggestions: run.output.cases?.filter(item => item.scenarioId === id) ?? [], human: before.map(item => ({ caseId: item.id, review: review?.content.cases[item.id] ?? null })) }
+    }),
+  }
+}
+
 export function saveDesignReview(designId: string, runId: string, expectedRevision: number, content: DesignReviewContent):
   | { kind: 'saved'; review: DesignReview }
   | { kind: 'conflict'; review: DesignReview | null }

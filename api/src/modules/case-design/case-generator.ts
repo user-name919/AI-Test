@@ -19,12 +19,13 @@ export async function generateCases(run: DesignRun, config: ModelConfig, signal:
   const scenarios = run.output.scenarios
   const model = run.output.factModel
   if (!scenarios?.length || !model) throw new Error('没有可生成用例的场景，请先复核场景覆盖')
-  run.output.cases = []
-  run.output.processedScenarioIds = []
-  run.output.unprocessedScenarioIds = scenarios.map(scenario => scenario.id)
+  const selected = run.regeneration ? scenarios.filter(scenario => run.regeneration!.scenarioIds.includes(scenario.id)) : scenarios
+  run.output.cases = run.regeneration ? run.output.cases ?? [] : []
+  run.output.processedScenarioIds = scenarios.filter(scenario => !selected.includes(scenario)).map(scenario => scenario.id)
+  run.output.unprocessedScenarioIds = selected.map(scenario => scenario.id)
   checkpoint()
   const instructions = [generatingPrompt, ...skills.map(skill => `平台技能 ${skill.id}@${skill.version} (${skill.hash})\n${skill.content}`)].join('\n\n')
-  for (const scenario of scenarios) {
+  for (const scenario of selected) {
     signal.throwIfAborted()
     const facts = model.consolidatedFacts.filter(fact => scenario.factIds.includes(fact.id))
     const questions = [...run.output.questions, ...model.conflicts].filter(question => scenario.questionIds.includes(question.id))
