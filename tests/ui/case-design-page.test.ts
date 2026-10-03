@@ -82,6 +82,8 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.getByRole('button',{name:'已对比，保留我的草稿并更新版本号',exact:true}).click()
     await page.getByRole('button',{name:'保存人工审核',exact:true}).click()
     await page.getByText('已保存审核 v2，尚未发布，也不代表测试通过。',{exact:true}).waitFor()
+    assert.equal(await page.locator('.design-review-editor').evaluate(element=>getComputedStyle(element).position),'static')
+    assert.ok((await page.getByRole('button',{name:'保存人工审核',exact:true}).boundingBox())!.width>100)
     assert.deepEqual(reviews[0].content.cases['case-1'].contract.expectedAssertions,['匹配部分高亮','来源选项仍存在'])
     assert.equal(runs[0].output.cases![0].contract.objective,'AI建议目标')
     assert.ok((await page.locator('main').boundingBox())!.x<200)
