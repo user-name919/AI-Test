@@ -130,6 +130,19 @@ test('returns 404 for an unknown analysis and 400 for an unknown case', async ()
   assert.equal(missingCase.status, 400)
 })
 
+test('batch contract preview uses exactly the same resolver as individual execution previews', async () => {
+  const response = await fetch(`${baseUrl}/api/analyses/11111111-1111-4111-8111-111111111111/case-contracts`)
+  const body = await response.json() as { caseContracts: Array<{ caseKey: string }> }
+  assert.equal(response.status, 200)
+  assert.equal(body.caseContracts.length, 2)
+  for (const item of body.caseContracts) {
+    const single = await fetch(`${baseUrl}/api/analyses/11111111-1111-4111-8111-111111111111/cases/${item.caseKey}/contract`)
+    assert.deepEqual(item, (await single.json()).caseContract)
+  }
+  const missing = await fetch(`${baseUrl}/api/analyses/22222222-2222-4222-8222-222222222222/case-contracts`)
+  assert.equal(missing.status, 404)
+})
+
 test('PATCH accepts case reviews, preserves them for legacy clients, and ignores client-derived fields', async () => {
   const firstPatch = await fetch(`${baseUrl}/api/analyses/11111111-1111-4111-8111-111111111111/review`, {
     method: 'PATCH',

@@ -132,6 +132,15 @@ export function createApiServer() {
       return json(response, 200, { analyses: listAnalyses() })
     }
 
+    const caseContractsMatch = request.url?.match(/^\/api\/analyses\/([^/]+)\/case-contracts$/)
+    if (request.method === 'GET' && caseContractsMatch) {
+      const analysis = getAnalysisById(decodeURIComponent(caseContractsMatch[1]))
+      if (!analysis) return json(response, 404, { error: '分析记录不存在' })
+      return json(response, 200, {
+        caseContracts: analysis.result.requirements.flatMap((requirement, requirementIndex) =>
+          requirement.testCases.map((_, caseIndex) => resolveCaseExecutionContract(analysis, `${requirementIndex}-TC-${caseIndex}`))),
+      })
+    }
     const caseContractMatch = request.url?.match(/^\/api\/analyses\/([^/]+)\/cases\/([^/]+)\/contract$/)
     if (request.method === 'GET' && caseContractMatch) {
       const analysis = getAnalysisById(decodeURIComponent(caseContractMatch[1]))

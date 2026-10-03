@@ -131,7 +131,15 @@ export interface ResolvedCaseExecutionContract {
   resolvedQuestions: Array<{
     questionKey: string
     finalStatement: string
-    executionContract?: ReviewExecutionContract
+    questionTitle: string
+    objective?: string
+    triggers: string[]
+    behaviors: string[]
+    assertions: string[]
+    forbiddenBehaviors: string[]
+    sourceHints: string[]
+    uncertainties: string[]
+    confidence?: ReviewExecutionContract['confidence']
   }>
   readiness: {
     agent: { executable: boolean; reason?: string }

@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import type { AgentDecision, AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, QuestionReview, ReviewExecutionContract, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '../shared/contracts'
 import { consumeNdjsonChunk, createLiveExecutionState, reduceLiveExecutionState } from '../shared/live-execution'
+import { useCaseContracts } from './composables/useCaseContracts'
+import CaseContractDetails from './components/CaseContractDetails.vue'
 
 type Tab = 'overview' | 'states' | 'questions' | 'cases'
 type WorkspaceView = 'version' | 'requirements' | 'cases' | 'executions' | 'memory'
@@ -68,6 +70,8 @@ const sampleAnalysis: PrdAnalysis = {
 }
 
 const savedAnalysis = ref<SavedAnalysis | null>(null)
+const { contracts: caseContracts, loading: caseContractsLoading, error: caseContractsError, reload: reloadCaseContracts } = useCaseContracts(savedAnalysis)
+const contractUnavailableReason = computed(() => !savedAnalysis.value ? '示例用例不可执行，请先导入并保存需求分析' : caseContractsLoading.value ? '正在读取服务端执行口径' : caseContractsError.value || '服务端未返回此用例，请刷新执行口径')
 const apiConfigured = ref(false)
 const activeRequirement = ref(0)
 const activeTab = ref<Tab>('overview')
@@ -146,7 +150,7 @@ const questions = computed(() => requirement.value?.questions ?? [])
 const cases = computed(() => requirement.value?.testCases ?? [])
 const totalQuestions = computed(() => requirements.value.reduce((sum, item) => sum + item.questions.length, 0))
 const totalCases = computed(() => requirements.value.reduce((sum, item) => sum + item.testCases.length, 0))
-const readyCases = computed(() => requirements.value.reduce((sum, item, requirementIndex) => sum + item.testCases.filter(test => !test.blockedByQuestion || requirementQuestionsResolved(requirementIndex)).length, 0))
+const readyCases = computed(() => Object.values(caseContracts.value).filter(item => item.readiness.agent.executable).length)
 const confirmedCount = computed(() => questions.value.filter((_, index) => questionResolved(questionKey(index))).length)
 const selectedCount = computed(() => cases.value.filter((_, index) => selectedCases.value[caseKey(index)]).length)
 const coverage = computed(() => totalCases.value ? Math.round((readyCases.value / totalCases.value) * 100) : 0)
@@ -155,11 +159,11 @@ const filteredExecutions = computed(() => executionFilter.value === 'all' ? exec
 const selectedExecution = computed(() => executionHistory.value.find(item => item.id === selectedExecutionId.value) ?? filteredExecutions.value[0] ?? null)
 const executionPassRate = computed(() => executionHistory.value.length ? Math.round(executionHistory.value.filter(item => item.status === 'passed').length / executionHistory.value.length * 100) : 0)
 const selectedCaseKeys = computed(() => Object.keys(selectedCases.value).filter(key => selectedCases.value[key]))
-function blockedCaseKeys(caseKeys: string[]) {
-  return caseKeys.filter(key => {
-  const match = key.match(/^(\d+)-TC-(\d+)$/)
-  return match ? Boolean(requirements.value[Number(match[1])]?.testCases[Number(match[2])]?.blockedByQuestion && !requirementQuestionsResolved(Number(match[1]))) : true
-  })
+function blockedCaseKeys(caseKeys: string[], mode: 'agent' | 'plan' = 'agent') {
+  return caseKeys.filter(key => !caseContracts.value[key]?.readiness[mode].executable)
+}
+function caseReadinessReason(key: string, mode: 'agent' | 'plan' = 'agent') {
+  return caseContracts.value[key]?.readiness[mode].reason ?? contractUnavailableReason.value
 }
 const blockedSelectedCaseKeys = computed(() => blockedCaseKeys(selectedCaseKeys.value))
 const selectedProject = computed(() => projects.value.find(project => project.id === projectId.value) ?? null)
@@ -168,7 +172,8 @@ const matchingProjects = computed(() => projects.value.filter(project => project
 const requirementAssets = computed(() => requirements.value.map((item, index) => ({ item, index, code: requirementCode(index) })))
 const caseAssets = computed(() => requirements.value.flatMap((item, requirementIndex) => item.testCases.map((testCase, caseIndex) => ({
   item: testCase,
-  blocked: caseIsBlocked(requirementIndex, testCase),
+  blocked: !caseContracts.value[`${requirementIndex}-TC-${caseIndex}`]?.readiness.agent.executable,
+  resolved: caseContracts.value[`${requirementIndex}-TC-${caseIndex}`],
   requirementTitle: item.title,
   requirementIndex,
   caseIndex,
@@ -184,8 +189,9 @@ const workspaceLabel = computed(() => ({ version: '版本中心', requirements: 
 const currentGuide = computed(() => workspaceGuides[workspaceView.value])
 const agentRunDisabledReason = computed(() => {
   if (executionRunning.value) return '当前已有任务执行中，请等待完成'
+  if (reviewSaving.value) return '正在保存人工口径，请等待服务端确认'
   if (!selectedCaseKeys.value.length) return '请先选择至少一条测试用例'
-  if (blockedSelectedCaseKeys.value.length) return `有 ${blockedSelectedCaseKeys.value.length} 条用例依赖待确认问题`
+  if (blockedSelectedCaseKeys.value.length) return `${blockedSelectedCaseKeys.value[0]}：${caseReadinessReason(blockedSelectedCaseKeys.value[0]!)}`
   if (!targetUrl.value) return '请先填写测试环境地址'
   if (!projectId.value) return '请选择已连接且与测试地址匹配的源码项目'
   if (!matchingProjects.value.some(project => project.id === projectId.value)) return '当前项目与测试地址 Origin 不匹配'
@@ -193,8 +199,10 @@ const agentRunDisabledReason = computed(() => {
 })
 const planDisabledReason = computed(() => {
   if (executionRunning.value) return '当前已有任务执行中，请等待完成'
+  if (reviewSaving.value) return '正在保存人工口径，请等待服务端确认'
   if (!selectedCaseKeys.value.length) return '请先选择至少一条测试用例'
-  if (blockedSelectedCaseKeys.value.length) return `有 ${blockedSelectedCaseKeys.value.length} 条用例依赖待确认问题`
+  const blocked = blockedCaseKeys(selectedCaseKeys.value, 'plan')
+  if (blocked.length) return `${blocked[0]}：${caseReadinessReason(blocked[0]!, 'plan')}`
   if (!targetUrl.value) return '请先填写测试环境地址'
   return ''
 })
@@ -208,12 +216,9 @@ function questionResolved(key: string) {
   if (review) return review.status === 'accepted' || review.status === 'edited'
   return Boolean(confirmed.value[key])
 }
-function requirementQuestionsResolved(requirementIndex: number) {
-  const requirementValue = requirements.value[requirementIndex]
-  return Boolean(requirementValue?.questions.length && requirementValue.questions.every((_, questionIndex) => questionResolved(`${requirementIndex}-Q-${questionIndex}`)))
-}
 function caseIsBlocked(requirementIndex: number, testCase: PrdAnalysis['requirements'][number]['testCases'][number]) {
-  return testCase.blockedByQuestion && !requirementQuestionsResolved(requirementIndex)
+  const caseIndex = requirements.value[requirementIndex]?.testCases.indexOf(testCase)
+  return !caseContracts.value[`${requirementIndex}-TC-${caseIndex}`]?.readiness.agent.executable
 }
 function chooseRequirement(index: number) { activeRequirement.value = index; activeTab.value = 'overview' }
 function openRequirement(index: number) { chooseRequirement(index); workspaceView.value = 'version' }
@@ -403,6 +408,7 @@ function applyReview(analysisValue: SavedAnalysis) {
 
 async function saveCurrentReview() {
   if (!savedAnalysis.value || reviewSaving.value) return false
+  const sourceAnalysis = savedAnalysis.value
   reviewSaving.value = true
   try {
     const response = await fetch(`/api/analyses/${encodeURIComponent(savedAnalysis.value.id)}/review`, {
@@ -416,8 +422,10 @@ async function saveCurrentReview() {
     })
     const payload = await response.json() as { review?: SavedAnalysis['review']; error?: string }
     if (!response.ok || !payload.review) throw new Error(payload.error ?? '保存失败')
-    savedAnalysis.value.review = payload.review
-    questionReviews.value = { ...(payload.review.questionReviews ?? {}) }
+    if (savedAnalysis.value === sourceAnalysis) {
+      savedAnalysis.value.review = payload.review
+      questionReviews.value = { ...(payload.review.questionReviews ?? {}) }
+    }
     return true
   } catch (error) {
     toast(`评审状态保存失败：${error instanceof Error ? error.message : '未知错误'}`)
@@ -593,8 +601,8 @@ async function persistEnvironment() {
 }
 
 async function generatePlanOnly() {
-  if (!savedAnalysis.value || !selectedCount.value || !targetUrl.value) return toast('请先选择用例并填写测试环境地址')
-  if (blockedSelectedCaseKeys.value.length) return toast(`有 ${blockedSelectedCaseKeys.value.length} 条用例仍依赖待确认问题，暂不能生成固定计划`)
+  if (planDisabledReason.value) return toast(planDisabledReason.value)
+  if (!savedAnalysis.value) return
   executionRunning.value = true
   showNotice('公司模型正在生成受控 Playwright 计划…', 'loading', 0)
   try {
@@ -614,8 +622,8 @@ async function generatePlanOnly() {
 
 async function runGeneratedPlan() {
   if (!latestAutomationPlan.value) return
-  const blockedPlanCases = blockedCaseKeys(latestAutomationPlan.value.caseKeys)
-  if (blockedPlanCases.length) return toast(`计划包含 ${blockedPlanCases.length} 条仍待确认的用例，请重新确认人工口径后再生成`)
+  const blockedPlanCases = blockedCaseKeys(latestAutomationPlan.value.caseKeys, 'plan')
+  if (blockedPlanCases.length) return toast(`${blockedPlanCases[0]}：${caseReadinessReason(blockedPlanCases[0]!, 'plan')}`)
   executionRunning.value = true
   showNotice('正在启动 Chromium 执行已确认计划…', 'loading', 0)
   try {
@@ -632,8 +640,8 @@ async function runGeneratedPlan() {
 }
 
 async function runDynamicAgent() {
-  if (!savedAnalysis.value || !selectedCaseKeys.value.length || !targetUrl.value) return toast('请先选择用例并填写测试环境地址')
-  if (blockedSelectedCaseKeys.value.length) return toast(`有 ${blockedSelectedCaseKeys.value.length} 条用例仍依赖待确认问题，暂不能动态执行`)
+  if (agentRunDisabledReason.value) return toast(agentRunDisabledReason.value)
+  if (!savedAnalysis.value) return
   selectMatchingProject()
   if (!projectId.value) return toast('没有可用的项目源码连接，请先检查项目软链配置')
   if (!matchingProjects.value.some(project => project.id === projectId.value)) return toast('当前项目与测试地址 Origin 不匹配')
@@ -778,11 +786,11 @@ onMounted(loadSavedAnalysis)
       <div class="workspace">
         <template v-if="workspaceView==='version'">
         <section class="heading"><div><small><i></i>{{ savedAnalysis ? `真实解析 · ${savedAnalysis.provider}` : '示例模式 · 等待导入 PRD' }}</small><h1>{{ analysis.productName }} · {{ analysis.versionName }}</h1><p>{{ analysis.overview }}</p></div><div><button class="primary" @click="activeTab='cases';toast('已切换到当前测试用例')">查看测试建议</button></div></section>
-        <section class="metrics"><article><i class="purple">需</i><p><span>前端需求</span><strong>{{ requirements.length }}</strong><small>{{ savedAnalysis ? '公司模型已解析' : '当前为示例数据' }}</small></p></article><article><i class="amber">?</i><p><span>待确认问题</span><strong>{{ totalQuestions }}</strong><small>影响规则与用例</small></p></article><article><i class="blue">例</i><p><span>测试用例</span><strong>{{ totalCases }}</strong><small>{{ readyCases }} 条可执行</small></p></article><article><i class="green">✓</i><p><span>当前可执行率</span><strong>{{ coverage }}%</strong><small>确认后继续提升</small></p></article></section>
+        <section class="metrics"><article><i class="purple">需</i><p><span>前端需求</span><strong>{{ requirements.length }}</strong><small>{{ savedAnalysis ? '公司模型已解析' : '当前为示例数据' }}</small></p></article><article><i class="amber">?</i><p><span>待确认问题</span><strong>{{ totalQuestions }}</strong><small>影响规则与用例</small></p></article><article><i class="blue">例</i><p><span>测试用例</span><strong>{{ totalCases }}</strong><small>{{ readyCases }} 条可执行</small></p></article><article><i class="green">✓</i><p><span>用例就绪比例</span><strong>{{ coverage }}%</strong><small>确认后继续提升</small></p></article></section>
 
         <section class="content-grid">
           <aside class="requirements"><div class="section-title"><span>版本需求</span><b>{{ requirements.length }} 项</b></div>
-            <button v-for="(item,index) in requirements" :key="`${item.title}-${index}`" :class="['req-card',{active:activeRequirement===index}]" @click="chooseRequirement(index)"><small><span>{{ requirementCode(index) }}</span><b :class="{medium:item.risk==='中风险',low:item.risk==='低风险'}">{{ item.risk }}</b></small><strong>{{ item.title }}</strong><p>{{ item.summary }}</p><div><i :style="{width:`${Math.round((item.testCases.filter(test => !test.blockedByQuestion || requirementQuestionsResolved(index)).length / item.testCases.length) * 100)}%`}"></i></div></button>
+            <button v-for="(item,index) in requirements" :key="`${item.title}-${index}`" :class="['req-card',{active:activeRequirement===index}]" @click="chooseRequirement(index)"><small><span>{{ requirementCode(index) }}</span><b :class="{medium:item.risk==='中风险',low:item.risk==='低风险'}">{{ item.risk }}</b></small><strong>{{ item.title }}</strong><p>{{ item.summary }}</p><div><i :style="{width:`${Math.round((item.testCases.filter(test => !caseIsBlocked(index,test)).length / item.testCases.length) * 100)}%`}"></i></div></button>
             <div class="sources"><span>需求材料</span><div v-for="fileName in sourceFileNames" :key="fileName"><i :class="{api:/接口|技术方案|api/i.test(fileName)}">{{ /接口|技术方案|api/i.test(fileName) ? 'API' : 'MD' }}</i><p><strong>{{ fileName }}</strong><small>{{ savedAnalysis ? `${/接口|技术方案|api/i.test(fileName) ? '增强材料' : '产品需求'} · 已联合解析` : '示例材料 · 等待真实导入' }}</small></p><b>{{ savedAnalysis ? '✓' : '○' }}</b></div></div>
           </aside>
 
@@ -792,7 +800,7 @@ onMounted(loadSavedAnalysis)
               <template v-if="activeTab==='overview'"><article class="ai-insight"><small><b>AI</b> 需求理解</small><h3>{{ requirement.riskReason }}</h3><p>{{ requirement.summary }}</p><button @click="activeTab='states'">查看页面状态 →</button></article><div class="rule-block"><header><h3>提取的业务规则</h3><span>{{ requirement.businessRules.length }} 条规则</span></header><div v-for="(rule,index) in requirement.businessRules" :key="`${rule.description}-${index}`"><span>BR-{{ String(index+1).padStart(2,'0') }}</span><p><strong>{{ rule.description }}</strong><small>{{ rule.evidence }}</small></p><b>有依据</b></div></div></template>
               <template v-else-if="activeTab==='states'"><header class="subhead"><div><h3>页面状态模型</h3><p>由 PRD 规则反推出用户可见状态与系统结果</p></div><span>{{ states.length }} 个关键状态</span></header><div class="flow"><span>进入页面</span><i>→</i><span>判断条件</span><i>→</i><span>回显 / 选择</span><i>→</i><span>保存校验</span></div><div class="state-table"><header><span>触发条件</span><span>页面初始状态</span><span>数据与交互</span><span>提交结果</span></header><div v-for="(state,index) in states" :key="`${state.trigger}-${index}`"><strong>{{ state.trigger }}</strong><span>{{ state.initialState }}</span><span>{{ state.interaction }}</span><span>{{ state.expectedResult }}</span></div></div><div v-if="questions.length" class="warning"><b>!</b><p><strong>存在 {{ questions.length }} 个待确认问题</strong><span>确认后才能稳定生成对应自动化任务。</span></p><button @click="activeTab='questions'">去确认</button></div></template>
               <template v-else-if="activeTab==='questions'"><header class="subhead"><div><h3>待产品确认</h3><p>确认结果会立即保存，刷新页面不会丢失</p></div><span>{{ reviewSaving ? '保存中…' : `${confirmedCount}/${questions.length} 已确认` }}</span></header><div class="question-list"><article v-for="(q,index) in questions" :key="`${q.title}-${index}`" :class="{done:confirmed[questionKey(index)]}"><i>{{ confirmed[questionKey(index)]?'✓':index+1 }}</i><div><h4>{{ q.title }}</h4><p>{{ q.reason }}</p><small><b>AI 建议</b>{{ q.suggestion }}</small></div><button @click="toggleQuestion(index)">{{ confirmed[questionKey(index)]?'已确认':'采纳建议' }}</button></article><div v-if="!questions.length" class="empty">模型未发现需要产品确认的问题</div></div></template>
-              <template v-else><header class="case-toolbar"><div><h3>测试用例</h3><p>由当前真实业务规则和页面状态生成</p></div><span>{{ reviewSaving ? '保存中…' : `已选 ${selectedCount}/${cases.length}` }}</span></header><div class="case-table"><header><span></span><span>用例</span><span>类型</span><span>优先级</span><span>状态</span></header><label v-for="(item,index) in cases" :key="`${item.title}-${index}`"><input v-model="selectedCases[caseKey(index)]" type="checkbox" @change="saveCurrentReview"/><span><b>{{ caseCode(index) }}</b><strong>{{ item.title }}</strong></span><span>{{ item.type }}</span><i :class="item.priority.toLowerCase()">{{ item.priority }}</i><em :class="item.blockedByQuestion?'pending':'ready'">{{ item.blockedByQuestion ? '待确认' : '已就绪' }}</em></label></div><div class="environment-config"><input v-model="environmentName" placeholder="环境名称"/><span :class="{ ready: environment?.hasStorageState }">{{ environment?.hasStorageState ? '✓ 已配置登录态' : '未配置登录态' }}</span><label :class="{disabled:!targetUrl}" :title="!targetUrl ? '请先填写测试环境地址' : '导入 Playwright storageState JSON'"><input :disabled="!targetUrl" type="file" accept=".json,application/json" @change="importStorageState"/>导入 storageState</label></div><div class="agent-config"><label><span>源码项目</span><select v-model="projectId"><option value="">请选择已连接项目</option><option v-for="project in projects" :key="project.id" :value="project.id" :disabled="!project.connected">{{ project.name }}{{ project.connected ? '' : '（未连接）' }}</option></select></label><p :class="{ready:selectedProject?.connected && matchingProjects.some(project=>project.id===projectId)}"><b>{{ selectedProject?.connected && matchingProjects.some(project=>project.id===projectId) ? '✓' : '!' }}</b><span v-if="selectedProject?.connected && matchingProjects.some(project=>project.id===projectId)">{{ selectedProject.name }} 已连接{{ selectedProject.branch ? ` · ${selectedProject.branch}` : '' }}</span><span v-else>{{ selectedProject?.error ?? '项目未连接，或与测试地址 Origin 不匹配' }}</span></p></div><div v-if="blockedSelectedCaseKeys.length" class="agent-case-warning">有 {{ blockedSelectedCaseKeys.length }} 条已选用例仍依赖待确认问题，Agent 动态执行暂不可用。</div><div class="target-config"><input v-model="targetUrl" type="url" placeholder="测试环境地址，例如 https://test.example.com" @change="selectMatchingProject"/><div><span class="action-with-hint" :data-hint="agentRunDisabledReason"><button class="agent-run" :disabled="Boolean(agentRunDisabledReason)" @click="runDynamicAgent">{{ executionRunning ? '执行中…' : 'Agent 动态执行' }}</button></span><span class="action-with-hint" :data-hint="planDisabledReason"><button :disabled="Boolean(planDisabledReason)" @click="generatePlanOnly">{{ executionRunning ? '生成中…' : '生成固定计划' }}</button></span></div></div><div v-if="agentRunDisabledReason || planDisabledReason" class="action-readiness"><b>执行前置条件</b><span :class="{ready:selectedCaseKeys.length}">{{ selectedCaseKeys.length ? `✓ 已选 ${selectedCaseKeys.length} 条用例` : '○ 选择测试用例' }}</span><span :class="{ready:Boolean(targetUrl)}">{{ targetUrl ? '✓ 已填写测试地址' : '○ 填写测试地址' }}</span><span :class="{ready:Boolean(projectId) && matchingProjects.some(project=>project.id===projectId)}">{{ projectId && matchingProjects.some(project=>project.id===projectId) ? '✓ 源码项目已匹配' : '○ Agent 需匹配源码项目' }}</span></div><div v-if="latestAutomationPlan" class="plan-preview"><header><strong>{{ latestAutomationPlan.plan.name }}</strong><button :disabled="executionRunning" @click="runGeneratedPlan">{{ executionRunning ? '执行中…' : '确认并执行' }}</button></header><ol><li v-for="(step,index) in latestAutomationPlan.plan.steps" :key="index"><b>{{ index+1 }}</b><span>{{ step.action }}</span><code>{{ 'text' in step ? step.text : 'path' in step ? step.path : 'name' in step ? step.name : step.locator.value }}</code></li></ol></div><div class="automation"><div><b>✦</b><p><strong>Playwright 真实执行器</strong><span v-if="latestExecution">最近执行：{{ executionStatusText(latestExecution.status) }} · {{ latestExecution.mode==='agent' ? `${latestExecution.agent?.trajectory.length ?? 0} 轮决策` : `${latestExecution.steps.length} 步` }}</span><span v-else>尚未执行浏览器测试</span></p></div><button :disabled="executionRunning" @click="verifyPlaywright">验证执行器</button></div><div v-if="latestExecution" class="execution-report"><div v-for="step in latestExecution.steps" :key="step.index"><b :class="step.status">{{ step.status==='passed'?'✓':'×' }}</b><span>步骤 {{ step.index+1 }} · {{ step.action }}</span><small>{{ step.durationMs }}ms</small></div><footer><a v-if="latestExecution.tracePath" :href="artifactUrl(latestExecution.tracePath)">下载 Trace</a><a v-for="shot in latestExecution.screenshots" :key="shot" :href="artifactUrl(shot)">下载截图</a></footer></div></template>
+              <template v-else><header class="case-toolbar"><div><h3>测试用例</h3><p>由当前真实业务规则和页面状态生成</p></div><span>{{ reviewSaving ? '保存中…' : `已选 ${selectedCount}/${cases.length}` }}</span></header><div v-if="caseContractsError" class="agent-case-warning" role="alert">{{ caseContractsError }} <button @click="reloadCaseContracts">重试读取执行口径</button></div><div class="case-table"><header><span></span><span>用例</span><span>类型</span><span>优先级</span><span>状态</span></header><label v-for="(item,index) in cases" :key="`${item.title}-${index}`"><input v-model="selectedCases[caseKey(index)]" type="checkbox" @change="saveCurrentReview"/><span><b>{{ caseCode(index) }}</b><strong>{{ item.title }}</strong></span><span>{{ item.type }}</span><i :class="item.priority.toLowerCase()">{{ item.priority }}</i><em :class="caseIsBlocked(activeRequirement,item)?'pending':'ready'">{{ caseIsBlocked(activeRequirement,item) ? '未就绪' : 'Agent 就绪' }}</em></label></div><CaseContractDetails v-for="(_,index) in cases" :key="caseKey(index)" :resolved="caseContracts[caseKey(index)]" :unavailable-reason="contractUnavailableReason" /><div class="environment-config"><input v-model="environmentName" placeholder="环境名称"/><span :class="{ ready: environment?.hasStorageState }">{{ environment?.hasStorageState ? '✓ 已配置登录态' : '未配置登录态' }}</span><label :class="{disabled:!targetUrl}" :title="!targetUrl ? '请先填写测试环境地址' : '导入 Playwright storageState JSON'"><input :disabled="!targetUrl" type="file" accept=".json,application/json" @change="importStorageState"/>导入 storageState</label></div><div class="agent-config"><label><span>源码项目</span><select v-model="projectId"><option value="">请选择已连接项目</option><option v-for="project in projects" :key="project.id" :value="project.id" :disabled="!project.connected">{{ project.name }}{{ project.connected ? '' : '（未连接）' }}</option></select></label><p :class="{ready:selectedProject?.connected && matchingProjects.some(project=>project.id===projectId)}"><b>{{ selectedProject?.connected && matchingProjects.some(project=>project.id===projectId) ? '✓' : '!' }}</b><span v-if="selectedProject?.connected && matchingProjects.some(project=>project.id===projectId)">{{ selectedProject.name }} 已连接{{ selectedProject.branch ? ` · ${selectedProject.branch}` : '' }}</span><span v-else>{{ selectedProject?.error ?? '项目未连接，或与测试地址 Origin 不匹配' }}</span></p></div><div v-if="blockedSelectedCaseKeys.length" class="agent-case-warning">有 {{ blockedSelectedCaseKeys.length }} 条已选用例未就绪。{{ agentRunDisabledReason }}</div><div class="target-config"><input v-model="targetUrl" type="url" placeholder="测试环境地址，例如 https://test.example.com" @change="selectMatchingProject"/><div><span class="action-with-hint" :data-hint="agentRunDisabledReason"><button class="agent-run" :disabled="Boolean(agentRunDisabledReason)" @click="runDynamicAgent">{{ executionRunning ? '执行中…' : 'Agent 动态执行' }}</button></span><span class="action-with-hint" :data-hint="planDisabledReason"><button :disabled="Boolean(planDisabledReason)" @click="generatePlanOnly">{{ executionRunning ? '生成中…' : '生成固定计划' }}</button></span></div></div><div v-if="agentRunDisabledReason || planDisabledReason" class="action-readiness"><b>执行前置条件</b><span :class="{ready:selectedCaseKeys.length}">{{ selectedCaseKeys.length ? `✓ 已选 ${selectedCaseKeys.length} 条用例` : '○ 选择测试用例' }}</span><span :class="{ready:Boolean(targetUrl)}">{{ targetUrl ? '✓ 已填写测试地址' : '○ 填写测试地址' }}</span><span :class="{ready:Boolean(projectId) && matchingProjects.some(project=>project.id===projectId)}">{{ projectId && matchingProjects.some(project=>project.id===projectId) ? '✓ 源码项目已匹配' : '○ Agent 需匹配源码项目' }}</span></div><div v-if="latestAutomationPlan" class="plan-preview"><header><strong>{{ latestAutomationPlan.plan.name }}</strong><button :disabled="executionRunning" @click="runGeneratedPlan">{{ executionRunning ? '执行中…' : '确认并执行' }}</button></header><ol><li v-for="(step,index) in latestAutomationPlan.plan.steps" :key="index"><b>{{ index+1 }}</b><span>{{ step.action }}</span><code>{{ 'text' in step ? step.text : 'path' in step ? step.path : 'name' in step ? step.name : step.locator.value }}</code></li></ol></div><div class="automation"><div><b>✦</b><p><strong>Playwright 真实执行器</strong><span v-if="latestExecution">最近执行：{{ executionStatusText(latestExecution.status) }} · {{ latestExecution.mode==='agent' ? `${latestExecution.agent?.trajectory.length ?? 0} 轮决策` : `${latestExecution.steps.length} 步` }}</span><span v-else>尚未执行浏览器测试</span></p></div><button :disabled="executionRunning" @click="verifyPlaywright">验证执行器</button></div><div v-if="latestExecution" class="execution-report"><div v-for="step in latestExecution.steps" :key="step.index"><b :class="step.status">{{ step.status==='passed'?'✓':'×' }}</b><span>步骤 {{ step.index+1 }} · {{ step.action }}</span><small>{{ step.durationMs }}ms</small></div><footer><a v-if="latestExecution.tracePath" :href="artifactUrl(latestExecution.tracePath)">下载 Trace</a><a v-for="shot in latestExecution.screenshots" :key="shot" :href="artifactUrl(shot)">下载截图</a></footer></div></template>
             </div>
           </section>
         </section>
@@ -826,9 +834,9 @@ onMounted(loadSavedAnalysis)
         </template>
         <template v-else-if="workspaceView==='cases'">
           <section class="heading hub-heading"><div><small><i></i>{{ analysis.versionName }}</small><h1>用例资产</h1><p>跨需求查看当前版本全部用例，维护执行选择并快速进入测试配置。</p></div><div><button class="primary" @click="workspaceView='version';activeTab='cases'">配置并执行</button></div></section>
-          <section class="metrics"><article><i class="purple">例</i><p><span>用例总数</span><strong>{{ caseAssets.length }}</strong><small>当前版本</small></p></article><article><i class="green">✓</i><p><span>可执行</span><strong>{{ caseAssets.filter(asset=>!asset.item.blockedByQuestion).length }}</strong><small>规则已明确</small></p></article><article><i class="amber">?</i><p><span>待确认</span><strong>{{ caseAssets.filter(asset=>asset.item.blockedByQuestion).length }}</strong><small>暂不进入 Agent</small></p></article><article><i class="blue">选</i><p><span>已选择</span><strong>{{ selectedCaseKeys.length }}</strong><small>将用于自动化</small></p></article></section>
-          <div class="execution-filters"><button :class="{active:caseAssetFilter==='all'}" @click="caseAssetFilter='all'">全部</button><button :class="{active:caseAssetFilter==='ready'}" @click="caseAssetFilter='ready'">可执行</button><button :class="{active:caseAssetFilter==='blocked'}" @click="caseAssetFilter='blocked'">待确认</button></div>
-          <section class="case-assets"><article v-for="asset in filteredCaseAssets" :key="asset.key"><label><input :checked="Boolean(selectedCases[asset.key])" type="checkbox" @change="toggleCaseAsset(asset.key)"/><span>{{ asset.code }}</span></label><div><header><strong>{{ asset.item.title }}</strong><b :class="asset.item.priority.toLowerCase()">{{ asset.item.priority }}</b><em :class="asset.item.blockedByQuestion?'blocked':'ready'">{{ asset.item.blockedByQuestion ? '待确认' : '可执行' }}</em></header><p>{{ asset.requirementTitle }}</p><small>步骤：{{ asset.item.steps.join(' → ') }}</small><footer><span>预期：{{ asset.item.expectedResult }}</span><button @click="openCaseAsset(asset.requirementIndex)">查看并执行 →</button></footer></div></article><div v-if="!filteredCaseAssets.length" class="empty">当前筛选条件下暂无用例</div></section>
+          <section class="metrics"><article><i class="purple">例</i><p><span>用例总数</span><strong>{{ caseAssets.length }}</strong><small>当前版本</small></p></article><article><i class="green">✓</i><p><span>Agent 用例就绪</span><strong>{{ readyCases }}</strong><small>不代表已执行通过</small></p></article><article><i class="amber">?</i><p><span>未就绪</span><strong>{{ caseAssets.length - readyCases }}</strong><small>暂不进入 Agent</small></p></article><article><i class="blue">选</i><p><span>已选择</span><strong>{{ selectedCaseKeys.length }}</strong><small>将用于自动化</small></p></article></section>
+          <div class="execution-filters"><button :class="{active:caseAssetFilter==='all'}" @click="caseAssetFilter='all'">全部</button><button :class="{active:caseAssetFilter==='ready'}" @click="caseAssetFilter='ready'">Agent 就绪</button><button :class="{active:caseAssetFilter==='blocked'}" @click="caseAssetFilter='blocked'">未就绪</button></div>
+          <div v-if="caseContractsError" class="agent-case-warning" role="alert">{{ caseContractsError }} <button @click="reloadCaseContracts">重试读取执行口径</button></div><section class="case-assets"><article v-for="asset in filteredCaseAssets" :key="asset.key"><label><input :checked="Boolean(selectedCases[asset.key])" type="checkbox" @change="toggleCaseAsset(asset.key)"/><span>{{ asset.code }}</span></label><div><header><strong>{{ asset.item.title }}</strong><b :class="asset.item.priority.toLowerCase()">{{ asset.item.priority }}</b><em :class="asset.blocked?'blocked':'ready'">{{ asset.blocked ? '未就绪' : 'Agent 就绪' }}</em></header><p>{{ asset.requirementTitle }}</p><small>步骤：{{ asset.resolved?.contract.steps.join(' → ') ?? '请展开查看加载状态' }}</small><CaseContractDetails :resolved="asset.resolved" :unavailable-reason="contractUnavailableReason" /><footer><span>预期：{{ asset.resolved?.contract.expectedAssertions.join('；') ?? '执行口径尚未加载' }}</span><button @click="openCaseAsset(asset.requirementIndex)">查看并执行 →</button></footer></div></article><div v-if="!filteredCaseAssets.length" class="empty">当前筛选条件下暂无用例</div></section>
         </template>
         <template v-else>
           <section class="heading hub-heading"><div><small><i></i>由真实评审与执行自动沉淀</small><h1>质量记忆</h1><p>汇总已提取业务规则、历史失败和 Agent 使用过的源码线索，避免后续测试重复摸索。</p></div></section>
