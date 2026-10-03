@@ -13,8 +13,9 @@ const assets=ref<CaseAsset[]>([])
 const selected=ref<string[]>([])
 const mode=ref<'agent'|'plan'>('agent')
 const targetUrl=ref('')
-const environment=ref<TestEnvironment|null>(null)
-const useEnvironment=ref(false)
+const environments=ref<TestEnvironment[]>([])
+const environmentId=ref('')
+const environment=computed(()=>environments.value.find(item=>item.id===environmentId.value))
 const projects=ref<Array<{id:string;name:string;connected:boolean;targetOrigins:string[];branch?:string;commit?:string}>>([])
 const projectId=ref('')
 const preview=ref<ExecutionCaseSnapshot[]>([])
@@ -26,7 +27,7 @@ async function request<T>(path:string,body?:unknown):Promise<T>{
   if(!response.ok)throw new Error(result.error??`请求失败 ${response.status}`)
   return result
 }
-const input=computed(()=>({mode:mode.value,targetUrl:targetUrl.value.trim(),cases:assets.value.filter(asset=>selected.value.includes(asset.id)).map(asset=>({caseId:asset.id,revision:asset.revision,contractFingerprint:asset.resolved.contractFingerprint})),...(useEnvironment.value&&environment.value?{environmentId:environment.value.id}:{}),...(projectId.value?{projectId:projectId.value}:{})}))
+const input=computed(()=>({mode:mode.value,targetUrl:targetUrl.value.trim(),cases:assets.value.filter(asset=>selected.value.includes(asset.id)).map(asset=>({caseId:asset.id,revision:asset.revision,contractFingerprint:asset.resolved.contractFingerprint})),...(environment.value?{environmentId:environment.value.id}:{}),...(projectId.value?{projectId:projectId.value}:{})}))
 const reason=computed(()=>{
   if(loading.value)return '正在读取服务端契约与执行配置'
   if(!selected.value.length)return '请勾选至少一条用例'
@@ -34,7 +35,8 @@ const reason=computed(()=>{
   for(const asset of assets.value.filter(item=>selected.value.includes(item.id)))if(!asset.resolved.readiness[mode.value].executable)return `${asset.title}：${asset.resolved.readiness[mode.value].reason??'尚未就绪'}`
   let origin:string
   try{const url=new URL(targetUrl.value);if(!['http:','https:'].includes(url.protocol))return '测试地址只允许 HTTP(S)';origin=url.origin}catch{return '请输入完整测试页面地址'}
-  if(useEnvironment.value&&environment.value&&new URL(environment.value.baseUrl).origin!==origin)return '测试地址与所选环境 Origin 不一致；更换地址或取消使用该登录态'
+  if(environmentId.value&&!environment.value)return '所选环境已不存在，请重新选择'
+  if(environment.value&&new URL(environment.value.baseUrl).origin!==origin)return '测试地址与所选环境 Origin 不一致；更换地址或选择不使用已保存环境'
   const project=projects.value.find(item=>item.id===projectId.value)
   if(mode.value==='agent'&&!project)return '动态 Agent 需要选择源码项目'
   if(project&&(!project.connected||(project.targetOrigins.length&&!project.targetOrigins.includes(origin))))return '所选源码未连接或不允许该测试地址'
@@ -46,12 +48,12 @@ async function configure(){
   try{
     const [loaded,env,projectList]=await Promise.all([
       Promise.all(props.publication.snapshot.cases.map(item=>request<{asset:CaseAsset}>(`/api/cases/${encodeURIComponent(`published:${props.publication.id}:${item.id}`)}/contract`))),
-      request<{environment:TestEnvironment|null}>('/api/environments/latest'),request<{projects:typeof projects.value}>('/api/projects'),
+      request<{environments:TestEnvironment[]}>('/api/environments'),request<{projects:typeof projects.value}>('/api/projects'),
     ])
     if(disposed)return
-    assets.value=loaded.map(item=>item.asset);environment.value=env.environment;projects.value=projectList.projects
+    assets.value=loaded.map(item=>item.asset);environments.value=env.environments;projects.value=projectList.projects
     selected.value=[];preview.value=[]
-    if(environment.value){targetUrl.value=environment.value.targetUrl;useEnvironment.value=true}
+    environmentId.value='';targetUrl.value=''
   }catch(cause){if(!disposed)error.value=cause instanceof Error?cause.message:'执行配置读取失败'}
   finally{if(!disposed)loading.value=false}
 }
@@ -60,8 +62,8 @@ async function prepare(){
   busy.value=true;error.value=''
   const requested=input.value;const signature=JSON.stringify(requested)
   try{
-    const {mode,targetUrl,cases}=requested
-    const result=await request<{preparation:{snapshots:ExecutionCaseSnapshot[]}}>('/api/cases/prepare-execution',{mode,targetUrl,cases})
+    const {mode,targetUrl,cases,environmentId}=requested
+    const result=await request<{preparation:{snapshots:ExecutionCaseSnapshot[]}}>('/api/cases/prepare-execution',{mode,targetUrl,cases,environmentId})
     if(!disposed&&JSON.stringify(input.value)===signature)preview.value=result.preparation.snapshots
   }catch(cause){if(!disposed)error.value=cause instanceof Error?cause.message:'准备失败'}
   finally{if(!disposed)busy.value=false}
@@ -88,8 +90,9 @@ async function start(){
       <fieldset :disabled="busy||loading"><legend>执行设置</legend>
         <label>执行模式<select v-model="mode" aria-label="执行模式"><option value="agent">动态 Agent</option><option value="plan">固定计划</option></select></label>
         <label>测试页面地址<input v-model="targetUrl" aria-label="测试页面地址" type="url" placeholder="https://测试环境/目标页面" /></label>
-        <label v-if="environment"><input v-model="useEnvironment" type="checkbox" />使用最近环境「{{ environment.name }}」 · {{ environment.hasStorageState?'已有登录态（有效性需运行验证）':'未配置登录态' }}</label>
-        <p v-else>尚无已保存环境，可输入公开测试地址。</p>
+        <label>测试环境<select v-model="environmentId" aria-label="测试环境" @change="targetUrl=environment?.targetUrl??''"><option value="">不使用已保存环境（手动输入地址，无登录态）</option><option v-for="item in environments" :key="item.id" :value="item.id">{{ item.name }} · {{ item.baseUrl }}</option></select></label>
+        <p v-if="environment">{{ environment.hasStorageState?'已有登录态（有效性需运行验证）':'该环境未配置登录态' }}</p>
+        <p v-else>当前不使用已保存登录态，请手动输入测试地址。</p>
         <p><RouterLink to="/environments">管理测试环境与登录态</RouterLink> · 保存后返回此处重新读取配置。</p>
         <label>源码项目<select v-model="projectId" aria-label="源码项目"><option value="">不选择（固定计划可选）</option><option v-for="project in projects" :key="project.id" :value="project.id">{{ project.name }} · {{ project.branch??'未知分支' }} · {{ project.commit??'未记录 SHA' }}</option></select></label>
       </fieldset>

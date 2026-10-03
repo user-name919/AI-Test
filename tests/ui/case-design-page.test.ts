@@ -35,7 +35,7 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
         assert.equal(decodeURIComponent(path),`/api/cases/published:${published.id}:${item.id}/contract`)
         await route.fulfill({json:{asset:{id:`published:${published.id}:${item.id}`,title:item.title,revision:published.version,source:{type:'case_design',publicationId:published.id},resolved:{caseKey:'published:published:case-1',title:item.title,contract:item.contract,contractFingerprint:'published-fingerprint',readiness:{agent:{executable:true},plan:{executable:false,reason:'固定计划需要运行时数据预检'}}}}}});return
       }
-      if(path==='/api/environments/latest'){await route.fulfill({json:{environment:null}});return}
+      if(path==='/api/environments'){await route.fulfill({json:{environments:[{id:'env-a',name:'环境甲',baseUrl:'https://example.test',targetUrl:'https://example.test/search',hasStorageState:true},{id:'env-b',name:'环境乙',baseUrl:'https://example.test',targetUrl:'https://example.test/second',hasStorageState:false}]}});return}
       if(path==='/api/projects'){await route.fulfill({json:{projects:[{id:'source',name:'合成源码',connected:true,targetOrigins:['https://example.test'],branch:'local',commit:'abc'}]}});return}
       if(path==='/api/cases/prepare-execution'){
         const body=route.request().postDataJSON();assert.equal(body.cases[0].contractFingerprint,'published-fingerprint')
@@ -226,11 +226,18 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.getByRole('button',{name:'配置并执行此发布版本',exact:true}).click()
     const launcher=page.locator('.publication-execution')
     await launcher.locator('input[type=checkbox]').first().check()
-    await launcher.getByLabel('测试页面地址',{exact:true}).fill('https://example.test/search')
+    assert.equal(await launcher.getByLabel('测试环境',{exact:true}).inputValue(),'','不默认选择最近环境')
+    await launcher.getByLabel('测试环境',{exact:true}).selectOption('env-a')
+    assert.equal(await launcher.getByLabel('测试页面地址',{exact:true}).inputValue(),'https://example.test/search')
     await launcher.getByLabel('执行模式',{exact:true}).selectOption('plan')
     assert.equal(await launcher.getByRole('button',{name:'预览最终执行口径',exact:true}).isDisabled(),true)
     await launcher.getByLabel('执行模式',{exact:true}).selectOption('agent')
     await launcher.getByLabel('源码项目',{exact:true}).selectOption('source')
+    await launcher.getByRole('button',{name:'预览最终执行口径',exact:true}).click()
+    await launcher.getByRole('button',{name:'确认口径并启动后台执行',exact:true}).waitFor()
+    await launcher.getByLabel('测试环境',{exact:true}).selectOption('env-b')
+    assert.equal(await launcher.getByRole('button',{name:'确认口径并启动后台执行',exact:true}).count(),0,'切换环境清空旧预览')
+    assert.equal(await launcher.getByLabel('测试页面地址',{exact:true}).inputValue(),'https://example.test/second')
     await launcher.getByRole('button',{name:'预览最终执行口径',exact:true}).click()
     await launcher.getByRole('button',{name:'确认口径并启动后台执行',exact:true}).waitFor()
     await launcher.getByLabel('测试页面地址',{exact:true}).fill('https://example.test/changed')
@@ -241,6 +248,7 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.waitForURL('**/#/execution-jobs/job-fixture')
     assert.equal(executionInput?.targetUrl,'https://example.test/changed')
     assert.equal(executionInput?.projectId,'source')
+    assert.equal(executionInput?.environmentId,'env-b')
     assert.equal(executionInput?.contract,undefined)
     assert.deepEqual(errors,[])
   } finally {await browser?.close();await server.close()}
