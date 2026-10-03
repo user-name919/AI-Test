@@ -5,6 +5,7 @@ import type { CaseDesign, DesignRun, EvidenceRef } from '@quality-ai/contracts/c
 import { designRequest, useCaseDesign } from './useCaseDesign'
 import SourceViewer from './SourceViewer.vue'
 import CaseDesignReview from './CaseDesignReview.vue'
+import RegenerationPanel from './RegenerationPanel.vue'
 
 const route = useRoute(); const router = useRouter()
 const { design, runs, selected, active, error, loading, busy, refresh, start, cancel } = useCaseDesign()
@@ -82,6 +83,7 @@ function locate(value:EvidenceRef) { reference.value=value; showSource.value=tru
               <article v-for="issue in selected?.output.issues" :key="issue.id"><h3>{{ issue.severity==='blocking'?'阻塞问题':'审查提醒' }} · {{ issue.checkedBy==='rule'?'代码检查':'模型建议' }}</h3><p>{{ issue.reason }}</p></article>
             </section>
           </div>
+          <RegenerationPanel v-if="selected && ['generating','checking'].includes(selected.stage)" :key="`regenerate-${selected.id}`" :design="design" :run="selected" :runs="runs" :disabled="busy||!!active" @generate="start('generating',$event)" @check="start('checking',$event)" />
           <CaseDesignReview v-if="selected?.stage==='checking' && selected.status==='completed'" :key="selected.id" :design-id="design.id" :run="selected" @locate="locate" />
         </template>
       </template>

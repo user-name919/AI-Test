@@ -45,12 +45,12 @@ export function useCaseDesign() {
     loading.value = Boolean(route.params.id); void refresh()
   }, { immediate: true })
   onBeforeUnmount(() => { disposed = true; ++sequence; clearTimeout(timer) })
-  async function start(stage: DesignRun['stage']) {
+  async function start(stage: DesignRun['stage'], options?: {upstreamRunId:string;regeneration?:DesignRun['regeneration']}) {
     if (!design.value || busy.value) return
     const designId = design.value.id
     busy.value = true; error.value = ''
     try {
-      const result = await designRequest<{run: DesignRun}>(`/api/case-designs/${designId}/runs`, { stage, expectedRevision: design.value.revision })
+      const result = await designRequest<{run: DesignRun}>(`/api/case-designs/${designId}/runs`, { stage, expectedRevision: design.value.revision, ...options })
       if (disposed || route.params.id !== designId) return
       await router.replace({query:{...route.query,runId:result.run.id}})
       await refresh()

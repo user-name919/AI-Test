@@ -59,7 +59,19 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
       if(path==='/api/case-designs'){await route.fulfill({json:{designs:imported?[design]:[]}});return}
       if(path===`/api/case-designs/${design.id}`){await route.fulfill({json:{design,runs}});return}
       if(path.endsWith('/runs')) {
-        const body=route.request().postDataJSON(); assert.equal(body.stage,'extracting')
+        const body=route.request().postDataJSON()
+        if(body.stage==='generating'){
+          assert.deepEqual(body.regeneration,{baseRunId:'regenerated',scenarioIds:['s2']})
+          assert.equal(body.upstreamRunId,'planning-fixture')
+          const run={...structuredClone(runs[0]),id:'partial-generated',stage:'generating' as const,regeneration:body.regeneration,upstreamRunId:body.upstreamRunId}
+          runs.unshift(run);await route.fulfill({status:202,json:{run}});return
+        }
+        if(body.stage==='checking'){
+          assert.equal(body.upstreamRunId,'partial-generated')
+          const run={...structuredClone(runs[0]),id:'partial-checked',stage:'checking' as const,upstreamRunId:body.upstreamRunId}
+          runs.unshift(run);await route.fulfill({status:202,json:{run}});return
+        }
+        assert.equal(body.stage,'extracting')
         runs=[{id:'run-fixture',designId:design.id,attempt:1,stage:'extracting',status:'completed',inputRevision:1,inputHash:'fixture',model:'synthetic',modelConfigHash:'hash',protocol:'fixture',promptVersion:'test',skills:[{id:'requirement-facts',version:'1.0.0',hash:'fixture'}],createdAt:design.createdAt,updatedAt:design.createdAt,statistics:{calls:1,inputCharacters:50,outputCharacters:50},output:{facts:[{id:'f1',statement:'支持部分关键词搜索',kind:'explicit',relatedQuestionIds:[],evidence:[{documentId:documents[0].id,blockId:block.id,quote:block.text}]}],questions:[],processedBlockIds:[block.id],unprocessedBlockIds:[]}}]
         await route.fulfill({status:202,json:{run:runs[0]}});return
       }
@@ -153,6 +165,20 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     assert.equal(await page.getByLabel('审核状态',{exact:true}).inputValue(),'draft')
     assert.equal(await page.getByLabel('测试目标',{exact:true}).inputValue(),'新场景建议，尚未人工确认')
     assert.equal(reviews[0].content.cases['new-second'],undefined)
+    runs[0].output.scenarios=[{id:'s1',title:'保留场景',testIntent:'保留人工决定',factIds:[],questionIds:[],coverage:'positive',requiresReview:true},{id:'s2',title:'更新场景',testIntent:'只更新第二个场景',factIds:[],questionIds:[],coverage:'positive',requiresReview:true}]
+    const planning={...structuredClone(runs[0]),id:'planning-fixture',stage:'planning' as const}
+    runs.push(planning)
+    await page.reload()
+    await page.getByRole('button',{name:'仅重新生成所选场景',exact:true}).waitFor()
+    assert.equal(await page.getByRole('button',{name:'仅重新生成所选场景',exact:true}).isDisabled(),true)
+    await page.getByRole('checkbox',{name:/更新场景/}).check()
+    page.once('dialog',dialog=>dialog.accept())
+    await page.getByRole('button',{name:'仅重新生成所选场景',exact:true}).click()
+    await page.getByRole('button',{name:'审查这次局部生成',exact:true}).waitFor()
+    assert.match(page.url(),/runId=partial-generated/)
+    await page.getByRole('button',{name:'审查这次局部生成',exact:true}).click()
+    await page.getByRole('heading',{name:'人工审核用例',exact:true}).waitFor()
+    assert.match(page.url(),/runId=partial-checked/)
     assert.deepEqual(errors,[])
   } finally {await browser?.close();await server.close()}
 })
