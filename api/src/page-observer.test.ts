@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { chromium } from 'playwright'
 import { PageObserver } from './page-observer'
+import { SingleActionExecutor } from './single-action-executor'
 
 test('builds a compact semantic snapshot and resolves element refs for its active snapshot', async () => {
   const browser = await chromium.launch({ headless: true })
@@ -24,7 +25,7 @@ test('builds a compact semantic snapshot and resolves element refs for its activ
     const observer = new PageObserver()
     const first = await observer.observe(page)
     assert.equal(first.title, '学生管理')
-    assert.equal(first.elements.length, 2)
+    assert.equal(first.elements.filter(item=>item.role==='textbox'||item.role==='button').length, 2)
     assert.equal(first.elements[0].name, '学生姓名')
     assert.equal(first.elements[0].required, true)
     assert.equal(first.elements[1].container, '编辑学生')
@@ -92,4 +93,41 @@ test('keeps an element ref bound to the observed DOM node when candidate indexes
   } finally {
     await browser.close()
   }
+})
+
+test('容器注册为真实引用，行按钮有父链，限定弹窗计数不会包含背景且预算缺失不伪造引用', async () => {
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setContent(`<button>保存</button><section role="dialog" aria-label="编辑">
+      <button id="save" onclick="this.dataset.saved='yes'">保存</button></section>
+      <table aria-label="订单"><tbody><tr><td>甲</td><td><button>保存</button></td></tr>
+      <tr><td>乙</td><td><button>保存</button></td></tr></tbody></table>`)
+    const observer = new PageObserver()
+    const snapshot = await observer.observe(page)
+    const dialogRef = snapshot.dialogs[0].elementRef
+    const tableRef = snapshot.tables[0].elementRef
+    assert.ok(dialogRef)
+    assert.ok(tableRef)
+    assert.equal(snapshot.elements.find(element => element.ref === dialogRef)?.role, 'dialog')
+    const row = snapshot.elements.find(element => element.role === 'row' && element.text?.startsWith('乙'))
+    assert.ok(row)
+    assert.equal(row.containerRef, tableRef)
+    assert.ok(snapshot.elements.some(element => element.role === 'button' && element.containerRef === row.ref))
+    const save = snapshot.elements.find(element => element.role === 'button' && element.containerRef === dialogRef)
+    assert.ok(save)
+    const executor = new SingleActionExecutor(page, observer.registry, 'http://localhost', '/private/tmp')
+    assert.equal((await executor.execute(snapshot.snapshotId, { action: 'expectCount', containerRef: dialogRef, role: 'button', name: '保存', exact: true, count: 1, assertionId: 'count' })).ok, true)
+    assert.equal((await executor.execute(snapshot.snapshotId, { action: 'click', elementRef: save.ref })).ok, true)
+    assert.equal(await page.locator('#save').getAttribute('data-saved'), 'yes')
+    const incorrect = await executor.execute(snapshot.snapshotId, { action: 'expectCount', containerRef: dialogRef, role: 'button', name: '保存', exact: true, count: 4, assertionId: 'wrong-count' })
+    assert.equal(incorrect.ok, false)
+    assert.match(incorrect.message, /实际 1 个/)
+    await observer.observe(page)
+    assert.throws(() => observer.registry.resolve(snapshot.snapshotId, dialogRef), /已失效/)
+    const limited = await new PageObserver({ maxElements: 1 }).observe(page)
+    assert.equal(limited.stats.truncated, true)
+    assert.equal(limited.dialogs[0].elementRef, undefined)
+    for (const element of limited.elements) assert.ok(!element.containerRef || limited.elements.some(parent => parent.ref === element.containerRef))
+  } finally { await browser.close() }
 })

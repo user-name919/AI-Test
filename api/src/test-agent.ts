@@ -114,7 +114,7 @@ export class TestAgent {
         id: `${snapshot.snapshotId}:${iteration}:deciding`,
         phase: 'deciding',
         title: '正在分析当前页面',
-        purpose: `已观察到 ${snapshot.stats.discoveredElements} 个交互元素，正在决定下一步操作`,
+        purpose: `已观察到 ${snapshot.stats.discoveredElements} 个控件或容器，正在决定下一步操作`,
         iteration,
         snapshotId: snapshot.snapshotId,
         status: 'running',

@@ -509,6 +509,7 @@ export const semanticElementSchema = z.object({
   expanded: z.boolean().optional(),
   required: z.boolean().optional(),
   container: z.string().optional(),
+  containerRef: z.string().regex(/^e\d+$/).optional(),
 })
 
 export const pageSnapshotSchema = z.object({
@@ -520,11 +521,13 @@ export const pageSnapshotSchema = z.object({
   elements: z.array(semanticElementSchema),
   dialogs: z.array(z.object({
     ref: z.string().regex(/^d\d+$/),
+    elementRef: z.string().regex(/^e\d+$/).optional(),
     title: z.string(),
     modal: z.boolean(),
   })),
   tables: z.array(z.object({
     ref: z.string().regex(/^t\d+$/),
+    elementRef: z.string().regex(/^e\d+$/).optional(),
     name: z.string(),
     columns: z.array(z.string()),
     rowCount: z.number().int().nonnegative(),

@@ -31,6 +31,9 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
     if (tag === 'a') return 'link'
     if (tag === 'textarea') return 'textbox'
     if (tag === 'select') return 'combobox'
+    if (tag === 'table') return 'table'
+    if (tag === 'tr') return 'row'
+    if (tag === 'dialog' || element.matches('.el-dialog,.el-drawer')) return 'dialog'
     if (element instanceof HTMLInputElement) {
       if (element.type === 'checkbox') return 'checkbox'
       if (element.type === 'radio') return 'radio'
@@ -46,10 +49,14 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
     return compact(heading?.textContent) || compact(container.getAttribute('aria-label')) || container.tagName.toLowerCase()
   }
   document.querySelectorAll(`[${refAttribute}]`).forEach(element => element.removeAttribute(refAttribute))
-  const candidates = [...document.querySelectorAll(selector)]
+  const containerSelector = 'dialog,[role="dialog"],.el-dialog,.el-drawer,form,table,[role="table"],tr,[role="row"]'
+  // 原交互元素优先保留预算；容器也注册为 e 引用，而不是不可操作的 d/t 摘要编号。
+  const candidates = [...new Set([...document.querySelectorAll(selector), ...document.querySelectorAll(containerSelector)])]
   const visibleCandidates = candidates.filter(isVisible)
-  const elements = visibleCandidates.slice(0, maxElements).map((element, index) => {
-    const ref = `e${index + 1}`
+  const selectedElements = visibleCandidates.slice(0, maxElements)
+  const references = new Map(selectedElements.map((element, index) => [element, `e${index + 1}`]))
+  const elements = selectedElements.map(element => {
+    const ref = references.get(element)
     element.setAttribute(refAttribute, `${snapshotId}:${ref}`)
     const label = explicitLabel(element) || labelledBy(element) || compact(element.getAttribute('aria-label'))
     const placeholder = compact(element.getAttribute('placeholder')) || undefined
@@ -92,13 +99,15 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       expanded,
       required,
       container: containerName(element),
+      containerRef: references.get(element.parentElement?.closest(containerSelector)),
     }
   })
-  const dialogs = [...document.querySelectorAll('[role="dialog"],.el-dialog,.el-drawer')]
+  const dialogs = [...document.querySelectorAll('dialog,[role="dialog"],.el-dialog,.el-drawer')]
     .filter(isVisible)
     .slice(0, 10)
     .map((dialog, index) => ({
       ref: `d${index + 1}`,
+      elementRef: references.get(dialog),
       title: compact(dialog.querySelector('[role="heading"],h1,h2,h3,.el-dialog__title,.el-drawer__title')?.textContent)
         || compact(dialog.getAttribute('aria-label')),
       modal: dialog.getAttribute('aria-modal') === 'true' || dialog.classList.contains('el-dialog'),
@@ -117,6 +126,7 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       .filter(row => row.length > 0)
     return {
       ref: `t${index + 1}`,
+      elementRef: references.get(table),
       name: compact(table.getAttribute('aria-label')) || compact(table.querySelector('caption')?.textContent),
       columns,
       rowCount: rows.length,
