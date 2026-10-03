@@ -801,6 +801,7 @@ onMounted(loadSavedAnalysis)
 <template>
   <div class="app-shell">
     <aside class="sidebar">
+      <RouterLink to="/case-designs" style="color:#d8d2ff;padding:12px 20px;font-size:16px">用例设计 · 独立入口</RouterLink>
       <div class="brand"><span>知</span><div><strong>知测 AI</strong><small>测试工作台</small></div></div>
       <nav>
         <button aria-label="版本中心" title="版本中心" :class="{active:workspaceView==='version'}" @click="workspaceView='version'"><i>版</i><span>版本中心</span></button><button aria-label="需求中心" title="需求中心" :class="{active:workspaceView==='requirements'}" @click="workspaceView='requirements'"><i>需</i><span>需求中心</span><em>{{ requirements.length }}</em></button><button aria-label="用例资产" title="用例资产" :class="{active:workspaceView==='cases'}" @click="workspaceView='cases'"><i>例</i><span>用例资产</span><em>{{ totalCases }}</em></button><button aria-label="执行中心" title="执行中心" :class="{active:workspaceView==='executions'}" @click="workspaceView='executions'"><i>执</i><span>执行中心</span><em>{{ executionHistory.length }}</em></button><button aria-label="质量记忆" title="质量记忆" :class="{active:workspaceView==='memory'}" @click="workspaceView='memory'"><i>忆</i><span>质量记忆</span><em>{{ memoryCount }}</em></button>
