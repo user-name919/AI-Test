@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs'
 import { analyzePrd, type SourceDocument } from '../../api/src/model'
 import { getModelConfig } from '../../api/src/model-config'
 import { createEvidenceDocuments } from '../../api/src/modules/case-design/documents'
-import { extractFacts } from '../../api/src/modules/case-design/fact-extractor'
+import { extractFacts, factsPromptVersion } from '../../api/src/modules/case-design/fact-extractor'
 import { planFromFacts } from '../../api/src/modules/case-design/scenario-planner'
-import { generateCases } from '../../api/src/modules/case-design/case-generator'
+import { generateCases, generatingPromptVersion } from '../../api/src/modules/case-design/case-generator'
 import { checkCaseQuality } from '../../api/src/modules/case-design/quality-checker'
 import { loadStageSkills } from '../../api/src/modules/case-design/skill-loader'
 import type { CaseDesign, DesignRun } from '@quality-ai/contracts/case-design'
@@ -49,6 +49,7 @@ export default class CaseDesignProvider {
       for(const stage of ['extracting','modeling','planning','generating','checking'] as const){
         failedStage=stage
         run.stage=stage;run.status='running'
+        run.promptVersion=stage==='generating'?generatingPromptVersion:stage==='extracting'?factsPromptVersion:`${stage}-v1`
         const skills=loadStageSkills(stage,this.variant==='skills')
         run.skills=skills.map(({id,version,hash})=>({id,version,hash}))
         if(stage==='extracting')await extractFacts(design,run,config,signal,()=>{},skills)
