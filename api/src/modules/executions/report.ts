@@ -10,7 +10,7 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
   const selected=execution.caseSnapshots?.length??results.length
   const passed=results.filter(item=>item.status==='passed').length
   const verified=results.filter(item=>item.status==='passed'||item.status==='failed').length
-  const lines=[`# ${text(execution.name)} · 执行报告`,'',`- 执行 ID：${text(execution.id)}`,`- 批次状态：${labels[execution.status]}`,`- 测试地址：${text(execution.targetUrl)}`,`- 执行模式：${execution.mode==='agent'?'动态 Agent':execution.mode==='plan'?'固定计划':'历史未记录'}`,`- 开始：${text(execution.startedAt)}；结束：${text(execution.finishedAt)}；耗时 ${execution.durationMs} ms`,'', '本报告来自当次保存的契约和运行事实，不重新调用模型评判。失败不直接等同于产品缺陷，需结合证据定位。','']
+  const lines=[`# ${text(execution.name)} · 执行报告`,'',`- 执行 ID：${text(execution.id)}`,`- 批次状态：${labels[execution.status]}`,`- 测试地址：${text(execution.targetUrl)}`,`- 执行模式：${execution.mode==='agent'?'动态 Agent':execution.mode==='plan'?'固定计划':'历史未记录'}`,execution.interruptionRecovery?`- 实际起止与耗时：未知；中断恢复记录时间：${text(execution.interruptionRecovery.recoveredAt)}`:`- 开始：${text(execution.startedAt)}；结束：${text(execution.finishedAt)}；耗时 ${execution.durationMs} ms`,'', '本报告来自当次保存的契约和运行事实，不重新调用模型评判。失败不直接等同于产品缺陷，需结合证据定位。','']
   if(execution.rerunOf)lines.push(`重跑来源：${text(execution.rerunOf)}（独立记录，未覆盖原执行）`,'')
   if(execution.sourceProject)lines.push(`源码参考：${text(execution.sourceProject.id)} / 分支 ${text(execution.sourceProject.branch)} / SHA ${text(execution.sourceProject.commit)}`,'源码版本不是测试环境部署版本证明。','')
   else lines.push('源码参考：本次未记录。','')

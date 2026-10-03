@@ -14,6 +14,7 @@ import { acquireChangeSetWorktree, releaseChangeSetWorktree } from '../../integr
 import { loadProjectConfigs } from '../../project-knowledge/config'
 import { LocalProjectKnowledgeProvider } from '../../project-knowledge/local-project-provider'
 import { getAutomationPlanById } from '../cases/plan-repository'
+import { interruptedExecution } from './interruption'
 
 let initialized = false
 let working = false
@@ -28,6 +29,16 @@ export function initializeExecutionJobs() {
   const stale = database.prepare("SELECT job_json FROM execution_jobs WHERE status IN ('queued','running','cancelling')").all() as Array<{job_json:string}>
   for (const row of stale) {
     const job = JSON.parse(row.job_json) as ExecutionJob
+    const existing = getExecutionById(job.id)
+    if(existing){
+      job.executionId=existing.id
+      job.status=existing.status==='cancelled'?'cancelled':'completed'
+      writeJob(job)
+      continue
+    }
+    const recovered=interruptedExecution(job)
+    saveExecution(recovered,{environmentId:job.environmentId,projectId:job.projectId,automationPlanId:job.automationPlanId,rerunOf:job.rerunOf,caseKeys:job.snapshots.map(item=>item.resolved.caseKey),plan:job.executionPlan})
+    job.executionId=recovered.id
     job.status = 'interrupted'
     job.error = '服务已重启，原浏览器上下文丢失；未自动重放可能有副作用的操作'
     writeJob(job)
@@ -131,6 +142,7 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
   if (queue.length >= 20) throw new Error('执行队列已满，请等待当前任务完成')
   const now = new Date().toISOString()
   const job: ExecutionJob = {id:randomUUID(),status:'queued',mode:request.mode,targetUrl:request.targetUrl,snapshots:preparation.snapshots,createdAt:now,updatedAt:now,
+    completedCases:[],
     environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,automationPlanId:savedPlan?.id??replay?.automationPlanId,rerunOf:replay?.id,
     sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit,worktree:project.worktree} : undefined}
   writeJob(job)
@@ -187,9 +199,19 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
       }
       controller.signal.throwIfAborted()
       checkDeployment()
+      job.executionPlan=plan
+      writeJob(job)
+      const checkpoints = {
+        onCaseStarted(value:NonNullable<ExecutionJob['activeCase']>){job.activeCase=value;writeJob(job)},
+        onCaseCompleted(value:NonNullable<ExecutionJob['completedCases']>[number]){
+          job.completedCases=[...(job.completedCases??[]).filter(item=>item.caseKey!==value.caseKey),value]
+          job.activeCase=undefined
+          writeJob(job)
+        },
+      }
       const result = request.mode === 'agent'
-        ? await runAgentTest(preparation.goals,environment?.storageStatePath,{projectProvider:executionProvider!,executionId:job.id,onEvent,signal:controller.signal})
-        : await runAutomationPlan(plan,environment?.storageStatePath,{executionId:job.id,onEvent,signal:controller.signal,resolveTestData:(binding,snapshot)=>proposeFixedPlanData(binding,snapshot,controller.signal)})
+        ? await runAgentTest(preparation.goals,environment?.storageStatePath,{...checkpoints,projectProvider:executionProvider!,executionId:job.id,onEvent,signal:controller.signal})
+        : await runAutomationPlan(plan,environment?.storageStatePath,{...checkpoints,executionId:job.id,onEvent,signal:controller.signal,resolveTestData:(binding,snapshot)=>proposeFixedPlanData(binding,snapshot,controller.signal)})
       result.caseSnapshots = job.snapshots
       result.sourceProject = job.sourceProject
       result.deploymentConfirmation = deployment

@@ -25,6 +25,8 @@ interface AutomationRunnerOptions {
   launchBrowser?: () => Promise<Browser>
   cases?: Array<{ key: string; title: string }>
   onEvent?: (event: LiveExecutionEvent) => void
+  onCaseStarted?: (value: Pick<CaseExecutionResult, 'caseKey' | 'startedFromUrl'>) => void
+  onCaseCompleted?: (value: CaseExecutionResult) => void
   resolveTestData?: (binding:TestDataBinding,snapshot:PageSnapshot)=>Promise<ResolveTestDataDecision>
 }
 
@@ -119,6 +121,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
       caseResults.push(checkpoint)
       let chunkStarted = false
       try {
+        options.onCaseStarted?.({caseKey:checkpoint.caseKey,startedFromUrl:checkpoint.startedFromUrl})
         if(casePlan.preparationError){
           checkpoint.status='blocked'
           checkpoint.error=casePlan.preparationError
@@ -255,6 +258,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
         }
         if (chunkStarted) await context.tracing.stopChunk({ path: tracePath }).catch(() => undefined)
         if (existsSync(tracePath)) checkpoint.tracePath = tracePath
+        options.onCaseCompleted?.(structuredClone(checkpoint))
       }
       if (infrastructureError || options.signal?.aborted) break
     }

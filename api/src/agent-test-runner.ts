@@ -22,6 +22,8 @@ export interface AgentTestRunnerOptions {
   artifactRoot?: string
   launchBrowser?: () => Promise<Browser>
   onEvent?: (event: LiveExecutionEvent) => void
+  onCaseStarted?: (value: Pick<CaseExecutionResult, 'caseKey' | 'startedFromUrl'>) => void
+  onCaseCompleted?: (value: CaseExecutionResult) => void
 }
 
 // Session failures are observed at the browser boundary, not inferred from an Agent's business verdict.
@@ -142,6 +144,7 @@ export async function runAgentTest(
       let chunkStarted = false
       try {
         if (sessionFailure()) throw new Error(sessionFailure())
+        options.onCaseStarted?.({caseKey:checkpoint.caseKey,startedFromUrl:checkpoint.startedFromUrl})
         await context.tracing.startChunk({ title: `${contract.caseKey} ${goal.name}` })
         chunkStarted = true
         const observer = new PageObserver()
@@ -203,6 +206,7 @@ export async function runAgentTest(
         }
         if (chunkStarted) await context.tracing.stopChunk({ path: tracePath }).catch(() => undefined)
         if (existsSync(tracePath)) checkpoint.tracePath = tracePath
+        options.onCaseCompleted?.(structuredClone(checkpoint))
       }
       previousCaseSummaries.push({
         caseKey: checkpoint.caseKey, title: checkpoint.title, status: checkpoint.status, summary: summary.slice(0, 500),

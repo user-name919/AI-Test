@@ -402,6 +402,7 @@ export interface ExecutionCaseSnapshot {
 }
 
 export interface ExecutionResult {
+  interruptionRecovery?: { recoveredAt: string; timingsUnknown: true }
   deploymentConfirmation?: import('./regressions').DeploymentConfirmation
   id: string
   name: string

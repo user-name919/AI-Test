@@ -24,7 +24,7 @@ process.env.QUALITY_AI_DATA_ROOT=directory
 const {createApiServer}=await import('./app')
 const {database}=await import('./storage/database')
 const {saveAnalysis,saveReview}=await import('./modules/requirements/repository')
-const {saveExecution}=await import('./modules/executions/repository')
+const {saveExecution,getExecutionById}=await import('./modules/executions/repository')
 const {listCaseAssets}=await import('./modules/cases/repository')
 const {saveAutomationPlan}=await import('./modules/cases/plan-repository')
 
@@ -91,6 +91,8 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   assert.deepEqual(result.caseSnapshots,current.snapshots)
   assert.equal(result.caseResults.length,1)
   assert.equal(result.caseResults[0].passedAssertions.length,1)
+  assert.deepEqual(current.completedCases,result.caseResults,'真实浏览器完成的逐用例结果应独立落盘')
+  assert.equal(current.activeCase,undefined)
   assert.equal(modelRequests.length,1,'已取消排队任务不能调用模型或浏览器')
   const automationPlanId='11111111-1111-4111-8111-111111111111'
   saveAutomationPlan({id:automationPlanId,analysisId:'synthetic',caseKeys:['0-TC-0'],plan:result.plan,createdAt:new Date().toISOString()})
@@ -192,5 +194,17 @@ test('持久任务先返回ID，断开创建请求后实际浏览器执行，游
   database.prepare('INSERT INTO execution_jobs VALUES (?,?,?)').run('orphan','running',JSON.stringify(orphan))
   const restart=execFileSync(process.execPath,['--import','tsx','--input-type=module','-e',"const m=await import('./src/modules/executions/jobs.ts');m.initializeExecutionJobs();console.log(JSON.stringify(m.getExecutionJob('orphan')));"],{cwd:import.meta.dirname+'/..',env:process.env,encoding:'utf8'})
   assert.equal(JSON.parse(restart.trim()).status,'interrupted')
+  const recovered=getExecutionById('orphan')!
+  assert.equal(recovered.caseResults?.[0].status,'not_run')
+  assert.equal(recovered.interruptionRecovery?.timingsUnknown,true)
+  const interruptedId='55555555-5555-4555-8555-555555555555'
+  const interrupted={...current,id:interruptedId,status:'running',snapshots:[current.snapshots[0],{...current.snapshots[0],resolved:{...current.snapshots[0].resolved,caseKey:'active'}},{...current.snapshots[0],resolved:{...current.snapshots[0].resolved,caseKey:'later'}}],activeCase:{caseKey:'active',startedFromUrl:target}}
+  database.prepare('INSERT INTO execution_jobs VALUES (?,?,?)').run(interruptedId,'running',JSON.stringify(interrupted))
+  execFileSync(process.execPath,['--import','tsx','--input-type=module','-e',"const m=await import('./src/modules/executions/jobs.ts');m.initializeExecutionJobs();"],{cwd:import.meta.dirname+'/..',env:process.env,encoding:'utf8'})
+  const checkpointReport=(await(await fetch(url+`/api/executions/${interruptedId}`)).json()).execution
+  assert.deepEqual(checkpointReport.caseResults.map((item:{status:string})=>item.status),['passed','infrastructure_failed','not_run'])
+  assert.deepEqual(checkpointReport.caseResults[0],result.caseResults[0])
+  assert.equal(checkpointReport.caseResults[1].passedAssertions.length,0)
+  assert.equal(checkpointReport.caseResults[1].startedFromUrl,target)
   assert.equal((await(await fetch(url+`/api/execution-jobs/${job.id}`)).json()).job.status,'completed')
 })

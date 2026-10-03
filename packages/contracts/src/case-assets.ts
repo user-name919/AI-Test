@@ -65,6 +65,9 @@ export interface ExecutionJob {
   environmentId?: string
   projectId?: string
   sourceProject?: SourceProjectSnapshot
+  completedCases?: import('./contracts').CaseExecutionResult[]
+  activeCase?: {caseKey:string;startedFromUrl:string}
+  executionPlan?: import('./contracts').AutomationPlan
 }
 
 export interface ExecutionArtifact {
