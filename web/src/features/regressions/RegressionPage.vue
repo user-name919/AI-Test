@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import type { ChangeSet, RegressionAnalysis } from '@quality-ai/contracts/regressions'
 import NewRegression from './NewRegression.vue'
 import ChangeSetView from './ChangeSetView.vue'
+import RegressionReview from './RegressionReview.vue'
 import ContractView from '../case-design/ContractView.vue'
 import { regressionRequest } from './api'
 
@@ -12,7 +13,7 @@ const list=ref<Array<Omit<RegressionAnalysis,'sourceImpact'|'generation'> & {com
 const ranges=ref<Array<Omit<ChangeSet,'facts'> & {targetSha:string;fileCount:number}>>([])
 const analysis=ref<RegressionAnalysis>();const changeSet=ref<ChangeSet>()
 const error=ref('');const actionError=ref('');const help=ref(false);const cancelling=ref(false)
-const statusNames={queued:'排队中',running:'分析中',completed:'分析完成，等待人工审核',failed:'分析失败，已保存部分成果',cancelled:'已取消',interrupted:'服务中断'}
+const statusNames={queued:'排队中',running:'分析中',completed:'分析完成（审核状态见人工范围）',failed:'分析失败，已保存部分成果',cancelled:'已取消',interrupted:'服务中断'}
 const stageNames={source:'读取源码影响线索',generating:'生成风险与回归建议',finished:'阶段处理结束'}
 const levels={high:'高',medium:'中',low:'低'}
 let epoch=0;let busyEpoch:number|undefined;let timer:ReturnType<typeof setTimeout>|undefined
@@ -69,6 +70,7 @@ onUnmounted(()=>{epoch++;clearTimeout(timer)})
     <template v-else-if="analysis">
       <section class="reg-card"><h2>{{ analysis.projectId }} · {{ statusNames[analysis.status] }}</h2><p>{{ stageNames[analysis.stage] }} · 最近更新 {{ analysis.updatedAt }}</p><p>任务 ID：{{ analysis.id }}<br />固定目标 SHA：{{ analysis.targetSha }}</p><p v-if="analysis.error" class="reg-error">{{ analysis.error }}</p><button v-if="['queued','running'].includes(analysis.status)" :disabled="cancelling" @click="cancel">取消分析</button><RouterLink v-else :to="{path:'/regressions/new',query:{changeSet:analysis.changeSetId}}">以此冻结范围创建新分析</RouterLink></section>
       <ChangeSetView v-if="changeSet" :change-set="changeSet" />
+      <RegressionReview v-if="analysis.generation&&!['queued','running'].includes(analysis.status)" :key="analysis.id" :regression-id="analysis.id" />
       <section v-if="analysis.sourceImpact" class="reg-card"><h2>源码影响候选</h2><p>基于静态 import 等词法线索，可能误匹配；不是完整调用图，也不是已验证页面行为。</p><ul class="reg-warning"><li v-for="warning in analysis.sourceImpact.warnings" :key="warning">{{ warning }}</li></ul>
         <p v-if="analysis.sourceImpact.skippedShas.length" class="reg-warning">未分析版本：{{ analysis.sourceImpact.skippedShas.join('、') }}</p>
         <details v-for="tree in analysis.sourceImpact.trees" :key="tree.sha"><summary>{{ tree.sha.slice(0,12) }} · 影响候选 {{ tree.affectedFiles.length }} 个 · 未解析 {{ tree.unresolved.length }} 项 · 跳过 {{ tree.skippedFiles.length }} 个文件</summary><h3>候选影响文件</h3><ul><li v-for="path in tree.affectedFiles" :key="path">{{ path }}</li></ul><h3>引用线索</h3><ul><li v-for="(edge,index) in tree.edges" :key="index">{{ edge.from }}:{{ edge.line }} → {{ edge.to }}（{{ edge.specifier }}）</li></ul><h3>未解析依赖</h3><ul><li v-for="(item,index) in tree.unresolved" :key="index">{{ item.path }}:{{ item.line }} · {{ item.expression }} · {{ item.reason }}</li></ul><details><summary>跳过文件及原因</summary><ul><li v-for="item in tree.skippedFiles" :key="item.path">{{ item.path }} · {{ item.reason }}</li></ul></details></details>

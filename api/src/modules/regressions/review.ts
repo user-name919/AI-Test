@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
-import { saveRegressionReviewSchema, type RegressionAnalysis, type RegressionReview } from '@quality-ai/contracts/regressions'
+import { saveRegressionReviewSchema, type RegressionAnalysis, type RegressionReview, type RegressionReviewItems } from '@quality-ai/contracts/regressions'
 import { database } from '../../storage/database'
 import { getRegression } from './jobs'
 
 export function initializeRegressionReviews() {
   database.exec('CREATE TABLE IF NOT EXISTS regression_reviews (regression_id TEXT NOT NULL, revision INTEGER NOT NULL, record_json TEXT NOT NULL, PRIMARY KEY(regression_id,revision))')
 }
-export function regressionReviewItems(analysis: RegressionAnalysis) {
+export function regressionReviewItems(analysis: RegressionAnalysis): RegressionReviewItems {
   const batches = analysis.generation?.batches ?? []
   return {
     risks: batches.flatMap(batch => batch.suggestions.risks.map(risk => ({ key: `${batch.id}:${risk.id}`, batchId: batch.id, original: risk }))),

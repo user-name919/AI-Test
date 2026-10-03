@@ -66,6 +66,10 @@ export const regressionSuggestionSchema = z.object({
   limitations: z.array(z.string().min(1).max(2000)).max(30),
 }).strict()
 export type RegressionSuggestions = z.infer<typeof regressionSuggestionSchema>
+export interface RegressionReviewItems {
+  risks: Array<{key:string;batchId:string;original:RegressionSuggestions['risks'][number]}>
+  cases: Array<{key:string;batchId:string;riskKeys:string[];original:RegressionSuggestions['cases'][number]}>
+}
 export interface RegressionEvidence {
   id: string
   kind: 'patch_excerpt' | 'import_candidate'
