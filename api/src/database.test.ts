@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import test, { after } from 'node:test'
 import type { CaseReview, ExecutionResult, PrdAnalysis } from '@quality-ai/contracts'
 import { workspaceRoot } from './config/paths'
+import { migrateDatabase } from './storage/migrations'
 
 const temporaryDirectory = mkdtempSync(join(tmpdir(), 'quality-ai-database-test-'))
 const databasePath = join(temporaryDirectory, 'quality-ai.sqlite')
@@ -94,6 +95,18 @@ test('legacy relative login-state paths resolve against repository root without 
   try {
     const row = inspection.prepare('SELECT storage_state_path FROM test_environments WHERE id=?').get(environment.id) as { storage_state_path: string }
     assert.equal(row.storage_state_path, 'data/auth/legacy.json')
+  } finally { inspection.close() }
+})
+
+test('shared migrations can run repeatedly without changing existing domain records', () => {
+  const inspection = new DatabaseSync(databasePath)
+  try {
+    const before = inspection.prepare('SELECT * FROM analyses WHERE id=?').get('legacy-analysis')
+    const reviewBefore = inspection.prepare('SELECT * FROM analysis_reviews WHERE analysis_id=?').get('legacy-analysis')
+    migrateDatabase(inspection)
+    migrateDatabase(inspection)
+    assert.deepEqual(inspection.prepare('SELECT * FROM analyses WHERE id=?').get('legacy-analysis'), before)
+    assert.deepEqual(inspection.prepare('SELECT * FROM analysis_reviews WHERE analysis_id=?').get('legacy-analysis'), reviewBefore)
   } finally { inspection.close() }
 })
 

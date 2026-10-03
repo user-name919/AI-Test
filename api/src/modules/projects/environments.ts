@@ -3,7 +3,7 @@ import { json, readJson } from '../../http/response'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { storageStateSchema } from '@quality-ai/contracts'
-import { getEnvironmentById, getLatestEnvironment, saveEnvironment, setEnvironmentStorageState } from '../../database'
+import { getEnvironmentById, getLatestEnvironment, saveEnvironment, setEnvironmentStorageState } from '../projects/environment-repository'
 import { getRuntimePaths } from '../../config/paths'
 
 

@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { json, readJson } from '../../http/response'
 import { randomUUID } from 'node:crypto'
-import { getAnalysisById, saveAutomationPlan } from '../../database'
+import { getAnalysisById } from '../requirements/repository'
+import { saveAutomationPlan } from '../cases/plan-repository'
 import { resolveCaseExecutionContract } from '../../review-execution-context'
 import { generateCasePlans } from './plan-generation'
 
