@@ -1,0 +1,22 @@
+{
+  "name": "@quality-ai/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../.env.local --import tsx src/index.ts",
+    "start": "node --env-file-if-exists=../.env.local --import tsx src/index.ts",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "node scripts/test.mjs"
+  },
+  "dependencies": {
+    "@quality-ai/contracts": "workspace:*",
+    "jsonrepair": "3.15.0",
+    "pdfjs-dist": "6.2.108",
+    "playwright": "1.62.1",
+    "zod": "4.1.12",
+    "tsx": "4.20.6"
+  }
+}

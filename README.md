@@ -5,11 +5,22 @@
 ## 本地运行
 
 ```bash
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 本地页面运行在 `http://127.0.0.1:4173`，TypeScript API 运行在 `http://127.0.0.1:8787`。
+
+要求 Node >=22.13.0、pnpm 10.23.0。目录划分：`web/` 为 Vue 前端、`api/` 为 Node API、`packages/contracts/` 为前后端共享类型和校验；`data/`、`config/` 留在仓库根目录。内部依赖通过 `workspace:*` 链接，不再跨应用目录引用 shared 源文件。
+
+常用命令：
+
+- `pnpm dev:web` / `pnpm dev:api`：分别启动前后端；也可在对应子目录运行 `pnpm dev`。
+- `pnpm build`：构建前端并检查 API/契约类型；前端输出为 `web/dist/`。
+- `pnpm start:api`：以 tsx 运行 API 源码，不需要额外生成后端 JavaScript；使用仓库根目录的 `.env.local`（可缺省）。
+- `pnpm typecheck` / `pnpm lint`：统一检查，lint 包含 Vue 页面。
+- `pnpm --filter @quality-ai/api test -- src/config/paths.test.ts`：只跑指定后端测试。
+- `pnpm test:ui`：使用合成数据进行本地 Chromium 页面验收；不操作公司业务环境。
 
 持久数据路径以仓库根目录为基准，不随终端启动目录变化。默认数据库位于 `data/quality-ai.sqlite`，登录态位于 `data/auth`，执行证据位于 `data/artifacts`，源码项目配置位于 `config/projects.local.json`；已有文件无需移动。
 
@@ -30,8 +41,8 @@ API_PORT=8787
 生产构建与静态预览：
 
 ```bash
-npm run build
-npm run start
+pnpm build
+pnpm start
 ```
 
 ## 连接本地被测项目
@@ -97,9 +108,9 @@ npx playwright codegen --save-storage=storage-state.json https://你的测试环
 
 ## 常用命令
 
-- `npm run dev`：启动开发服务器
-- `npm run build`：生成生产构建
-- `npm run test`：执行服务端单元测试和生产构建
-- `npm run test:unit`：执行服务端单元测试
-- `npm run typecheck`：检查 Vue、API 与共享契约类型
-- `npm run lint`：检查构建与服务端配置代码
+- `pnpm dev`：启动开发服务器
+- `pnpm build`：生成前端生产构建并检查 API/契约类型
+- `pnpm test`：执行服务端单元测试和构建
+- `pnpm test:unit`：执行服务端单元测试
+- `pnpm typecheck`：检查 Vue、API 与共享契约类型
+- `pnpm lint`：检查前后端、共享契约与构建配置代码

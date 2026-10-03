@@ -1,0 +1,7 @@
+packages:
+  - web
+  - api
+  - packages/*
+overrides:
+  # 统一 Vite 可选 peer 的解析版本，避免两个 tsx peer 环境产生互不兼容的 Vite 类型。
+  tsx: 4.20.6

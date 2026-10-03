@@ -2,30 +2,34 @@
   "name": "quality-ai-workspace",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.23.0",
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "node --watch --env-file=.env.local --import tsx server/index.ts",
-    "dev:web": "vite --host 127.0.0.1 --port 4173",
-    "build": "vite build",
-    "start": "vite preview",
-    "test": "npm run test:unit && npm run build",
-    "test:unit": "node --import tsx --test 'server/**/*.test.ts'",
-    "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint build worker server shared vite.config.ts",
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:api": "pnpm --filter @quality-ai/api dev",
+    "dev:web": "pnpm --filter @quality-ai/web dev",
+    "build": "pnpm -r build",
+    "start": "pnpm --filter @quality-ai/web preview",
+    "start:api": "pnpm --filter @quality-ai/api start",
+    "test": "pnpm test:unit && pnpm build",
+    "test:unit": "pnpm --filter @quality-ai/api test && pnpm test:integration",
+    "test:integration": "node --import tsx --test tests/integration/*.test.ts",
+    "test:ui": "node --import tsx --test tests/ui/*.test.ts",
+    "typecheck": "pnpm -r typecheck && vue-tsc --noEmit -p tsconfig.json",
+    "lint": "eslint build worker api/src api/scripts packages/contracts/src web/src web/vite.config.ts tests",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "drizzle-orm": "0.45.2",
-    "jsonrepair": "^3.15.0",
-    "pdfjs-dist": "^6.2.108",
-    "playwright": "^1.62.1",
-    "vue": "3.5.22",
-    "zod": "4.1.12"
+    "drizzle-orm": "0.45.2"
   },
   "devDependencies": {
+    "@quality-ai/contracts": "workspace:*",
+    "playwright": "1.62.1",
+    "vue": "3.5.22",
+    "eslint-plugin-vue": "10.5.1",
+    "vue-eslint-parser": "10.2.0",
     "@cloudflare/vite-plugin": "1.37.1",
     "@eslint/js": "9.39.4",
     "@types/node": "22.19.19",
@@ -38,7 +42,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.3",
     "vite": "8.0.13",
-    "vue-tsc": "^3.3.9",
+    "vue-tsc": "3.3.9",
     "wrangler": "4.92.0"
   },
   "type": "module"

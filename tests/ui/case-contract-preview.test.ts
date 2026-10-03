@@ -3,8 +3,8 @@ import test from 'node:test'
 import { createServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
-import type { SavedAnalysis } from '../../shared/contracts'
-import { resolveCaseExecutionContract } from '../../server/review-execution-context'
+import type { SavedAnalysis } from '@quality-ai/contracts'
+import { resolveCaseExecutionContract } from '../../api/src/review-execution-context'
 
 test('用例详情展示人工契约，动态与固定模式分别显示服务端就绪原因', async () => {
   const analysis: SavedAnalysis = {
@@ -24,7 +24,7 @@ test('用例详情展示人工契约，动态与固定模式分别显示服务�
       testCases: [{ title: '部分关键词搜索', type: '交互', priority: 'P1', preconditions: [], steps: ['旧示例步骤，不应再展示为执行口径'], expectedResult: '旧示例断言', blockedByQuestion: false }],
     }] },
   }
-  const server = await createServer({ configFile: false, plugins: [vue()], server: { host: '127.0.0.1', port: 0 } })
+  const server = await createServer({ root: new URL('../../web', import.meta.url).pathname, configFile: false, plugins: [vue()], server: { host: '127.0.0.1', port: 0 } })
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
   try {
     await server.listen()

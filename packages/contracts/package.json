@@ -1,0 +1,17 @@
+{
+  "name": "@quality-ai/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/contracts.ts",
+    "./live-execution": "./src/live-execution.ts",
+    "./review-state": "./src/review-state.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src"
+  },
+  "dependencies": { "zod": "4.1.12" }
+}

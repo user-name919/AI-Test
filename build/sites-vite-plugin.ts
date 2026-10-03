@@ -15,7 +15,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 // Packages Sites metadata and migrations after Vite finishes compiling.
-export function sites(): Plugin {
+export function sites(sourceRoot?: string): Plugin {
   let root = process.cwd();
 
   return {
@@ -27,9 +27,9 @@ export function sites(): Plugin {
     async closeBundle() {
       const outputDirectory = resolve(root, "dist", ".openai");
       const serverDirectory = resolve(root, "dist", "server");
-      const hostingConfig = resolve(root, ".openai", "hosting.json");
-      const drizzleSource = resolve(root, "drizzle");
-      const workerEntry = resolve(root, "worker", "index.js");
+      const hostingConfig = resolve(sourceRoot ?? root, ".openai", "hosting.json");
+      const drizzleSource = resolve(sourceRoot ?? root, "drizzle");
+      const workerEntry = resolve(sourceRoot ?? root, "worker", "index.js");
 
       await rm(outputDirectory, { recursive: true, force: true });
       await mkdir(outputDirectory, { recursive: true });
