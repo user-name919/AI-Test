@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { caseExecutionContractSchema } from './contracts'
 
 export const evidenceRefSchema = z.object({ documentId: z.string().min(1), blockId: z.string().min(1), quote: z.string().min(1) })
 export const documentBlockSchema = z.object({
@@ -46,6 +47,20 @@ export const scenarioSchema = z.object({
 export const scenarioPlanSchema = z.object({scenarios:z.array(scenarioSchema)})
 export type FactModel = z.infer<typeof factModelSchema>
 export type ScenarioDraft = z.infer<typeof scenarioSchema> & { requiresReview: boolean }
+export const generatedCaseSchema = z.object({
+  title: z.string().trim().min(1),
+  contract: caseExecutionContractSchema,
+  verification: z.enum(['browser', 'api', 'manual']),
+  verificationReason: z.string().trim().min(1),
+})
+export const caseGenerationSchema = z.object({ cases: z.array(generatedCaseSchema).min(1) })
+export type CaseDesignDraft = z.infer<typeof generatedCaseSchema> & {
+  id: string
+  scenarioId: string
+  factIds: string[]
+  questionIds: string[]
+  requiresReview: true
+}
 export interface DesignRun {
   id: string
   designId: string
@@ -63,6 +78,6 @@ export interface DesignRun {
   createdAt: string
   updatedAt: string
   error?: string
-  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[] }
+  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[]; cases?: CaseDesignDraft[]; processedScenarioIds?: string[]; unprocessedScenarioIds?: string[] }
   statistics: { calls: number; inputCharacters: number; outputCharacters: number }
 }

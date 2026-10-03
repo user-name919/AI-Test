@@ -20,12 +20,23 @@ let failAt = -1
 const instructions: string[] = []
 let omitModelFact = false
 let omitScenarios = false
+let generationInvalid = false
+let generationCalls = 0
+let failGenerationAt = -1
 const model = createServer(async (request,response) => {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.from(chunk))
   const body = JSON.parse(Buffer.concat(chunks).toString())
   instructions.push(body.instructions)
   const message = body.input[0].content as string
+  if (body.instructions.includes('阶段：generating')) {
+    generationCalls++
+    response.writeHead(200, {'content-type':'application/json'})
+    response.end(JSON.stringify({output_text:JSON.stringify({cases:[{
+      title:'完整名称搜索', verification:'browser', verificationReason:'浏览器可观察输入与筛选结果',
+      contract:{objective:'验证完整名称搜索',preconditions:['打开列表'],steps:['读取真实选项完整名称并搜索'],expectedAssertions:generationInvalid || generationCalls===failGenerationAt?[]:['来源选项仍存在'],dataBindings:[{id:'query',label:'搜索词',mode:'runtime_dom',targetHint:'搜索框',businessIntent:'完整搜索',strategy:'visible_option_full',constraints:{mustComeFromCurrentDom:true}}],forbiddenBehaviors:['不得编造账号数据'],uncertainties:[]},
+    }]})})); return
+  }
   if (body.instructions.includes('阶段：modeling') || body.instructions.includes('阶段：planning')) {
     const input = JSON.parse(message.split('\n\nReturn only')[0])
     const output = body.instructions.includes('阶段：modeling')
@@ -132,6 +143,54 @@ test('skills can be disabled for reproducible evaluation without changing input 
   assert.deepEqual(run.skills,[])
   assert.equal(instructions.at(-1)!.includes('平台技能'),false)
   assert.equal(run.inputHash,design.inputHash)
+})
+
+test('generating consumes test-data skill, fixes provenance and retains earlier scenarios on failure',async()=> {
+  const design=await create()
+  assert.equal((await post(`/api/case-designs/${design.id}/runs`,{stage:'generating',expectedRevision:1})).status,409)
+  for (const stage of ['extracting','modeling','planning']) {
+    assert.equal((await post(`/api/case-designs/${design.id}/runs`,{stage,expectedRevision:1})).status,202)
+    await waitFor(design.id,'completed')
+  }
+  const planned=listDesignRuns(design.id)[0]
+  // Inject a synthetic unresolved upstream fact to verify server propagation, not model cooperation.
+  planned.output.factModel!.consolidatedFacts[0].kind='inferred'
+  planned.output.questions.push({id:'q1',question:'是否支持大小写忽略？',evidence:[]})
+  planned.output.scenarios![0].questionIds=['q1']
+  saveDesignRun(planned)
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'generating',expectedRevision:1,upstreamRunId:planned.id})
+  const generated=await waitFor(design.id,'completed')
+  assert.equal(generated.upstreamRunId,planned.id)
+  assert.deepEqual(generated.skills.map(skill=>skill.id),['test-data-design'])
+  assert.match(instructions.at(-1)!,/测试数据设计/)
+  assert.equal(instructions.at(-1)!.includes('平台技能 requirement-facts'),false)
+  const draft=generated.output.cases![0]
+  assert.deepEqual(draft.factIds,['m1'])
+  assert.deepEqual(draft.questionIds,['q1'])
+  assert.equal(draft.requiresReview,true)
+  assert.match(draft.contract.uncertainties.join('\n'),/q1.*大小写/)
+  assert.match(draft.contract.uncertainties.join('\n'),/待复核 m1/)
+  assert.equal(draft.contract.dataBindings[0].strategy,'visible_option_full')
+  assert.deepEqual(generated.output.unprocessedScenarioIds,[])
+  assert.equal(listDesignRuns(design.id).find(run=>run.id===planned.id)?.output.cases,undefined)
+  generationInvalid=true
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'generating',expectedRevision:1,skillsEnabled:false})
+  const failed=await waitFor(design.id,'failed')
+  generationInvalid=false
+  assert.deepEqual(failed.output.cases,[])
+  assert.deepEqual(failed.output.unprocessedScenarioIds,['s1'])
+  assert.equal(instructions.at(-1)!.includes('平台技能'),false)
+  assert.equal(listDesignRuns(design.id).find(run=>run.id===generated.id)?.output.cases?.[0].id,draft.id)
+  planned.output.scenarios!.push({...planned.output.scenarios![0],id:'s2'})
+  saveDesignRun(planned)
+  failGenerationAt=generationCalls+2
+  await post(`/api/case-designs/${design.id}/runs`,{stage:'generating',expectedRevision:1,upstreamRunId:planned.id})
+  const partial=await waitFor(design.id,'failed')
+  failGenerationAt=-1
+  assert.equal(partial.output.cases?.length,1)
+  assert.deepEqual(partial.output.processedScenarioIds,['s1'])
+  assert.deepEqual(partial.output.unprocessedScenarioIds,['s2'])
+  assert.equal(partial.statistics.calls,2)
 })
 
 test('modeling and planning bind compatible upstream runs and reject silent fact omission',async()=> {
