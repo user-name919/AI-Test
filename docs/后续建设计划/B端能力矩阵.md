@@ -34,8 +34,8 @@
 | 边界 | 当前行为 | 证据入口与缺口 |
 |---|---|---|
 | DOM 节点索引改变 | 引用绑定本次观察的属性标识，不再依赖候选 nth 索引；旧 snapshot 被拒绝 | `page-observer.test.ts` 中插入候选后的节点引用测试 |
-| 技术动作失败 | 动态每用例最多两次重观察恢复，原失败保留；断言失败不走恢复 | `test-agent.test.ts`；这不是所有写操作可安全重试的证明 |
-| 业务用例失败 | 记录并继续后续用例，同一 Page 保留现场 | `execution-story.test.ts`、`playwright-runner.test.ts`；会话整体失效仍需停止 |
+| 技术动作失败 | 动态每用例最多两次重观察恢复，原失败保留；断言失败不走恢复。普通click的trial失败可恢复，但实际click/press调用报错记结果不明并停止整批 | `test-agent.test.ts`、`action-outcome.test.ts`；真实HTTP提交已收到但导航无响应，两模式均不重复。其他输入的统一风险边界仍待完善，不是全部写操作安全证明 |
+| 业务用例失败 | 普通失败/受阻记录并继续后续用例，同一 Page 保留现场；click/press结果不明属于需人工核对的例外，后续未执行 | `execution-story.test.ts`、`playwright-runner.test.ts`、`action-outcome.test.ts`；会话整体失效仍需停止。停止测试及关闭Page不回滚已提交业务 |
 | 断言完整性 | 动态 assertionId、固定 assertionIndex 关联契约预期；未全部完成不能当通过 | `test-policy.ts`、`fixed-assertion-coverage.ts`；映射存在不等于自然语言语义必然正确 |
 | 页面和动作范围 | goto 同 Origin、快照引用、动作白名单、次数/时长预算 | `test-policy.ts`；仍缺通用破坏性写操作授权和“已提交则不重复”确认协议，不能称为安全完成任意表单提交 |
 | 报告、实时预览 | 后台任务、逐用例记录、截图/Trace、下载文件证据、画面流和可重开历史 | `api/src/modules/executions/`、`web/src/features/executions/`；真实报告API及浏览器验证上传快照、失败文件下载、中文文件名、缺失提示、重试和刷新恢复；公司环境未验收 |
@@ -55,6 +55,7 @@ node --import tsx --test api/src/fixed-count.test.ts
 node --import tsx --test api/src/region-observer.test.ts
 node --import tsx --test api/src/agent-pages.test.ts api/src/agent-frame.test.ts
 node --import tsx --test api/src/fixed-pages.test.ts
+node --import tsx --test api/src/action-outcome.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。

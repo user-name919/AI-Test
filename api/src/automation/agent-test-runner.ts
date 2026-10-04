@@ -96,6 +96,7 @@ export async function runAgentTest(
   let traceStarted = false
   let livePageStream: Awaited<ReturnType<typeof startLivePageStream>> | undefined
   let infrastructureError: string | undefined
+  let uncertainAction: string | undefined
   let currentCase: CaseExecutionResult | undefined
   let cancellationPage: Page | undefined
   const stopPage = () => { void cancellationPage?.close().catch(() => undefined) }
@@ -212,9 +213,12 @@ export async function runAgentTest(
         if (checkpoint.status !== 'passed') {
           checkpoint.error = summary
           const failurePath = resolve(caseDirectory, 'failure.png')
-          await page.screenshot({ path: failurePath, fullPage: true }).catch(() => undefined)
+          await page.screenshot({ path: failurePath, fullPage: true, timeout:5000 }).catch(() => undefined)
           if (existsSync(failurePath)) checkpoint.screenshots.push(failurePath)
         }
+        // No further action is allowed after an uncertain input. Close the pending navigation
+        // before flushing Trace, otherwise its final snapshot may wait indefinitely for it.
+        if(checkpoint.trajectory.some(item=>item.result?.code==='action_outcome_unknown'))await page.close({runBeforeUnload:false}).catch(()=>undefined)
         if (chunkStarted) await context.tracing.stopChunk({ path: tracePath }).catch(() => undefined)
         if (existsSync(tracePath)) checkpoint.tracePath = tracePath
         options.onCaseCompleted?.(structuredClone(checkpoint))
@@ -224,7 +228,8 @@ export async function runAgentTest(
         actions: checkpoint.trajectory.filter(item => item.decision.type === 'action').slice(-3)
           .map(item => item.decision.type === 'action' ? `${item.decision.action.action}: ${item.decision.reason.slice(0, 120)} (${item.result?.ok ? '成功' : '失败'})` : ''),
       })
-      if (infrastructureError || options.signal?.aborted) break
+      if(checkpoint.trajectory.some(item=>item.result?.code==='action_outcome_unknown'))uncertainAction=checkpoint.error??'操作结果不明，等待人工核对'
+      if (infrastructureError || uncertainAction || options.signal?.aborted) break
     }
   } catch (error) {
     infrastructureError = error instanceof Error ? error.message : String(error)
@@ -248,7 +253,7 @@ export async function runAgentTest(
     tracePath: caseResults.find(result => result.tracePath)?.tracePath,
     error: options.signal?.aborted ? summary : infrastructureError ?? (caseResults.some(result => result.status !== 'passed') ? summary : undefined),
     caseResults: completeCaseResults(goals.map(goal=>({caseKey:goal.executionContract!.caseKey,title:goal.name,contractFingerprint:goal.executionContract!.contractFingerprint})),caseResults,
-      options.signal?.aborted ? '批次已取消，该用例尚未开始' : infrastructureError ?? '批次提前结束，该用例尚未开始'),
+      options.signal?.aborted ? '批次已取消，该用例尚未开始' : infrastructureError ?? uncertainAction ?? '批次提前结束，该用例尚未开始'),
     agent: {
       summary,
       passedAssertions: caseResults.flatMap(result => result.passedAssertions),

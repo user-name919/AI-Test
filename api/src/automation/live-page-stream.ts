@@ -36,7 +36,7 @@ export async function startLivePageStream(
     }
     captureInFlight = (async () => {
       const frame = await page.screenshot({
-        type: 'jpeg', quality: 55, fullPage: false, caret: 'hide', scale: 'css',
+        type: 'jpeg', quality: 55, fullPage: false, caret: 'hide', scale: 'css', timeout:3000,
       })
       emitFrame(frame.toString('base64'))
     })()

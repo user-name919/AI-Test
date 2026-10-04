@@ -19,6 +19,7 @@ import { assertFixedCount, assertFixedLocator } from './fixed-locator-assertion'
 import { validateFixedAssertionCoverage } from './fixed-assertion-coverage'
 import { BrowserPageSession } from './browser-page-session'
 import { capturePopup } from './capture-popup'
+import { ActionOutcomeUnknownError, attemptInputAction } from './action-outcome'
 
 interface AutomationRunnerOptions {
   signal?: AbortSignal
@@ -80,6 +81,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
   let context: Awaited<ReturnType<Browser['newContext']>> | undefined
   let traceStarted = false
   let infrastructureError: string | undefined
+  let uncertainAction: string | undefined
   let livePageStream: Awaited<ReturnType<typeof startLivePageStream>> | undefined
   let currentCase: CaseExecutionResult | undefined
   let cancellationPage: Page | undefined
@@ -191,7 +193,10 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               try { await pages.activate(selected) }
               catch(error) { throw new RuntimeDataBindingBlockedError(error instanceof Error?error.message:String(error)) }
             } else if (step.action === 'click') {
-              await locatorFor(page, step.locator).click({ timeout: 10_000 })
+              const locator=locatorFor(page,step.locator)
+              await locator.click({trial:true,timeout:10000})
+              options.signal?.throwIfAborted()
+              await attemptInputAction('click',()=>locator.click({timeout:10000}))
             } else if (step.action === 'download') {
               checkpoint.downloads ??= []
               if (checkpoint.downloads.some(item => item.downloadId === step.downloadId)) throw new Error('同一用例下载 ID 不得重复使用，请为新下载明确不同 ID')
@@ -202,7 +207,10 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             } else if (step.action === 'check' || step.action === 'uncheck' || step.action === 'hover') {
               await locatorFor(page, step.locator)[step.action]({ timeout: 10_000 })
             } else if (step.action === 'press') {
-              await locatorFor(page, step.locator).press(step.key, { timeout: 10_000 })
+              const locator=locatorFor(page,step.locator)
+              await locator.waitFor({state:'visible',timeout:10000})
+              options.signal?.throwIfAborted()
+              await attemptInputAction('press',()=>locator.press(step.key,{timeout:10000}))
             } else if (step.action === 'selectOption') {
               validateFixedSelectData(step.value, casePlan.contract)
               await locatorFor(page, step.locator).selectOption(
@@ -271,7 +279,8 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             await livePageStream?.capture().catch(() => undefined)
           } catch (error) {
             checkpoint.error = error instanceof Error ? error.message : String(error)
-            checkpoint.status = error instanceof RuntimeDataBindingBlockedError?'blocked':'failed'
+            checkpoint.status = error instanceof RuntimeDataBindingBlockedError||error instanceof ActionOutcomeUnknownError?'blocked':'failed'
+            if(error instanceof ActionOutcomeUnknownError)uncertainAction=checkpoint.error
             checkpoint.steps.push({ index, action: step.action, status: 'failed', durationMs: Date.now() - stepStart, error: checkpoint.error, pageBefore, pageAfter:pages.identity(), openedPage })
             emit({ ...activityEvent, activity: { ...activity, status: 'failed', durationMs: Date.now() - stepStart, message: checkpoint.error } })
             break
@@ -298,14 +307,15 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
         }
         if (checkpoint.status !== 'passed') {
           const failurePath = resolve(caseDirectory, 'failure.png')
-          await page.screenshot({ path: failurePath, fullPage: true }).catch(() => undefined)
+          await page.screenshot({ path: failurePath, fullPage: true, timeout:5000 }).catch(() => undefined)
           if (existsSync(failurePath)) checkpoint.screenshots.push(failurePath)
         }
+        if(uncertainAction)await page.close({runBeforeUnload:false}).catch(()=>undefined)
         if (chunkStarted) await context.tracing.stopChunk({ path: tracePath }).catch(() => undefined)
         if (existsSync(tracePath)) checkpoint.tracePath = tracePath
         options.onCaseCompleted?.(structuredClone(checkpoint))
       }
-      if (infrastructureError || options.signal?.aborted) break
+      if (infrastructureError || uncertainAction || options.signal?.aborted) break
     }
   } catch (error) {
     infrastructureError = error instanceof Error ? error.message : String(error)
@@ -329,6 +339,6 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
     tracePath: caseResults.find(result => result.tracePath)?.tracePath,
     error: options.signal?.aborted ? '用户取消执行；已提交的业务操作不会回滚' : infrastructureError ?? caseResults.find(result => result.error)?.error,
     caseResults: plan.casePlans ? completeCaseResults(plan.casePlans,caseResults,
-      options.signal?.aborted ? '批次已取消，该用例尚未开始' : infrastructureError ?? '批次提前结束，该用例尚未开始') : undefined,
+      options.signal?.aborted ? '批次已取消，该用例尚未开始' : infrastructureError ?? uncertainAction ?? '批次提前结束，该用例尚未开始') : undefined,
   }
 }

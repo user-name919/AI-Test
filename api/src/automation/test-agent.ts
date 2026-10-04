@@ -219,6 +219,7 @@ export class TestAgent {
       if (result.screenshotPath) screenshots.push(result.screenshotPath)
       trajectory.push({ iteration, snapshotId: snapshot.snapshotId, decision, observation: summarizeSnapshot(snapshot), result })
       if (!result.ok) {
+        if (result.code === 'action_outcome_unknown') return this.result('blocked', result.message, state, trajectory, screenshots)
         if (result.code === 'fixture_unavailable') return this.result('blocked', result.message, state, trajectory, screenshots)
         if (!result.retryable || assertionId) return this.result('failed', result.message, state, trajectory, screenshots)
         const item=trajectory[trajectory.length-1]

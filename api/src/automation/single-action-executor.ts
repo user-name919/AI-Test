@@ -10,6 +10,7 @@ import type { TestFixture } from '@quality-ai/contracts/test-fixtures'
 import { loadTestFixture, validateFixtureReference } from '../modules/test-fixtures/store'
 import { RuntimeDataBindingBlockedError } from './test-data-binding'
 import type { BrowserPageSession } from './browser-page-session'
+import { ActionOutcomeUnknownError, attemptInputAction } from './action-outcome'
 
 function safeArtifactName(value: string) {
   return value.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 80) || 'screenshot'
@@ -106,7 +107,10 @@ export class SingleActionExecutor {
         await this.page.goto(destination.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
         this.registry.resetFrame()
       } else if (action.action === 'click') {
-        await this.registry.resolve(snapshotId, action.elementRef).click({ timeout: 10_000 })
+        const locator = this.registry.resolve(snapshotId, action.elementRef)
+        await locator.click({trial:true, timeout:10000})
+        this.signal?.throwIfAborted()
+        await attemptInputAction('click',()=>locator.click({timeout:10000}))
       } else if (action.action === 'fill') {
         await this.registry.resolve(snapshotId, action.elementRef).fill(actionValue(action, bindings), { timeout: 10_000 })
       } else if (action.action === 'selectOption') {
@@ -116,7 +120,10 @@ export class SingleActionExecutor {
       } else if (action.action === 'uncheck') {
         await this.registry.resolve(snapshotId, action.elementRef).uncheck({ timeout: 10_000 })
       } else if (action.action === 'press') {
-        await this.registry.resolve(snapshotId, action.elementRef).press(action.key, { timeout: 10_000 })
+        const locator = this.registry.resolve(snapshotId, action.elementRef)
+        await locator.waitFor({state:'visible',timeout:10000})
+        this.signal?.throwIfAborted()
+        await attemptInputAction('press',()=>locator.press(action.key,{timeout:10000}))
       } else if (action.action === 'hover') {
         await this.registry.resolve(snapshotId, action.elementRef).hover({ timeout: 10_000 })
       } else if (action.action === 'scroll') {
@@ -200,6 +207,7 @@ export class SingleActionExecutor {
       return toolResultSchema.parse({
         ok: false,
         ...classified,
+        ...(error instanceof ActionOutcomeUnknownError ? {retryable:false,code:'action_outcome_unknown'} : {}),
         ...(action.action === 'uploadFile' ? { retryable: false, code: error instanceof RuntimeDataBindingBlockedError ? 'fixture_unavailable' : 'upload_failed', usedFixture } : {}),
         ...(action.action === 'download' ? { retryable: false, code: 'download_failed' } : {}),
         durationMs: Date.now() - startedAt,
