@@ -26,14 +26,16 @@ test('builds a compact semantic snapshot and resolves element refs for its activ
     const first = await observer.observe(page)
     assert.equal(first.title, '学生管理')
     assert.equal(first.elements.filter(item=>item.role==='textbox'||item.role==='button').length, 2)
-    assert.equal(first.elements[0].name, '学生姓名')
-    assert.equal(first.elements[0].required, true)
-    assert.equal(first.elements[1].container, '编辑学生')
+    const input=first.elements.find(item=>item.role==='textbox')!
+    const button=first.elements.find(item=>item.role==='button')!
+    assert.equal(input.name, '学生姓名')
+    assert.equal(input.required, true)
+    assert.equal(button.container, '编辑学生')
     assert.deepEqual(first.tables[0].columns, ['姓名', '状态'])
     assert.deepEqual(first.tables[0].sampleRows, [['张三', '正常']])
     assert.equal(first.messages[0].text, '保存失败')
 
-    await observer.registry.resolve(first.snapshotId, first.elements[1].ref).click()
+    await observer.registry.resolve(first.snapshotId, button.ref).click()
     assert.equal(await page.locator('#save').getAttribute('data-clicked'), 'true')
 
     const second = await observer.observe(page)

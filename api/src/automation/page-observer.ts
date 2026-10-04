@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Frame, Page } from 'playwright'
+import type { ElementHandle, Frame, Page } from 'playwright'
 import { pageSnapshotSchema, type PageSnapshot, type SemanticElement } from '@quality-ai/contracts'
 import { ElementRegistry } from './element-registry'
 import { observePageInBrowser } from './page-observer-browser.js'
@@ -59,13 +59,16 @@ export class PageObserver {
     const maxElements = this.options.maxElements ?? 300
     const maxTextLength = this.options.maxTextLength ?? 160
     const maxTableRows = this.options.maxTableRows ?? 3
-    const raw = await root.evaluate<RawObservation, {
+    const region=this.registry.takeObservationRegion()
+    let raw:RawObservation
+    try { raw = await root.evaluate<RawObservation, {
       selector: string
       snapshotId: string
       refAttribute: string
       maxElements: number
       maxTextLength: number
       maxTableRows: number
+      region?:ElementHandle
     }>(observePageInBrowser as (options: {
       selector: string
       maxElements: number
@@ -78,7 +81,8 @@ export class PageObserver {
       maxElements,
       maxTextLength,
       maxTableRows,
-    })
+      region:region?.element,
+    }) } finally { await region?.element.dispose() }
 
     this.registry.replace(snapshotId, root, elementRefAttribute, raw.elements)
     return pageSnapshotSchema.parse({
@@ -88,6 +92,7 @@ export class PageObserver {
       title: await root.title(),
       frameContext: { pageUrl: page.url(), ...frames },
       loading: raw.loading,
+      observationScope:region?{mode:'region',sourceElementRef:region.sourceElementRef,sourceSnapshotId:region.sourceSnapshotId}:undefined,
       elements: raw.elements,
       dialogs: raw.dialogs,
       tables: raw.tables,

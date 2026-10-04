@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Frame, Locator, Page } from 'playwright'
+import type { ElementHandle, Frame, Locator, Page } from 'playwright'
 
 interface RegisteredElement {
   ref: string
@@ -9,6 +9,23 @@ export class ElementRegistry {
   private snapshotId?: string
   private readonly elements = new Map<string, Locator>()
   private selectedFrame?: Frame
+  private observationRegion?: { element:ElementHandle; sourceElementRef:string; sourceSnapshotId:string }
+
+  async observeRegion(snapshotId:string,elementRef:string){
+    const locator=this.resolve(snapshotId,elementRef)
+    if(!await locator.isVisible())throw new Error('局部观察目标不可见')
+    const element=await locator.elementHandle()
+    if(!element)throw new Error('局部观察目标已失效')
+    await this.observationRegion?.element.dispose()
+    this.observationRegion={element,sourceElementRef:elementRef,sourceSnapshotId:snapshotId}
+    this.invalidate()
+  }
+
+  takeObservationRegion(){
+    const region=this.observationRegion
+    this.observationRegion=undefined
+    return region
+  }
   private readonly frameIds = new WeakMap<Frame, string>()
   private readonly frames = new Map<string, Frame>()
 

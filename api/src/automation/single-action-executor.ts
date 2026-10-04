@@ -71,6 +71,8 @@ export class SingleActionExecutor {
       let screenshotPath: string | undefined
       if (action.action === 'switchFrame') {
         this.registry.selectFrame(snapshotId, action.frameRef)
+      } else if(action.action==='observeRegion'){
+        await this.registry.observeRegion(snapshotId,action.elementRef)
       } else if (action.action === 'download') {
         if (this.downloads.has(action.downloadId)) throw new Error('同一用例下载 ID 不得重复使用')
         const locator = this.registry.resolve(snapshotId, action.elementRef)

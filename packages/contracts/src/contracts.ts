@@ -544,6 +544,7 @@ export const pageSnapshotSchema = z.object({
   url: z.string(),
   title: z.string(),
   loading: z.boolean(),
+  observationScope: z.object({ mode:z.literal('region'), sourceElementRef:z.string(), sourceSnapshotId:z.string().uuid() }).optional(),
   frameContext: z.object({
     pageUrl: z.string(),
     frames: z.array(z.object({ ref: z.string().uuid(), url: z.string(), name: z.string(), main: z.boolean(), active: z.boolean() })).max(50),
@@ -658,6 +659,7 @@ function requireExactlyOneValueReference(
 
 export const agentActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('switchFrame'), frameRef: z.string().uuid() }),
+  z.object({ action: z.literal('observeRegion'), elementRef:z.string().regex(/^e\d+$/) }),
   z.object({ action: z.literal('download'), ...elementActionBase, downloadId: z.string().min(1).max(80) }),
   z.object({ action: z.literal('expectDownload'), downloadId: z.string().min(1).max(80), assertionId: z.string().min(1), name: z.string().min(1).optional(), minBytes: z.number().int().nonnegative().default(1), textIncludes: z.string().min(1).optional() }),
   z.object({ action: z.literal('uploadFile'), ...elementActionBase, fixtureId: z.string().uuid() }),

@@ -30,7 +30,7 @@ const decisionSystemPrompt = `你是 B 端网页自动化测试的单步决策�
 框架上下文：snapshot.frameContext列出当前实际可见框架（最多50个，truncated表示不完整），active标记当前观察范围。需要进入iframe时使用 {"action":"switchFrame","frameRef":"当前列表中的ref"}；随后会重新观察，旧snapshot和元素引用不可复用。元素、文本、数量和无目标滚动都只作用于当前框架；返回主页面也必须选择main=true的引用。goto是顶层导航并重置框架；截图/实时画面仍为整个顶层页面，不是frame截图。框架未出现或信息不足时等待或受阻，不猜引用。新标签页尚不支持。
 
 允许的决策：
-- action：switchFrame、goto、click、fill、selectOption、uploadFile、download、expectDownload、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
+- action：observeRegion、switchFrame、goto、click、fill、selectOption、uploadFile、download、expectDownload、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
 - resolve_test_data：为 runtime_dom binding 从当前可见 option 解析真实值
 - need_project_context：resolve_route、search_source、inspect_files
 - finish
@@ -39,6 +39,7 @@ const decisionSystemPrompt = `你是 B 端网页自动化测试的单步决策�
 action.action 必须严格使用以下结构之一，不得创造 navigate、reload、observe、type、input、assert、sleep 等新动作名：
 {"action":"goto","path":"/相对路径"}
 {"action":"click","elementRef":"e3"}
+{"action":"observeRegion","elementRef":"e3"}
 {"action":"fill","elementRef":"e3","value":"输入内容"}
 {"action":"fill","elementRef":"e3","valueRef":"已解析的 bindingId"}
 {"action":"selectOption","elementRef":"e3","value":"选项值"}
@@ -70,6 +71,7 @@ checkedState=mixed 表示半选，unknown 表示无效或未知状态；两者�
 {"action":"screenshot","name":"证据名称"}
 
 页面尚未稳定时使用 waitFor；每次动作结束后系统会自动重新观察 DOM，不存在 observe 动作。
+页面过大或元素被预算截断时，可用observeRegion指定当前快照已有容器引用，只将下一次观察的元素预算用于该区域及其开放Shadow DOM。快照observationScope明确该局部范围，不能凭局部列表推断全页/服务端不存在；loading仍是框架全局状态。它不是点击、不计断言，不放宽预算或修改页面业务。旧快照引用立即失效。局部观察仅一次，后续普通动作结束恢复整框架观察；元素动作仍使用新引用，expectText/无containerRef的expectCount仍是当前框架范围，不因局部观察自动改变含义。目标未注册时不能编造引用；目标移除或隐藏会失败。
 
 完整 action 决策示例：
 {"type":"action","snapshotId":"当前 UUID","action":{"action":"click","elementRef":"e3"},"reason":"点击当前弹窗的保存按钮"}
@@ -81,6 +83,7 @@ checkedState=mixed 表示半选，unknown 表示无效或未知状态；两者�
 {"type":"resolve_test_data","snapshotId":"当前 UUID","bindingId":"exam-keyword","sourceElementRef":"e8","value":"数学","reason":"从当前可见 option“模考数学一”选择部分关键词"}`
 
 const allowedActionNames = [
+  'observeRegion',
   'switchFrame',
   'download', 'expectDownload',
   'uploadFile',

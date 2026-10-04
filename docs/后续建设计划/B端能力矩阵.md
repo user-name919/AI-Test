@@ -16,7 +16,7 @@
 | 展开下拉，从实际选项选完整名称/部分词 | 部分支持 | 部分支持 | `api/src/test-data-binding.ts`、`api/src/modules/cases/fixed-plan-model.ts`；有三策略及 valueRef。必须先观察可见 option，过长截断文本不可冒充完整名称 |
 | 搜索不存在项并验证空态 | 部分支持 | 部分支持 | 负例要求完整受控候选依据；只有远程/分页列表当前可见项时不能证明全局不存在 |
 | 逐步滚动虚拟列表，再观察新选项 | 部分支持 | 缺失 | 动态 scroll 后重新观察；没有全量列表枚举或保证到达目标项的协议，不能把一次快照当完整数据集 |
-| 表格按行内容点操作、分页筛选 | 部分支持 | 部分支持 | observer 有表格摘要和最多 3 行样本；动态新增行/表格 e 引用及 containerRef 父链，固定 scope 支持表格→行→控件。分页/虚拟表格完整性不能据此保证，动态缺针对某容器主动重采集协议 |
+| 表格按行内容点操作、分页筛选 | 部分支持 | 部分支持 | observer有表格摘要和最多3行样本；动态行/表格e引用及containerRef父链，observeRegion可对已有真实区域进行一次局部重采集，保留预算、标注范围。固定scope支持表格→行→控件。分页/虚拟表格完整性不能据此保证 |
 | 弹窗内同名按钮，与背景按钮区分 | 部分支持 | 部分支持 | 动态弹窗注册为 e 引用，摘要 elementRef 关联它，限定容器计数已实测；固定 scope 已验证背景同名按钮不被误点。预算截断时不伪造容器引用，模型理解正确性未保证 |
 | 禁用/启用、输入值、错误提示 | 已支持 | 已支持 | `expectEnabled/expectDisabled/expectValue` 和文本/属性断言；两模式有局部 `expectElementText`。固定旧 expectText 仍是页面范围，局部结果需使用带范围的元素断言 |
 | 匹配关键词高亮 | 部分支持 | 部分支持 | 验证明确 class/data-state 等属性；固定 token 匹配、动态属性匹配规则不同。文本出现不能代替高亮，也未验证像素颜色或视觉规范 |
@@ -52,6 +52,7 @@ node --import tsx --test api/src/agent-upload.test.ts
 node --import tsx --test api/src/download-capture.test.ts
 node --import tsx --test api/src/shadow-observer.test.ts api/src/page-observer.test.ts
 node --import tsx --test api/src/fixed-count.test.ts
+node --import tsx --test api/src/region-observer.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。
@@ -59,7 +60,7 @@ node --import tsx --test api/src/fixed-count.test.ts
 ## 补齐顺序及验收要求
 
 1. 表单动作对齐：固定键盘/勾选/悬停与选中断言已接入；原生 selectOption 已接入有依据的单值选择，运行时原生选项采集仍待扩展。保持人工契约和可读历史；每项验证成功及失败继续。
-2. 表格/弹窗作用域：固定 scope 与局部文本、动态容器引用/父链已接入并验证背景反例；仍需局部重采集与复杂列表验证，不宣称所有表格场景完成。
+2. 表格/弹窗作用域：固定scope与局部文本、动态容器引用/父链及一次局部重采集已接入并验证背景反例；仍需复杂虚拟列表验证，不宣称所有表格场景完成。
 3. 受控上传下载：附件登记API/UI及两模式单文件上传已接入，继续下载产物与上传控件覆盖；模型只选择获准附件 ID，不接受任意本机路径。下载完成与内容验证分开，失败保留证据。
 4. 页面/框架上下文：先完善引用身份和生命周期，再支持 iframe/新页；切换后旧引用拒绝，不静默操作原页面。
 5. 有副作用动作：执行前明确授权与预期，技术超时后核对实际状态，不盲目重复提交。

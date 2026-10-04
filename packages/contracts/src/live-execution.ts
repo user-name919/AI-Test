@@ -124,6 +124,7 @@ function rawAgentAction(action: AgentAction) {
 
 function readableAgentAction(action: AgentAction, snapshot: PageSnapshot) {
   const name = targetName(action, snapshot)
+  if(action.action==='observeRegion')return `局部观察${quoted(name)}，重新读取其中的元素`
   const value = 'value' in action && action.value !== undefined ? quoted(action.value) : 'valueRef' in action ? `已解析数据“${action.valueRef}”` : ''
   if (action.action === 'switchFrame') {
     const frame = snapshot.frameContext?.frames.find(frame=>frame.ref===action.frameRef)

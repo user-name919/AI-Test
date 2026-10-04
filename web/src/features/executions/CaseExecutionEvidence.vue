@@ -23,6 +23,7 @@ const recoveryNames={reobserved:'已重新观察页面，再由 AI 决定下一�
       <h4>第 {{ turn.iteration }} 步 · {{ turn.decision.type==='finish'?turn.decision.summary:turn.decision.reason }}</h4>
       <template v-if="turn.sourceProject"><p>读取前源码：{{ turn.sourceProject.id }} / {{ turn.sourceProject.branch||'无分支信息' }} / {{ turn.sourceProject.commit||'无 SHA' }}</p><SourceWorktreeNote :worktree="turn.sourceProject.worktree" /></template>
       <p v-if="turn.observation?.frameContext">观察框架：{{ turn.observation.frameContext.frames.find(frame=>frame.active)?.name||'未命名框架' }} · {{ turn.observation.url }}（{{ turn.observation.frameContext.frames.find(frame=>frame.active)?.main?'主页面':'嵌入页面' }}）</p>
+      <p v-if="turn.observation?.observationScope">本步为局部观察：来自快照 {{ turn.observation.observationScope.sourceSnapshotId }} 的 {{ turn.observation.observationScope.sourceElementRef }}。未包含区域外元素，不代表整页或全部业务数据。</p>
       <p v-if="turn.result">{{ turn.result.ok?'本步成功':'本步失败' }}：{{ turn.result.message }} · {{ turn.result.durationMs }} ms</p>
       <p v-else>本步未记录浏览器执行结果，不据此判定通过。</p>
       <p v-if="turn.recovery" class="recovery">技术恢复 {{ turn.recovery.attempt }}/{{ turn.recovery.limit }}：{{ recoveryNames[turn.recovery.status] }}。原因：{{ turn.recovery.reason }}</p>

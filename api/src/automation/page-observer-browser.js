@@ -1,6 +1,6 @@
 // This function is serialized by Playwright and runs in the inspected page.
 // Keep it as plain JavaScript so Node-side transpiler helpers never leak into the browser context.
-export function observePageInBrowser({ selector, snapshotId, refAttribute, maxElements, maxTextLength, maxTableRows }) {
+export function observePageInBrowser({ selector, snapshotId, refAttribute, maxElements, maxTextLength, maxTableRows, region }) {
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim()
   const compact = value => normalize(value).slice(0, maxTextLength)
   // Match Playwright's open-shadow CSS traversal; closed roots remain inaccessible.
@@ -66,10 +66,15 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
     const heading = query(container, '[role="heading"],h1,h2,h3,.el-dialog__title,.el-drawer__title,legend,caption')[0]
     return compact(heading?.textContent) || compact(container.getAttribute('aria-label')) || container.tagName.toLowerCase()
   }
+  if(region && (!region.isConnected || region.ownerDocument!==document || !isVisible(region)))throw new Error('局部观察目标已失效或不可见，禁止静默改为整页观察')
+  const scope=region||document
   query(document, `[${refAttribute}]`).forEach(element => element.removeAttribute(refAttribute))
-  const containerSelector = 'dialog,[role="dialog"],.el-dialog,.el-drawer,form,table,[role="table"],tr,[role="row"]'
+  const containerSelector = 'dialog,[role="dialog"],.el-dialog,.el-drawer,form,table,[role="table"],tr,[role="row"],[role="listbox"],[role="grid"],[role="menu"],[role="tree"]'
   // 原交互元素优先保留预算；容器也注册为 e 引用，而不是不可操作的 d/t 摘要编号。
-  const candidates = [...new Set([...query(document, selector), ...query(document, containerSelector)])]
+  const containers=query(scope, containerSelector)
+  // Reserve a small part of a normal snapshot for regions, so dense pages can be narrowed.
+  const priority=maxElements>=5?containers.filter(isVisible).slice(0,Math.max(1,Math.floor(maxElements/5))):[]
+  const candidates = [...new Set([...(region?[region]:[]),...priority,...query(scope, selector), ...containers])]
   const visibleCandidates = candidates.filter(isVisible)
   const selectedElements = visibleCandidates.slice(0, maxElements)
   const references = new Map(selectedElements.map((element, index) => [element, `e${index + 1}`]))
@@ -123,7 +128,7 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       containerRef: references.get(closest(parent(element), containerSelector)),
     }
   })
-  const dialogs = query(document, 'dialog,[role="dialog"],.el-dialog,.el-drawer')
+  const dialogs = query(scope, 'dialog,[role="dialog"],.el-dialog,.el-drawer')
     .filter(isVisible)
     .slice(0, 10)
     .map((dialog, index) => ({
@@ -133,7 +138,7 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
         || compact(dialog.getAttribute('aria-label')),
       modal: dialog.getAttribute('aria-modal') === 'true' || dialog.classList.contains('el-dialog'),
     }))
-  const tableCandidates = query(document, 'table,[role="table"],.el-table')
+  const tableCandidates = query(scope, 'table,[role="table"],.el-table')
     .filter(isVisible)
     .filter(table => !closest(parent(table), 'table,[role="table"],.el-table'))
   const tables = tableCandidates.slice(0, 10).map((table, index) => {
@@ -154,7 +159,7 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       sampleRows,
     }
   })
-  const messages = query(document, '[role="alert"],[role="status"],.el-message,.el-notification,.el-form-item__error')
+  const messages = query(scope, '[role="alert"],[role="status"],.el-message,.el-notification,.el-form-item__error')
     .filter(isVisible)
     .map(element => {
       const classes = element.className.toString()
