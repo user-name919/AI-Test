@@ -213,8 +213,13 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             } else if (step.action === 'expectDownload') {
               await assertDownload(checkpoint.downloads?.find(item => item.downloadId === step.downloadId), step)
               checkpoint.passedAssertions.push(step.assertionIndex===undefined?`step-${index+1}`:`assertion-${step.assertionIndex}`)
-            } else if (step.action === 'check' || step.action === 'uncheck' || step.action === 'hover') {
-              await locatorFor(page, step.locator)[step.action]({ timeout: 10_000 })
+            } else if (step.action === 'check' || step.action === 'uncheck') {
+              const locator = locatorFor(page, step.locator)
+              await locator[step.action]({ trial: true, timeout: 10_000 })
+              options.signal?.throwIfAborted()
+              await attemptInputAction(step.action, () => locator[step.action]({ timeout: 10_000 }))
+            } else if (step.action === 'hover') {
+              await locatorFor(page, step.locator).hover({ timeout: 10_000 })
             } else if (step.action === 'press') {
               const locator=locatorFor(page,step.locator)
               await locator.waitFor({state:'visible',timeout:10000})

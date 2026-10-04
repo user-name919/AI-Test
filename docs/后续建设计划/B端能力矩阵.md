@@ -11,7 +11,7 @@
 | 点击查询按钮、填写文本、同源跳转 | 已支持 | 已支持 | `api/src/single-action-executor.ts`、`api/src/playwright-runner.ts`；动作成功不代表业务断言通过 |
 | 异步显示结果、消失的加载提示 | 部分支持 | 部分支持 | 两执行器支持可见/隐藏断言及有限等待；动态另有 100–5000ms `waitFor`。固定无独立等待动作；不得用固定睡眠证明页面已完成加载 |
 | 原生 select 选择一项 | 已支持 | 部分支持 | 固定 `selectOption` 明确按 value/label 选择，要求契约中有依据的 fixture/manual 值；尚无原生选项运行时采集策略。不把自定义下拉当原生 select，不支持批量多选或重复 label 消歧 |
-| 勾选/取消复选框、验证选中状态 | 已支持 | 已支持 | 两模式 `check/uncheck/expectChecked`；固定新增真实状态验证，mixed 不等于 false，不把一次 click 等同于已勾选 |
+| 勾选/取消复选框、验证选中状态 | 已支持 | 已支持 | 两模式 `check/uncheck/expectChecked`；真实状态验证，mixed 不等于 false，不把一次 click 等同于已勾选。check/uncheck 的 trial 失败未派发可恢复；实际调用报错按结果不明停止整批，避免自动保存重复 |
 | 键盘选择、悬停展开菜单 | 已支持 | 已支持 | 两模式 `press/hover`，共用受限键名 schema；原生Enter提交及风险按钮需引用当次已授权契约项；不代表任意脚本副作用都可识别 |
 | 展开下拉，从实际选项选完整名称/部分词 | 部分支持 | 部分支持 | `api/src/test-data-binding.ts`、`api/src/modules/cases/fixed-plan-model.ts`；有三策略及 valueRef。必须先观察可见 option，过长截断文本不可冒充完整名称 |
 | 搜索不存在项并验证空态 | 部分支持 | 部分支持 | 负例要求完整受控候选依据；只有远程/分页列表当前可见项时不能证明全局不存在 |
@@ -34,8 +34,8 @@
 | 边界 | 当前行为 | 证据入口与缺口 |
 |---|---|---|
 | DOM 节点索引改变 | 引用绑定本次观察的属性标识，不再依赖候选 nth 索引；旧 snapshot 被拒绝 | `page-observer.test.ts` 中插入候选后的节点引用测试 |
-| 技术动作失败 | 动态每用例最多两次重观察恢复，原失败保留；断言失败不走恢复。普通click的trial失败可恢复，但实际click/press调用报错记结果不明并停止整批 | `test-agent.test.ts`、`action-outcome.test.ts`；真实HTTP提交已收到但导航无响应，两模式均不重复。其他输入的统一风险边界仍待完善，不是全部写操作安全证明 |
-| 业务用例失败 | 普通失败/受阻记录并继续后续用例，同一 Page 保留现场；click/press结果不明属于需人工核对的例外，后续未执行 | `execution-story.test.ts`、`playwright-runner.test.ts`、`action-outcome.test.ts`；会话整体失效仍需停止。停止测试及关闭Page不回滚已提交业务 |
+| 技术动作失败 | 动态每用例最多两次重观察恢复，原失败保留；断言失败不走恢复。click/check/uncheck的trial失败可恢复，但实际click/press/check/uncheck调用报错记结果不明并停止整批 | `test-agent.test.ts`、`action-outcome.test.ts`、`checkbox-outcome.test.ts`；真实HTTP提交已收到但导航无响应、自动保存后页面撤回复选框状态，两模式均不重复。其他输入的统一风险边界仍待完善，不是全部写操作安全证明 |
+| 业务用例失败 | 普通失败/受阻记录并继续后续用例，同一 Page 保留现场；click/press/check/uncheck结果不明属于需人工核对的例外，后续未执行 | `execution-story.test.ts`、`playwright-runner.test.ts`、`action-outcome.test.ts`、`checkbox-outcome.test.ts`；会话整体失效仍需停止。停止测试及关闭Page不回滚已提交业务 |
 | 断言完整性 | 动态 assertionId、固定 assertionIndex 关联契约预期；未全部完成不能当通过 | `test-policy.ts`、`fixed-assertion-coverage.ts`；映射存在不等于自然语言语义必然正确 |
 | 页面和动作范围 | goto 同 Origin、快照引用、动作白名单、次数/时长预算 | `test-policy.ts`；已声明writeOperations需逐次配置授权且两runner复核，任务/报告留记录；常见风险DOM名称/原生表单/Enter提交需动作引用授权项，实际门禁事实随步骤保存；任意脚本副作用识别及任意提交去重仍缺，不能称为安全完成任意表单提交 |
 | 报告、实时预览 | 后台任务、逐用例记录、截图/Trace、下载文件证据、画面流和可重开历史 | `api/src/modules/executions/`、`web/src/features/executions/`；真实报告API及浏览器验证上传快照、失败文件下载、中文文件名、缺失提示、重试和刷新恢复；公司环境未验收 |
@@ -56,6 +56,7 @@ node --import tsx --test api/src/region-observer.test.ts
 node --import tsx --test api/src/agent-pages.test.ts api/src/agent-frame.test.ts
 node --import tsx --test api/src/fixed-pages.test.ts
 node --import tsx --test api/src/action-outcome.test.ts
+node --import tsx --test api/src/checkbox-outcome.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。

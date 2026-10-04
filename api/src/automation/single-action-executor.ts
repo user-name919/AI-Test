@@ -121,10 +121,11 @@ export class SingleActionExecutor {
         await this.registry.resolve(snapshotId, action.elementRef).fill(actionValue(action, bindings), { timeout: 10_000 })
       } else if (action.action === 'selectOption') {
         await this.registry.resolve(snapshotId, action.elementRef).selectOption(actionValue(action, bindings), { timeout: 10_000 })
-      } else if (action.action === 'check') {
-        await this.registry.resolve(snapshotId, action.elementRef).check({ timeout: 10_000 })
-      } else if (action.action === 'uncheck') {
-        await this.registry.resolve(snapshotId, action.elementRef).uncheck({ timeout: 10_000 })
+      } else if (action.action === 'check' || action.action === 'uncheck') {
+        const locator = this.registry.resolve(snapshotId, action.elementRef)
+        await locator[action.action]({ trial: true, timeout: 10_000 })
+        this.signal?.throwIfAborted()
+        await attemptInputAction(action.action, () => locator[action.action]({ timeout: 10_000 }))
       } else if (action.action === 'press') {
         const locator = this.registry.resolve(snapshotId, action.elementRef)
         await locator.waitFor({state:'visible',timeout:10000})
