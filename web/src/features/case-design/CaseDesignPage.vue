@@ -76,6 +76,11 @@ function locate(value:EvidenceRef) { reference.value=value; showSource.value=tru
             <p>大材料按事实分区，两两交叉检查，使任意两条事实至少共同提供给模型一次；调用次数会随分区数增加。模型仍可能漏判，不能代替人工审核。已校验批次保留，取消不删除已完成结果。等价事实汇总保留首条原始表述和全部来源；原始事实仍可在提取阶段查看。</p>
             <details v-for="batch in selected.output.modelingBatches" :key="batch.id"><summary>{{ batch.id }} · {{ batch.status==='completed'?'已校验批次':'尚未完成' }} · {{ batch.factIds.length }} 条原始事实</summary><p>参与事实：{{ batch.factIds.join('、') }}</p><template v-if="batch.model"><p>批内整理 {{ batch.model.consolidatedFacts.length }} 条 · 冲突 {{ batch.model.conflicts.length }} 项</p><p v-for="conflict in batch.model.conflicts" :key="conflict.id">{{ conflict.question }}</p></template></details>
           </section>
+          <section v-if="selected?.stage==='planning' && selected.output.planningBatches" class="card" aria-label="场景规划进度">
+            <h2>场景规划进度</h2><p>已处理 {{ selected.output.planningBatches.filter(batch=>batch.status==='completed').length }} / {{ selected.output.planningBatches.length }} 批 · 已保存 {{ selected.output.scenarios?.length??0 }} 个场景。{{ selected.status==='completed'?'规划已完成，覆盖与业务含义仍需人工审核。':'规划尚未完成，局部场景不能作为完整结果继续生成。' }}</p>
+            <p>先规划分区内部场景，再补充两侧规则的联动场景；没有依据时允许不生成联动。仅合并字段完全相同的建议，近似重复仍需审核；两两分析不能证明全部复合业务关系已覆盖。</p>
+            <details v-for="batch in selected.output.planningBatches" :key="batch.id"><summary>{{ batch.id }} · {{ {whole:'全量规划',local:'分区内部',cross:'跨分区联动'}[batch.kind] }} · {{ batch.status==='completed'?'已校验批次':'尚未完成' }}</summary><p>参与事实：{{ batch.factIds.join('、') }}</p><p>场景：{{ batch.scenarioIds.join('、')||'尚无场景' }}</p></details>
+          </section>
           <section v-if="selected?.stage==='checking' && selected.output.reviewedBlockIds" class="card" aria-label="原文审查范围">
             <h2>原文审查范围</h2><p>已审查 {{ selected.output.reviewedBlockIds.length }} 块 · 未完成 {{ selected.output.unreviewedBlockIds?.length??0 }} 块。{{ selected.output.modelReviewCompleted?'模型审查完成，仍需人工审核。':'审查尚未完成，已保存批次不代表全量通过。' }}</p>
             <details v-if="selected.output.unreviewedBlockIds?.length"><summary>查看未完成的原文块</summary><p v-for="id in selected.output.unreviewedBlockIds" :key="id">{{ id }}</p></details>

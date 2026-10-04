@@ -151,6 +151,14 @@ export interface DesignRun {
   createdAt: string
   updatedAt: string
   error?: string
-  output: FactExtraction & { processedBlockIds: string[]; unprocessedBlockIds: string[]; factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[]; cases?: CaseDesignDraft[]; processedScenarioIds?: string[]; unprocessedScenarioIds?: string[]; generationAttempts?: Array<{scenarioId:string;attempt:number;status:'invalid'|'validated';response:string;responseTruncated:boolean;error?:string}>; issues?: DesignIssue[]; modelReviewCompleted?: boolean; reviewedBlockIds?: string[]; unreviewedBlockIds?: string[]; modelingBatches?: Array<{id:string;factIds:string[];status:'pending'|'completed';model?:FactModel}> }
+  output: FactExtraction & {
+    processedBlockIds: string[]; unprocessedBlockIds: string[]
+    factModel?: FactModel; scenarios?: ScenarioDraft[]; uncoveredFactIds?: string[]
+    cases?: CaseDesignDraft[]; processedScenarioIds?: string[]; unprocessedScenarioIds?: string[]
+    generationAttempts?: Array<{scenarioId:string;attempt:number;status:'invalid'|'validated';response:string;responseTruncated:boolean;error?:string}>
+    issues?: DesignIssue[]; modelReviewCompleted?: boolean; reviewedBlockIds?: string[]; unreviewedBlockIds?: string[]
+    modelingBatches?: Array<{id:string;factIds:string[];status:'pending'|'completed';model?:FactModel}>
+    planningBatches?: Array<{id:string;kind:'whole'|'local'|'cross';factIds:string[];status:'pending'|'completed';scenarioIds:string[]}>
+  }
   statistics: { calls: number; inputCharacters: number; outputCharacters: number }
 }

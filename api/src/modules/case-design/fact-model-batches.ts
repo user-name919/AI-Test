@@ -1,30 +1,15 @@
 import type { DesignRun, FactModel, RequirementFact } from '@quality-ai/contracts/case-design'
-import { encodeFactInput } from './fact-input'
+import { encodeFactInput,partitionFactInput } from './fact-input'
 
 export interface FactModelBatch { id:string; factIds:string[]; input:string }
 const inputBudget=120000
-const factsPerPartition=40
 
 /** 每两个分区共同分析，保证任意两条事实至少出现在同一次请求中，不按关键词猜测关联。 */
 export function factModelBatches(run:DesignRun,instructionLength:number):FactModelBatch[]{
   const encode=(facts:RequirementFact[])=>encodeFactInput({...run,output:{...run.output,facts,factModel:undefined}})
   const facts=run.output.facts
-  const complete=encode(facts)
-  if(complete.length+instructionLength<=inputBudget&&facts.length<=factsPerPartition){
-    return [{id:'whole',factIds:facts.map(fact=>fact.id),input:complete}]
-  }
-  const partitions:RequirementFact[][]=[]
-  let current:RequirementFact[]=[]
-  for(const fact of facts){
-    const proposed=[...current,fact]
-    if(proposed.length>factsPerPartition||encode(proposed).length+instructionLength>inputBudget/2){
-      if(current.length)partitions.push(current)
-      current=[fact]
-      if(encode(current).length+instructionLength>inputBudget/2)throw new Error(`事实 ${fact.id} 与问题上下文超过交叉合并的单分区预算；未截断依据，无法完成跨批检查`)
-    }else current=proposed
-  }
-  if(current.length)partitions.push(current)
-  if(partitions.length<2)throw new Error('问题上下文超过事实合并预算；未截断材料')
+  const partitions=partitionFactInput(facts,encode,instructionLength)
+  if(partitions.length===1)return [{id:'whole',factIds:facts.map(fact=>fact.id),input:encode(facts)}]
   const batches:FactModelBatch[]=[]
   for(let left=0;left<partitions.length;left++)for(let right=left+1;right<partitions.length;right++){
     const items=[...partitions[left],...partitions[right]]

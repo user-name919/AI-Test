@@ -1,6 +1,24 @@
 import { evidenceRefSchema, factModelSchema, type DesignRun, type FactModel } from '@quality-ai/contracts/case-design'
 import { z } from 'zod'
 
+/** 用完整编码后的大小分区，预留另一分区共同出现的空间；不截短事实或依据。 */
+export function partitionFactInput<T extends {id:string}>(facts:T[],encode:(facts:T[])=>string,instructionLength:number):T[][]{
+  if(encode(facts).length+instructionLength<=120000&&facts.length<=40)return [facts]
+  const partitions:T[][]=[]
+  let current:T[]=[]
+  for(const fact of facts){
+    const proposed=[...current,fact]
+    if(proposed.length>40||encode(proposed).length+instructionLength>60000){
+      if(current.length)partitions.push(current)
+      current=[fact]
+      if(encode(current).length+instructionLength>60000)throw new Error(`事实 ${fact.id} 与共享问题上下文超过交叉分析的单分区预算；未截断依据`)
+    }else current=proposed
+  }
+  if(current.length)partitions.push(current)
+  if(partitions.length<2)throw new Error('共享问题上下文超过事实分析预算；未截断材料')
+  return partitions
+}
+
 /** 只去重完全相同的证据，不压缩原文或合并语义事实。 */
 export function encodeFactInput(run:DesignRun):string{
   const registry=new Map<string,string>()
