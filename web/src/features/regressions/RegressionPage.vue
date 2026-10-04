@@ -7,6 +7,7 @@ import ChangeSetView from './ChangeSetView.vue'
 import RegressionReview from './RegressionReview.vue'
 import ContractView from '../case-design/ContractView.vue'
 import { regressionRequest } from './api'
+import WorktreeStatus from './WorktreeStatus.vue'
 
 const route=useRoute()
 const list=ref<Array<Omit<RegressionAnalysis,'sourceImpact'|'generation'> & {completedBatches:number;analyzedTrees:number}>>([])
@@ -70,6 +71,7 @@ onUnmounted(()=>{epoch++;clearTimeout(timer)})
     <template v-else-if="analysis">
       <section class="reg-card"><h2>{{ analysis.projectId }} · {{ statusNames[analysis.status] }}</h2><p>{{ stageNames[analysis.stage] }} · 最近更新 {{ analysis.updatedAt }}</p><p>任务 ID：{{ analysis.id }}<br />固定目标 SHA：{{ analysis.targetSha }}</p><p v-if="analysis.error" class="reg-error">{{ analysis.error }}</p><button v-if="['queued','running'].includes(analysis.status)" :disabled="cancelling" @click="cancel">取消分析</button><RouterLink v-else :to="{path:'/regressions/new',query:{changeSet:analysis.changeSetId}}">以此冻结范围创建新分析</RouterLink></section>
       <ChangeSetView v-if="changeSet" :change-set="changeSet" />
+      <WorktreeStatus v-if="changeSet" :key="changeSet.id" :change-set-id="changeSet.id" />
       <RegressionReview v-if="analysis.generation&&!['queued','running'].includes(analysis.status)" :key="analysis.id" :regression-id="analysis.id" :project-id="analysis.projectId" :target-sha="analysis.targetSha" />
       <section v-if="analysis.sourceImpact" class="reg-card"><h2>源码影响候选</h2><p>基于静态 import 等词法线索，可能误匹配；不是完整调用图，也不是已验证页面行为。</p><ul class="reg-warning"><li v-for="warning in analysis.sourceImpact.warnings" :key="warning">{{ warning }}</li></ul>
         <p v-if="analysis.sourceImpact.skippedShas.length" class="reg-warning">未分析版本：{{ analysis.sourceImpact.skippedShas.join('、') }}</p>

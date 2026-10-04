@@ -5,9 +5,23 @@ import { freezeChangeSet, getChangeSet, listChangeSets, previewChangeSet } from 
 import { createRegression, getRegression, listRegressions, cancelRegression } from './jobs'
 import { getRegressionReviews, regressionReviewItems, saveRegressionReview } from './review'
 import { listDeploymentConfirmations, saveDeploymentConfirmation } from './deployments'
+import { getManagedWorktreeStatus, removeUnusedChangeSetWorktree } from '../../integrations/git/worktree-manager'
 
 export async function handleRegressionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+  const worktreeMatch=pathname.match(/^\/api\/change-sets\/([a-f0-9-]{36})\/worktree(\/remove)?$/i)
+  if(worktreeMatch){
+    const range=getChangeSet(worktreeMatch[1]!)
+    if(!range)return json(response,404,{error:'变更范围不存在'})
+    if(request.method==='GET'&&!worktreeMatch[2])return json(response,200,{worktree:await getManagedWorktreeStatus(range.id)})
+    if(request.method==='POST'&&worktreeMatch[2]){
+      const body=await readJson(request) as {confirmed?:boolean;expectedSha?:string}
+      if(!body||body.confirmed!==true||body.expectedSha!==range.facts.targetSha)return json(response,409,{error:'清理需明确确认当前固定SHA；不接受目录路径'})
+      try{await removeUnusedChangeSetWorktree(range.id);return json(response,200,{worktree:await getManagedWorktreeStatus(range.id)})}
+      catch(error){return json(response,409,{error:error instanceof Error?error.message:'清理失败，保留现场'})}
+    }
+    return json(response,405,{error:'不支持此快照操作'})
+  }
   const deploymentMatch = pathname.match(/^\/api\/regressions\/([a-f0-9-]{36})\/deployments$/i)
   if (deploymentMatch) {
     if (!getRegression(deploymentMatch[1]!)) return json(response, 404, { error: '回归分析不存在' })

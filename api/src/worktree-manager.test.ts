@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { createServer } from 'node:http'
 
 const directory = mkdtempSync(join(tmpdir(), 'quality-ai-managed-tree-'))
 process.env.QUALITY_AI_DATA_ROOT = directory
@@ -15,6 +16,7 @@ const { database } = await import('./storage/database')
 const { initializeChangeSets, previewChangeSet, freezeChangeSet } = await import('./modules/regressions/change-sets')
 const { initializeManagedWorktrees, acquireChangeSetWorktree, releaseChangeSetWorktree, removeUnusedChangeSetWorktree } = await import('./integrations/git/worktree-manager')
 const { analyzeChangeSetSource } = await import('./modules/regressions/source-impact')
+const { handleRegressionRoutes } = await import('./modules/regressions/routes')
 
 test('独立 detached 快照固定版本、复用引用并保护原工作区及脏快照', async t => {
   t.after(() => { database.close(); rmSync(directory, { recursive: true, force: true }) })
@@ -33,12 +35,23 @@ test('独立 detached 快照固定版本、复用引用并保护原工作区及�
   const preview = await previewChangeSet({ projectId: 'fixture', comparison: { mode: 'endpoints', baseRef: base, targetRef: 'refactor' } })
   await assert.rejects(acquireChangeSetWorktree(preview.id, 'before confirmation'), /先确认/)
   freezeChangeSet(preview.id, preview.factsHash)
+  const api=createServer(async(request,response)=>{if(!await handleRegressionRoutes(request,response)){response.writeHead(404);response.end()}})
+  await new Promise<void>(resolve=>api.listen(0,'127.0.0.1',resolve))
+  t.after(()=>new Promise<void>(resolve=>{api.closeAllConnections();api.close(()=>resolve())}))
+  const address=api.address();assert.ok(address&&typeof address!=='string')
+  const endpoint=`http://127.0.0.1:${address.port}/api/change-sets/${preview.id}/worktree`
+  const status=async()=>(await(await fetch(endpoint)).json()).worktree
+  const remove=(body:unknown)=>fetch(endpoint+'/remove',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+  assert.equal((await status()).state,'not_created')
   git('config', 'filter.fixture.smudge', 'false')
   git('config', 'filter.fixture.required', 'true')
   const [first, second] = await Promise.all([acquireChangeSetWorktree(preview.id, 'analysis'), acquireChangeSetWorktree(preview.id, 'execution')])
   assert.equal(first.path, second.path)
   assert.notEqual(first.token, second.token)
   assert.equal(first.sha, target)
+  assert.equal((await status()).references.length,2)
+  assert.equal((await status()).canRemove,false)
+  assert.equal((await remove({confirmed:true,expectedSha:target})).status,409)
   const impact = await analyzeChangeSetSource(preview.id, 'source-impact')
   assert.ok(impact.trees.some(tree => tree.sha === target && tree.scannedFiles.includes('page.ts')))
   assert.equal((database.prepare('SELECT count(*) AS count FROM regression_worktree_leases').get() as { count: number }).count, 2, '分析完成释放自己的引用，保留其他任务引用')
@@ -54,11 +67,17 @@ test('独立 detached 快照固定版本、复用引用并保护原工作区及�
   await assert.rejects(removeUnusedChangeSetWorktree(preview.id), /引用/)
   releaseChangeSetWorktree(second.token)
   writeFileSync(join(first.path, 'extra.txt'), 'must preserve')
+  assert.equal((await status()).canRemove,false)
+  assert.match((await status()).reason,/额外文件/)
   await assert.rejects(acquireChangeSetWorktree(preview.id, 'new analysis'), /额外文件/)
   await assert.rejects(removeUnusedChangeSetWorktree(preview.id), /额外文件/)
   assert.equal(readFileSync(join(first.path, 'extra.txt'), 'utf8'), 'must preserve')
   rmSync(join(first.path, 'extra.txt'))
-  await removeUnusedChangeSetWorktree(preview.id)
+  assert.equal((await status()).canRemove,true)
+  assert.equal((await remove({confirmed:true,expectedSha:base})).status,409)
+  assert.equal((await remove({expectedSha:target})).status,409)
+  assert.equal((await remove({confirmed:true,expectedSha:target})).status,200)
+  assert.equal((await status()).state,'removed')
   assert.equal(existsSync(first.path), false)
   assert.equal(readFileSync(join(root, 'page.ts'), 'utf8'), 'unsaved user changes')
   await assert.rejects(removeUnusedChangeSetWorktree('not-owned'), /没有平台登记/)

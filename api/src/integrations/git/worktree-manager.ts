@@ -6,6 +6,7 @@ import { join, dirname, relative, isAbsolute } from 'node:path'
 import { database } from '../../storage/database'
 import { getRuntimePaths } from '../../config/paths'
 import { getChangeSet } from '../../modules/regressions/change-sets'
+import type { ManagedWorktreeStatus } from '@quality-ai/contracts/regressions'
 
 const execute = promisify(execFile)
 interface SnapshotRow { change_set_id: string; path: string; source_root: string; sha: string; state: string; error: string | null }
@@ -95,6 +96,19 @@ export async function acquireChangeSetWorktree(changeSetId: string, owner: strin
 
 export function releaseChangeSetWorktree(token: string) {
   database.prepare('DELETE FROM regression_worktree_leases WHERE token=?').run(token)
+}
+
+export async function getManagedWorktreeStatus(changeSetId:string):Promise<ManagedWorktreeStatus>{
+  const row=database.prepare('SELECT * FROM regression_worktrees WHERE change_set_id=?').get(changeSetId) as SnapshotRow|undefined
+  const references=(database.prepare('SELECT owner,created_at FROM regression_worktree_leases WHERE change_set_id=? ORDER BY created_at').all(changeSetId) as Array<{owner:string;created_at:string}>).map(item=>({owner:item.owner,createdAt:item.created_at}))
+  if(!row)return {changeSetId,state:'not_created',references,canRemove:false,reason:'尚未创建平台源码快照'}
+  const state=['preparing','ready','removed'].includes(row.state)?row.state as 'preparing'|'ready'|'removed':'error'
+  const result:ManagedWorktreeStatus={changeSetId,state,sha:row.sha,references,canRemove:false,reason:''}
+  if(state==='removed')return {...result,reason:'快照已清理；后续任务可从固定SHA重新创建，历史报告仍保留'}
+  if(state!=='ready')return {...result,reason:row.error??'创建未完成或状态异常，保留现场，不自动清理'}
+  if(references.length)return {...result,reason:'仍有任务引用登记；可能包含中断遗留引用，未经核实不能清理'}
+  try{await validateSnapshot(row);return {...result,canRemove:true,reason:'已核对无引用、版本正确且无改动；清理时仍会重新校验'}}
+  catch(error){return {...result,reason:error instanceof Error?error.message:'快照校验失败，不能清理'}}
 }
 
 export async function removeUnusedChangeSetWorktree(changeSetId: string) {

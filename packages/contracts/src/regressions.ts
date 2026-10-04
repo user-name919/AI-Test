@@ -148,3 +148,11 @@ export interface DeploymentConfirmation extends z.infer<typeof deploymentConfirm
   environmentTargetUrl: string
   createdAt: string
 }
+export interface ManagedWorktreeStatus {
+  changeSetId:string
+  state:'not_created'|'preparing'|'ready'|'error'|'removed'
+  sha?:string
+  references:Array<{owner:string;createdAt:string}>
+  canRemove:boolean
+  reason:string
+}

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { createServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { chromium } from 'playwright'
-import type { ChangeSet, RegressionAnalysis } from '@quality-ai/contracts/regressions'
+import type { ChangeSet, RegressionAnalysis, ManagedWorktreeStatus } from '@quality-ai/contracts/regressions'
 
 test('回归页面显式范围预览、刷新冻结、启动取消和源码证据可读', async () => {
   const server=await createServer({root:new URL('../../web',import.meta.url).pathname,configFile:false,plugins:[vue()],server:{host:'127.0.0.1',port:0}})
@@ -17,10 +17,18 @@ test('回归页面显式范围预览、刷新冻结、启动取消和源码证�
     const range:ChangeSet={id:'11111111-1111-4111-8111-111111111111',projectId:'fixture',status:'preview',factsHash:'c'.repeat(64),createdAt:'now',facts:{comparison:{mode:'endpoints',targetRef:'feature',baseRef:'main'},targetSha:sha,requestedBaseSha:base,effectiveBaseSha:base,commits:[{sha,parents:[base],subject:'共享组件重构'}],diffs:[{baseSha:base,targetSha:sha,files:[{status:'M',path:'src/shared.ts'}],patch:'公开合成 Diff'}],omittedCommitShas:[],omittedRangeBases:[],dirty:true,capturedAt:'now',warnings:['未提交内容不纳入范围']}}
     const analysis:RegressionAnalysis={id:'22222222-2222-4222-8222-222222222222',projectId:'fixture',changeSetId:range.id,factsHash:range.factsHash,targetSha:sha,status:'running',stage:'generating',createdAt:'now',updatedAt:'now',sourceImpact:{method:'static-import-candidates-v1',trees:[{sha,changedFiles:['src/shared.ts'],scannedFiles:['src/shared.ts'],skippedFiles:[{path:'large.ts',reason:'文件预算'}],edges:[{from:'page-a.ts',to:'src/shared.ts',line:1,specifier:'./src/shared'}],affectedFiles:['page-a.ts','page-b.ts'],unresolved:[{path:'page-b.ts',line:2,expression:'@/dynamic',reason:'别名未解析'}]}],skippedShas:[],warnings:['静态候选，不证明真实行为']},generation:{promptVersion:'fixture-v1',model:'fixture',reviewStatus:'pending',pendingEvidenceIds:['e2'],omittedEvidenceIds:[],limitations:['部分依据尚未处理'],batches:[]}}
     let previewCalls=0;let starts=0;let freezeCalls=0
+    let removals=0
+    const worktree:ManagedWorktreeStatus={changeSetId:range.id,state:'ready',sha,references:[{owner:analysis.id,createdAt:'now'}],canRemove:false,reason:'仍有任务引用登记'}
     await page.route('**/api/**',async route=>{
       const path=new URL(route.request().url()).pathname
       let payload:unknown={}
       if(path==='/api/projects')payload={projects:[{id:'fixture',name:'示例项目',connected:true}]}
+      else if(path.endsWith('/worktree/remove')){
+        removals++;assert.deepEqual(route.request().postDataJSON(),{confirmed:true,expectedSha:sha})
+        if(removals===1){await route.fulfill({status:409,json:{error:'仍有任务引用源码快照，不能清理'}});return}
+        worktree.state='removed';worktree.canRemove=false;worktree.reason='快照已清理';payload={worktree}
+      }
+      else if(path.endsWith('/worktree'))payload={worktree}
       else if(path.endsWith('/git/refs'))payload={branches:[{name:'main',sha:base},{name:'feature',sha}],truncated:false}
       else if(path==='/api/change-sets/preview'){
         previewCalls++;const body=route.request().postDataJSON()
@@ -67,6 +75,17 @@ test('回归页面显式范围预览、刷新冻结、启动取消和源码证�
     page.once('dialog',dialog=>dialog.accept())
     await page.getByRole('button',{name:'取消分析',exact:true}).click()
     await page.getByText('用户取消，部分成果保留',{exact:true}).waitFor()
+    const clean=page.getByRole('button',{name:'清理未使用快照',exact:true})
+    assert.equal(await clean.isDisabled(),true)
+    worktree.references=[];worktree.canRemove=true;worktree.reason='已核对无引用'
+    await page.getByRole('button',{name:'刷新快照状态'}).click()
+    await page.getByText('已核对无引用',{exact:true}).waitFor()
+    page.once('dialog',dialog=>dialog.dismiss());await clean.click();assert.equal(removals,0)
+    page.once('dialog',dialog=>dialog.accept());await clean.click()
+    await page.getByRole('alert').filter({hasText:'仍有任务引用源码快照'}).waitFor()
+    page.once('dialog',dialog=>dialog.accept());await clean.click()
+    await page.getByRole('status').filter({hasText:'平台快照已清理'}).waitFor()
+    assert.equal(await clean.isDisabled(),true)
     await page.getByRole('heading',{name:'源码影响候选'}).waitFor()
     await page.getByRole('button',{name:'使用指引'}).click()
     await page.getByRole('heading',{name:'如何回归一次重构'}).waitFor()
