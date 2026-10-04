@@ -431,6 +431,7 @@ export interface ExecutionResult {
       decision: AgentDecision
       observation?: {
         frameContext?: PageSnapshot['frameContext']
+        observationScope?: PageSnapshot['observationScope']
         url: string
         title: string
         elementCount: number

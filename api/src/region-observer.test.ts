@@ -3,8 +3,29 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 import { PageObserver } from './automation/page-observer'
 import { SingleActionExecutor } from './automation/single-action-executor'
-import { agentActionSchema } from '@quality-ai/contracts'
+import { agentActionSchema, agentTestGoalSchema } from '@quality-ai/contracts'
+import { TestAgent } from './automation/test-agent'
 import { describeAgentDecision } from '@quality-ai/contracts/live-execution'
+
+test('Agent真实循环将局部范围保留到精简轨迹与可序列化报告',async()=>{
+  const browser=await chromium.launch({headless:true})
+  try{
+    const page=await browser.newPage()
+    await page.setContent('<section role="dialog" aria-label="结果"><button>完成</button></section>')
+    const observer=new PageObserver()
+    const goal=agentTestGoalSchema.parse({name:'局部轨迹',targetUrl:'http://localhost',objective:'查看区域结果',requiredAssertions:[{id:'visible',description:'完成按钮可见'}]})
+    const result=await new TestAgent(goal,observer,new SingleActionExecutor(page,observer.registry,goal.targetUrl,'/private/tmp'),{async decide({snapshot,trajectory}){
+      if(!trajectory.length)return {type:'action',snapshotId:snapshot.snapshotId,reason:'缩小观察范围',action:{action:'observeRegion',elementRef:snapshot.elements.find(item=>item.role==='dialog')!.ref}}
+      if(trajectory.length===1)return {type:'action',snapshotId:snapshot.snapshotId,reason:'验证区域目标',action:{action:'expectVisible',elementRef:snapshot.elements.find(item=>item.name==='完成')!.ref,assertionId:'visible'}}
+      return {type:'finish',summary:'完成'}
+    }}).run(page)
+    assert.equal(result.status,'passed')
+    const stored=JSON.parse(JSON.stringify(result))
+    assert.equal(stored.trajectory[1].observation.observationScope.mode,'region')
+    assert.equal(stored.trajectory[1].observation.observationScope.sourceSnapshotId,result.trajectory[0].snapshotId)
+    assert.equal(stored.trajectory[2].observation.observationScope,undefined)
+  }finally{await browser.close()}
+})
 
 test('密集页面可局部重观察真实容器，保留预算与范围，不重用旧引用或误点背景',async()=>{
   const browser=await chromium.launch({headless:true})
