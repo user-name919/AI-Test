@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import type { ExecutionRecord } from '@quality-ai/contracts'
 import type { QualityMemory } from '@quality-ai/contracts/memories'
 
 const memories=ref<QualityMemory[]>([]), executions=ref<ExecutionRecord[]>([])
 const route=useRoute(),router=useRouter()
-const selected=ref(typeof route.query.memoryId==='string'?route.query.memoryId:''), executionId=ref(''), caseKey=ref(''), lesson=ref(''), reason=ref(''), project=ref('')
-watch(selected,id=>{void router.replace({query:{...route.query,memoryId:id||undefined}})})
+const selected=computed(()=>typeof route.query.memoryId==='string'?route.query.memoryId:'')
+const executionId=ref(''), caseKey=ref(''), lesson=ref(''), reason=ref(''), project=ref('')
 const loading=ref(false), busy=ref(false), error=ref(''), notice=ref(''), help=ref(false)
 const labels={candidate:'待审核',adopted:'已采纳',invalid:'已失效'}
 const resultLabels={passed:'通过',failed:'验证失败',blocked:'受阻',cancelled:'取消',not_run:'未执行',infrastructure_failed:'执行中断'}
@@ -37,15 +37,16 @@ async function save(){
   busy.value=true;error.value=''
   try{
     const {memory}=await request<{memory:QualityMemory}>('/api/memories',{executionId:executionId.value,caseKey:caseKey.value||undefined,lesson:lesson.value})
-    memories.value.unshift(memory);selected.value=memory.id;project.value='';lesson.value='';reason.value=''
+    memories.value.unshift(memory);project.value='';lesson.value='';reason.value=''
+    busy.value=false
+    await router.replace({query:{...route.query,memoryId:memory.id}})
     notice.value='经验已保存为待审核，不代表原测试通过。'
   }catch(cause){error.value=cause instanceof Error?cause.message:'保存失败'}
   finally{busy.value=false}
 }
 function select(id:string){
   if(busy.value)return
-  if(reason.value.trim()&&!window.confirm('审核理由尚未提交，放弃理由并切换？'))return
-  reason.value='';selected.value=id
+  void router.push({query:{...route.query,memoryId:id}})
 }
 async function review(status:'adopted'|'invalid'){
   if(busy.value||!current.value||!reason.value.trim())return
@@ -59,6 +60,12 @@ async function review(status:'adopted'|'invalid'){
   finally{busy.value=false}
 }
 function protect(event:BeforeUnloadEvent){if(dirty.value||busy.value){event.preventDefault();event.returnValue=''}}
+onBeforeRouteUpdate(to=>{
+  if(to.query.memoryId===route.query.memoryId)return
+  if(busy.value)return false
+  if(reason.value.trim()&&!window.confirm('审核理由尚未提交，放弃理由并切换？'))return false
+  reason.value=''
+})
 onBeforeRouteLeave(()=>busy.value?false:!dirty.value||window.confirm('经验或审核理由尚未保存。取消可留在此页继续保存，确认将放弃草稿离开。'))
 onMounted(()=>{void refresh();window.addEventListener('beforeunload',protect)})
 onBeforeUnmount(()=>window.removeEventListener('beforeunload',protect))
@@ -81,7 +88,7 @@ onBeforeUnmount(()=>window.removeEventListener('beforeunload',protect))
         <article v-if="current"><h2>{{ current.source.title }} · {{ labels[current.status] }}</h2><p class="lesson">{{ current.lesson }}</p><p>人工经验 · 审核版本 {{ current.revision }} · {{ current.createdAt }}</p><p>原执行结论：{{ resultLabels[current.source.status] }}（采纳经验不修改此结论）</p><p v-if="current.source.error">原原因：{{ current.source.error }}</p><p>适用项目：{{ current.scope.projectId??'未知，不自动跨项目复用' }}</p><p>来源页面：{{ current.scope.targetUrl }}</p><p>源码分支：{{ current.scope.sourceProject?.branch??'未记录' }} · SHA：{{ current.scope.sourceProject?.commit??'未记录' }}</p><p>源码版本不证明测试环境部署版本。适用性仍需人工核对。</p><RouterLink :to="`/executions/${current.source.executionId}`">查看原始执行证据</RouterLink>
           <label>审核理由<textarea v-model="reason" :disabled="busy" rows="3" maxlength="2000"></textarea></label><button :disabled="busy||!reason.trim()" @click="review('adopted')">采纳经验</button> <button :disabled="busy||!reason.trim()" @click="review('invalid')">标记失效</button><p>必须填写理由。重复采纳也会记录新审核，不会覆盖原历史。</p>
           <details><summary>审核历史（{{ current.reviews.length }}）</summary><p v-for="entry in current.reviews" :key="entry.revision">v{{ entry.revision }} · {{ labels[entry.status] }} · {{ entry.at }}<br>{{ entry.reason }}</p></details>
-        </article><article v-else>选择左侧记录查看来源、范围与审核历史。</article>
+        </article><article v-else-if="selected&&!loading&&!error" role="alert">未找到此记忆记录，请核对链接或刷新列表。不会自动展示其他记录。</article><article v-else>选择左侧记录查看来源、范围与审核历史。</article>
       </div>
     </section>
   </main>
