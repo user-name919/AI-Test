@@ -7,7 +7,7 @@ import {
   type ToolResult,
   type SourceProjectSnapshot,
 } from '@quality-ai/contracts'
-import type { ProjectKnowledgeProvider } from '../project-knowledge/types'
+import type { ProjectKnowledgeProvider } from '../integrations/project-knowledge/types'
 import type { PageObserver } from './page-observer'
 import type { SingleActionExecutor } from './single-action-executor'
 import { TestPolicy, type AgentRuntimeState } from './test-policy'

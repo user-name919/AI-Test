@@ -3,7 +3,7 @@ import type { ChangeSet } from '@quality-ai/contracts/regressions'
 import { changeSetPreviewSchema } from '@quality-ai/contracts/regressions'
 import { database } from '../../storage/database'
 import { collectLocalChangeFacts } from '../../integrations/git/local-git'
-import { getProjectProviderRegistry } from '../../project-knowledge/registry'
+import { getProjectProviderRegistry } from '../../integrations/project-knowledge/registry'
 
 export function initializeChangeSets() {
   database.exec(`CREATE TABLE IF NOT EXISTS change_sets (

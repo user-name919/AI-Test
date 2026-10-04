@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { getRuntimePaths } from '../config/paths'
+import { getRuntimePaths } from '../../config/paths'
 import { projectConfigFileSchema, type ProjectConfig } from './types'
 
 export async function loadProjectConfigs(configPath = getRuntimePaths().projectConfigPath): Promise<ProjectConfig[]> {

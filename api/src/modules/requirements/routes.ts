@@ -7,7 +7,7 @@ import { saveAnalysisReviewWithHistory } from '../cases/repository'
 import { analyzePrd } from '../../model'
 import { parseSourceDocuments } from '../../source-documents'
 import { collectReviewSourceContext, generateReviewExecutionContract } from '../../review-contract'
-import { getProjectProvider } from '../../project-knowledge/registry'
+import { getProjectProvider } from '../../integrations/project-knowledge/registry'
 
 
 export async function handleRequirementRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {

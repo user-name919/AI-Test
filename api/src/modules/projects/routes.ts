@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { json, readJson } from '../../http/response'
-import { getProjectProvider, getProjectProviderRegistry } from '../../project-knowledge/registry'
-import type { SourceScope } from '../../project-knowledge/types'
+import { getProjectProvider, getProjectProviderRegistry } from '../../integrations/project-knowledge/registry'
+import type { SourceScope } from '../../integrations/project-knowledge/types'
 import { listLocalGitRefs } from '../../integrations/git/local-git'
 
 const sourceScopes = new Set<SourceScope>(['route', 'page', 'component', 'api'])

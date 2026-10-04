@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { getRuntimePaths } from '../config/paths'
+import { getRuntimePaths } from '../../config/paths'
 import { realpath, readFile, readdir, stat } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'

@@ -19,7 +19,7 @@ process.env.QUALITY_AI_DATA_ROOT = temporaryDirectory
 process.env.PROJECTS_CONFIG_PATH = projectsConfigPath
 
 const databaseModule = await import('./database')
-const { resetProjectProviderRegistry } = await import('./project-knowledge/registry')
+const { resetProjectProviderRegistry } = await import('./integrations/project-knowledge/registry')
 const { createApiServer } = await import('./index')
 const server = createApiServer()
 const modelPrompts: string[] = []

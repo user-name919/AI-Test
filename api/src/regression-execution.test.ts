@@ -25,8 +25,8 @@ const { listRegressionCaseAssets } = await import('./modules/cases/regression-as
 const { saveDeploymentConfirmation } = await import('./modules/regressions/deployments')
 const { saveEnvironment } = await import('./modules/projects/environment-repository')
 const { acquireChangeSetWorktree, releaseChangeSetWorktree } = await import('./integrations/git/worktree-manager')
-const { LocalProjectKnowledgeProvider } = await import('./project-knowledge/local-project-provider')
-const { loadProjectConfigs } = await import('./project-knowledge/config')
+const { LocalProjectKnowledgeProvider } = await import('./integrations/project-knowledge/local-project-provider')
+const { loadProjectConfigs } = await import('./integrations/project-knowledge/config')
 
 test('回归审核经部署校验后实际执行，冻结子项目源码和报告不随分支移动', async t => {
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
