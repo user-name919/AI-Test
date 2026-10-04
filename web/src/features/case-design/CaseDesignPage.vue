@@ -90,6 +90,10 @@ function locate(value:EvidenceRef) { reference.value=value; showSource.value=tru
             <h2>原文审查范围</h2><p>已审查 {{ selected.output.reviewedBlockIds.length }} 块 · 未完成 {{ selected.output.unreviewedBlockIds?.length??0 }} 块。{{ selected.output.modelReviewCompleted?'模型审查完成，仍需人工审核。':'审查尚未完成，已保存批次不代表全量通过。' }}</p>
             <details v-if="selected.output.unreviewedBlockIds?.length"><summary>查看未完成的原文块</summary><p v-for="id in selected.output.unreviewedBlockIds" :key="id">{{ id }}</p></details>
           </section>
+          <section v-if="selected?.output.qualityAttempts?.length" class="card" aria-label="审查响应记录">
+            <h2>审查响应与校验记录</h2><p>每批响应先校验目标和依据，失败时不会丢弃问题或自动映射到相似用例。校验通过不代表人工批准；原始材料仅保留在本地。</p>
+            <details v-for="(attempt,index) in selected.output.qualityAttempts" :key="`${attempt.batchId}-${index}`"><summary>批次 {{ attempt.batchId }} · {{ {requesting:'请求中或尚未记录结束',request_failed:'请求失败',cancelled:'已取消',invalid:'响应校验失败',validated:'响应校验通过，待人工审核'}[attempt.status] }}</summary><p v-if="attempt.error" class="error">{{ attempt.error }}</p><p v-if="attempt.responseTruncated">响应过长，仅保留前 64000 字符，不能视为完整原文。</p><pre v-if="attempt.response">{{ attempt.response }}</pre><p v-else>未记录响应正文，不补造模型输出。</p></details>
+          </section>
           <section v-if="selected?.output.generationAttempts?.length" class="card" aria-label="生成格式修复记录">
             <h2>生成与格式修复记录</h2><p>每个场景最多生成两次。结构有效仅表示字段校验通过，不代表业务含义正确；请结合原始依据和最终用例审核。</p>
             <details v-for="attempt in selected.output.generationAttempts" :key="`${attempt.scenarioId}-${attempt.attempt}`">

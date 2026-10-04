@@ -160,6 +160,7 @@ export interface DesignRun {
     modelingBatches?: Array<{id:string;factIds:string[];status:'pending'|'completed';model?:FactModel}>
     planningBatches?: Array<{id:string;kind:'whole'|'local'|'cross';factIds:string[];status:'pending'|'completed';scenarioIds:string[]}>
     qualityBatches?: Array<{id:string;kind:'documents'|'cross';caseIds:string[];factIds:string[];scenarioIds:string[];questionIds:string[];conflictIds:string[];blockIds:string[];status:'pending'|'completed'}>
+    qualityAttempts?: Array<{batchId:string;status:'requesting'|'request_failed'|'cancelled'|'invalid'|'validated';response:string;responseTruncated:boolean;error?:string}>
   }
   statistics: { calls: number; inputCharacters: number; outputCharacters: number }
 }

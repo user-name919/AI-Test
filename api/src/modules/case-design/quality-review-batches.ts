@@ -21,7 +21,7 @@ export function qualityReviewBatches(design:CaseDesign,run:DesignRun,instruction
   const full:QualityReviewScope={caseIds:cases.map(item=>item.id),factIds:facts.map(item=>item.id),scenarioIds:scenarios.map(item=>item.id),questionIds:questions.map(item=>item.id),conflictIds:conflicts.map(item=>item.id),blockIds:blocks.map(item=>item.id)}
   function context(scope:QualityReviewScope){
     const targets={case:scope.caseIds,fact:scope.factIds,scenario:scope.scenarioIds,design:[design.id]}
-    return {designId:design.id,
+    return {designId:design.id,allowedTargets:targets,
       documents:design.documents.map(document=>({...document,blocks:document.blocks.filter(block=>scope.blockIds.includes(block.id))})),
       facts:{consolidatedFacts:facts.filter(item=>scope.factIds.includes(item.id)),conflicts:conflicts.filter(item=>scope.conflictIds.includes(item.id))},
       scenarios:scenarios.filter(item=>scope.scenarioIds.includes(item.id)),cases:cases.filter(item=>scope.caseIds.includes(item.id)),

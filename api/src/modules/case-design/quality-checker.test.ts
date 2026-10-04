@@ -9,16 +9,18 @@ import { getModelConfig } from '../../model-config'
 test('大原文分批审查保留全量用例，失败保留已审查范围且不标完成',async()=>{
   const design:CaseDesign={id:'d',name:'合成',revision:1,inputHash:'h',createdAt:'now',updatedAt:'now',documents:[{id:'doc',fileName:'public.md',role:'prd',contentHash:'h',version:1,warnings:[],blocks:Array.from({length:16},(_,i)=>({id:`b${i}`,documentId:'doc',kind:'paragraph' as const,text:'公开合成材料'.repeat(1500),warnings:[]}))}]}
   const fixture=():DesignRun=>({id:'r',designId:'d',attempt:1,stage:'checking',status:'running',inputRevision:1,inputHash:'h',model:'fixture',modelConfigHash:'h',protocol:'openai-responses',promptVersion:'checking-v2',skills:[],createdAt:'now',updatedAt:'now',statistics:{calls:0,inputCharacters:0,outputCharacters:0},output:{facts:[],questions:[],processedBlockIds:[],unprocessedBlockIds:[],factModel:{consolidatedFacts:[],conflicts:[]},scenarios:[],cases:[{id:'c',scenarioId:'s',title:'查询',factIds:[],questionIds:[],verification:'browser',verificationReason:'合成',requiresReview:true,contract:{objective:'查询',preconditions:[],steps:['查询'],expectedAssertions:['结果可见'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}}]}})
-  let failSecond=false,count=0
+  let secondOutput:string|undefined,count=0
   const server=createServer(async(request,response)=>{
     const chunks:Buffer[]=[];for await(const chunk of request)chunks.push(Buffer.from(chunk))
     const body=JSON.parse(Buffer.concat(chunks).toString())
     const input=JSON.parse(body.input[0].content.split('\n\nReturn only')[0])
     assert.equal(input.cases.length,1)
+    assert.deepEqual(input.allowedTargets.case,['c'])
+    assert.deepEqual(input.allowedTargets.design,['d'])
     assert.ok(body.instructions.length+JSON.stringify(input).length<=120000)
     count++
-    response.writeHead(200,{'content-type':'application/json'})
-    response.end(JSON.stringify({output_text:failSecond&&count===2?'invalid-json':JSON.stringify({issues:[]})}))
+    response.writeHead(secondOutput==='http-error'&&count===2?503:200,{'content-type':'application/json'})
+    response.end(JSON.stringify({output_text:count===2&&secondOutput?secondOutput:JSON.stringify({issues:[]})}))
   })
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve))
   const address=server.address();assert.ok(address&&typeof address!=='string')
@@ -28,11 +30,32 @@ test('大原文分批审查保留全量用例，失败保留已审查范围且�
     assert.ok(count>1);assert.equal(run.output.modelReviewCompleted,true)
     assert.deepEqual(run.output.reviewedBlockIds,design.documents[0]!.blocks.map(block=>block.id))
     assert.deepEqual(run.output.unreviewedBlockIds,[])
-    count=0;failSecond=true
-    const failed=fixture();await assert.rejects(checkCaseQuality(design,failed,config,new AbortController().signal,()=>{},[]))
-    assert.equal(failed.output.modelReviewCompleted,false)
-    assert.ok(failed.output.reviewedBlockIds!.length>0)
-    assert.ok(failed.output.unreviewedBlockIds!.length>0)
+    assert.ok(run.output.qualityAttempts!.every(attempt=>attempt.status==='validated'))
+    const issue={targetType:'case',targetId:'unknown-case',kind:'unverifiable',severity:'blocking',reason:'待核对目标',evidence:[]}
+    for(const raw of ['invalid-json',JSON.stringify({issues:[issue]}),JSON.stringify({issues:[{...issue,targetId:'c',evidence:[{documentId:'other-doc',blockId:'unseen',quote:'未提供文字'}]}]}),'http-error',JSON.stringify({issues:[{...issue,reason:'x'.repeat(65000)}]})]){
+      count=0;secondOutput=raw
+      const failed=fixture(),original=JSON.stringify(failed.output.cases)
+      const checkpoints:DesignRun[]=[]
+      await assert.rejects(checkCaseQuality(design,failed,config,new AbortController().signal,()=>checkpoints.push(structuredClone(failed)),[]))
+      assert.equal(count,2,'失败不重复调用或静默丢弃意见')
+      assert.equal(failed.output.modelReviewCompleted,false)
+      assert.ok(failed.output.reviewedBlockIds!.length>0)
+      assert.ok(failed.output.unreviewedBlockIds!.length>0)
+      const attempt=failed.output.qualityAttempts![1]!
+      assert.equal(attempt.status,raw==='http-error'?'request_failed':'invalid')
+      assert.equal(attempt.response,raw==='http-error'?'':raw.slice(0,64000))
+      assert.equal(attempt.responseTruncated,raw.length>64000)
+      assert.equal(checkpoints.at(-1)!.output.qualityAttempts![1]!.error,attempt.error,'抛出前已保存具体诊断')
+      if(raw===JSON.stringify({issues:[issue]}))assert.match(attempt.error!,/documents-2.*issues\[0\].*case:unknown-case/)
+      assert.equal(failed.output.qualityBatches![1]!.status,'pending')
+      assert.equal(JSON.stringify(failed.output.cases),original)
+      assert.ok(!failed.output.issues?.some(item=>item.checkedBy==='model'),'无效批次不部分写入模型问题')
+    }
+    count=0;secondOutput=undefined
+    const cancelled=fixture(),controller=new AbortController()
+    await assert.rejects(checkCaseQuality(design,cancelled,config,controller.signal,()=>{if(cancelled.output.qualityAttempts?.at(-1)?.status==='requesting')controller.abort()},[]))
+    assert.equal(cancelled.output.qualityAttempts?.[0]?.status,'cancelled')
+    assert.equal(cancelled.output.modelReviewCompleted,false)
     const oversized=fixture();oversized.output.cases![0]!.contract.objective='x'.repeat(120001)
     assert.throws(()=>qualityReviewBatches(design,oversized,100),/审查单元.*超过交叉审查预算/)
   }finally{await new Promise<void>(resolve=>server.close(()=>resolve()))}

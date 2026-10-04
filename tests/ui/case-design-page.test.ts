@@ -148,6 +148,7 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await page.getByRole('heading',{name:'已保存的局部场景',exact:true}).waitFor()
     runs.shift()
     const partialChecking:DesignRun={...structuredClone(runs[0]),id:'partial-checking',stage:'checking',status:'failed',error:'合成交叉审查失败',output:{...structuredClone(runs[0].output),modelReviewCompleted:false,reviewedBlockIds:[block.id],unreviewedBlockIds:[],qualityBatches:[{id:'cross-1-2',kind:'cross',caseIds:['c1'],factIds:['f1'],scenarioIds:['s1'],questionIds:[],conflictIds:[],blockIds:[block.id],status:'completed'},{id:'cross-1-3',kind:'cross',caseIds:['c1','c2'],factIds:['f1'],scenarioIds:['s1'],questionIds:[],conflictIds:[],blockIds:[],status:'pending'}]}}
+    partialChecking.output.qualityAttempts=[{batchId:'cross-1-2',status:'validated',response:'{"issues":[]}',responseTruncated:false},{batchId:'cross-1-3',status:'invalid',response:'{"targetId":"unknown-case"}',responseTruncated:true,error:'批次 cross-1-3，issues[0] case:unknown-case；允许目标见本批清单'}]
     runs.unshift(partialChecking)
     await page.reload()
     await page.getByLabel('查看阶段产物',{exact:true}).selectOption('partial-checking')
@@ -155,6 +156,12 @@ test('独立设计页面导入、阶段条件、原文定位与刷新，无需�
     await qualityProgress.getByText(/已完成 1 \/ 2 批.*仍有未完成审查/).waitFor()
     await qualityProgress.getByText('cross-1-3 · 分区交叉审查 · 尚未完成',{exact:true}).click()
     await qualityProgress.getByText('用例：c1、c2',{exact:true}).waitFor()
+    const attempts=page.getByRole('region',{name:'审查响应记录'})
+    await attempts.getByText('批次 cross-1-3 · 响应校验失败',{exact:true}).click()
+    await attempts.getByText(/issues\[0\] case:unknown-case/).waitFor()
+    await attempts.getByText(/仅保留前 64000 字符/).waitFor()
+    await attempts.locator('pre').filter({hasText:'unknown-case'}).waitFor()
+    await attempts.screenshot({path:'/private/tmp/quality-ai-quality-attempts.png'})
     assert.equal(await page.getByRole('button',{name:/发布已保存审核/}).count(),0)
     await qualityProgress.screenshot({path:'/private/tmp/quality-ai-quality-batches.png'})
     await page.reload()
