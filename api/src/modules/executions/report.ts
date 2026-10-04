@@ -89,10 +89,12 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       if(scope)lines.push(`  - 局部观察：来自快照 ${text(scope.sourceSnapshotId)} 的区域 ${text(scope.sourceElementRef)}。未包含区域外元素，不代表整页或全部业务数据；不改变断言自身的作用范围。`)
       if(decision.type==='action')lines.push(`  - 技术动作：${text(JSON.stringify(decision.action))}`)
       if(turn.result)lines.push(`  - 实际结果：${turn.result.ok?'操作/断言成功':'操作/断言失败'} · ${text(turn.result.message)} · ${turn.result.durationMs} ms`)
+      if(turn.result?.writeGuard)lines.push(`  - 写操作门禁：${turn.result.writeGuard.allowed?'许可通过（不是业务成功）':'已阻止'}；${text(turn.result.writeGuard.reason)}；控件 ${text(turn.result.writeGuard.label)}；时间 ${text(turn.result.writeGuard.observedAt)}；页面 ${text(turn.result.writeGuard.pageUrl)}`)
       if(turn.recovery)lines.push(`  - 技术恢复 ${turn.recovery.attempt}/${turn.recovery.limit}：${{reobserved:'重新观察页面后交由模型决策，未盲目重放动作',exhausted:'恢复预算耗尽',observation_failed:'恢复时重新观察页面失败'}[turn.recovery.status]}；原因：${text(turn.recovery.reason)}`)
     }
     if(!item.trajectory.length)for(const step of item.steps){
       lines.push(`- 步骤 ${step.index+1}：${text(step.action)} · ${step.status==='passed'?'成功':'失败'} · ${step.durationMs} ms${step.error?` · ${text(step.error)}`:''}`)
+      if(step.writeGuard)lines.push(`  - 写操作门禁：${step.writeGuard.allowed?'许可通过（不是业务成功）':'已阻止'}；${text(step.writeGuard.reason)}；控件 ${text(step.writeGuard.label)}；时间 ${text(step.writeGuard.observedAt)}；页面 ${text(step.writeGuard.pageUrl)}`)
       if(step.pageBefore)lines.push(`  - 操作前页面：${text(step.pageBefore.url)} / ${text(step.pageBefore.ref)}`)
       if(step.openedPage)lines.push(`  - 实际打开页面：${text(step.openedPage.url)} / ${text(step.openedPage.ref)}；请求别名 ${text(step.openedPage.alias)}，是否成功绑定请看步骤结果。`)
       if(step.pageAfter)lines.push(`  - 操作后当前页面：${text(step.pageAfter.url)} / ${text(step.pageAfter.ref)}`)

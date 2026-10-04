@@ -68,6 +68,7 @@ test('runs an observe-decide-execute loop and requires declared assertions befor
       targetUrl: 'http://localhost:5173/students',
       objective: '填写学生姓名并确认保存成功',
       requiredAssertions: [{ id: 'saved', description: '页面出现保存成功' }],
+      executionContract:{caseKey:'0-TC-0',contractFingerprint:'fixture',contract:{writeOperations:['保存合成学生信息'],objective:'保存',preconditions:[],steps:['保存'],expectedAssertions:['保存成功'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}},
     })
     let turn = 0
     const decisionProvider: AgentDecisionProvider = {
@@ -80,7 +81,7 @@ test('runs an observe-decide-execute loop and requires declared assertions befor
         }
         if (turn === 2) return {
           type: 'action', snapshotId: snapshot.snapshotId,
-          action: { action: 'click', elementRef: snapshot.elements.find(item => item.name === '保存')?.ref ?? '' },
+          action: { action: 'click', writeOperationIndex:0, elementRef: snapshot.elements.find(item => item.name === '保存')?.ref ?? '' },
           reason: '提交表单',
         }
         if (turn === 3) return {
@@ -92,7 +93,7 @@ test('runs an observe-decide-execute loop and requires declared assertions befor
       },
     }
     const observer = new PageObserver()
-    const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, artifactDirectory)
+    const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, artifactDirectory,goal.executionContract!.contract,undefined,undefined,{caseId:'0-TC-0',caseKey:'0-TC-0',contractFingerprint:'fixture',operations:['保存合成学生信息'],targetUrl:goal.targetUrl,confirmedAt:new Date().toISOString()})
     const result = await new TestAgent(goal, observer, executor, decisionProvider).run(page)
     assert.equal(result.status, 'passed')
     assert.equal(result.executedSteps, 3)

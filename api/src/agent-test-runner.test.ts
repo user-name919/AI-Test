@@ -118,7 +118,7 @@ test('runs a browser Agent with project context, DOM re-observation and required
         assert.notEqual(snapshot.snapshotId, firstSnapshotId)
         return { type: 'action', snapshotId: snapshot.snapshotId, action: { action: 'fill', elementRef: snapshot.elements.find(item => item.name === '学生姓名')?.ref ?? '', value: '张三' }, reason: '填写姓名' }
       }
-      if (turn === 3) return { type: 'action', snapshotId: snapshot.snapshotId, action: { action: 'click', elementRef: snapshot.elements.find(item => item.name === '保存')?.ref ?? '' }, reason: '保存' }
+      if (turn === 3) return { type: 'action', snapshotId: snapshot.snapshotId, action: { action: 'click', writeOperationIndex:0, elementRef: snapshot.elements.find(item => item.name === '保存')?.ref ?? '' }, reason: '保存' }
       if (turn === 4) return { type: 'action', snapshotId: snapshot.snapshotId, action: { action: 'expectText', text: '保存成功', assertionId: 'saved' }, reason: '回到 DOM 验证结果' }
       return { type: 'finish', summary: '保存流程验证完成' }
     },
@@ -129,9 +129,9 @@ test('runs a browser Agent with project context, DOM re-observation and required
     name: '保存学生', targetUrl, objective: '填写姓名并保存',
     requiredAssertions: [{ id: 'saved', description: '页面显示保存成功' }],
     executionContract: { ...caseGoal(targetUrl, 0).executionContract!, contract: {
-      ...caseGoal(targetUrl, 0).executionContract!.contract, dataBindings: [],
+      ...caseGoal(targetUrl, 0).executionContract!.contract, dataBindings: [], writeOperations:['保存合成学生信息'],
     } },
-  }], undefined, { projectProvider, decisionProvider, artifactRoot, onEvent: event => events.push(event) })
+  }], undefined, { writeAuthorizations:[{caseId:'0-TC-0',caseKey:'0-TC-0',contractFingerprint:'fingerprint-0',operations:['保存合成学生信息'],targetUrl,confirmedAt:new Date().toISOString()}],projectProvider, decisionProvider, artifactRoot, onEvent: event => events.push(event) })
 
   assert.equal(result.status, 'passed')
   assert.equal(result.mode, 'agent')

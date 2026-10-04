@@ -23,6 +23,7 @@ const decisionSystemPrompt = `你是 B 端网页自动化测试的单步决策�
 7. press 仅用于键盘可达的组件交互；scroll 每次最多滚动 3000 像素；不得使用动作协议执行任意 JavaScript。
 8. 源码上下文返回后系统会重新观察真实页面；优先使用新 DOM 中的导航入口。search_source 或 inspect_files 中发现的子模块路由不等于主应用可直接访问的 URL，未经当前部署验证不得直接 goto。
 9. goto 只能使用当前部署中可从主应用访问的同源路径；不要丢失目标地址已有的应用前缀。无法确认外部可访问路径时继续操作真实导航或返回 blocked。
+10. click、press、download 若可能保存/提交/删除/发布/支付/对外发送，必须携 writeOperationIndex（从0起，引用 goal.executionContract.contract.writeOperations 中语义相符的一项）；声明与本次授权缺失时返回 blocked。不得为绕过门禁更换动作、控件或假借无关声明。原生表单的 Enter 也可能提交；不将查询或导航随意改为业务写操作。服务端会读取真实DOM做保守检查，但通过门禁不代表业务断言成功或全部副作用已识别。
 10. 无法安全继续时返回 blocked，不猜测账号、业务数据或不存在的页面状态。
 11. 若 goal.executionContract 的 dataBindings 包含 runtime_dom，具体业务值不是示例数据：先在当前 DOM 找到可见 option，再输出 resolve_test_data。该决策不是 Playwright action，必须带当前 snapshotId、bindingId、sourceElementRef、value 与原因。visible_option_full 使用完整名称；visible_option_substring 使用非空严格子串；non_matching_option_query 仅允许已声明完整本地候选范围且当前 DOM 与范围一致的负例，分页/远程/未知范围应 blocked，不能凭可见项证明全局无匹配。解析成功后，fill、selectOption、expectValue 对该绑定只能使用 valueRef，禁止把未经解析的文字作为 value。找不到安全来源时返回 blocked。
 12. 高亮类断言只允许使用当前可观察 elementRef 的 class、data-state 属性；其预期值必须明确表达高亮或匹配（highlight、match、mark、keyword 或中文同义词）。仅看到匹配文本不算高亮通过。当前 DOM 没有这类证据时返回 blocked，不要编造 CSS 或脚本检查。

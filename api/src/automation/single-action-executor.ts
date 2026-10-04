@@ -10,6 +10,8 @@ import type { TestFixture } from '@quality-ai/contracts/test-fixtures'
 import { loadTestFixture, validateFixtureReference } from '../modules/test-fixtures/store'
 import { RuntimeDataBindingBlockedError } from './test-data-binding'
 import type { BrowserPageSession } from './browser-page-session'
+import { guardWriteAction, WriteActionBlockedError } from './write-action-guard'
+import type { ExecutionWriteAuthorization, WriteGuardEvidence } from '@quality-ai/contracts'
 import { ActionOutcomeUnknownError, attemptInputAction } from './action-outcome'
 
 function safeArtifactName(value: string) {
@@ -58,6 +60,7 @@ export class SingleActionExecutor {
     private readonly contract?: CaseExecutionContract,
     private readonly signal?: AbortSignal,
     private readonly pages?: BrowserPageSession,
+    private readonly writeAuthorization?: ExecutionWriteAuthorization,
   ) {}
 
   private get page() { return this.pages?.current ?? this.initialPage }
@@ -71,10 +74,12 @@ export class SingleActionExecutor {
     const previousUrl = this.page.url()
     let usedFixture: TestFixture | undefined
     let download: DownloadEvidence | undefined
+    let writeGuard:WriteGuardEvidence|undefined
     try {
       this.pages?.assertAllowed()
       if (snapshotId !== this.registry.activeSnapshotId) throw new Error('页面快照已失效，必须重新观察后执行')
       let screenshotPath: string | undefined
+      if(action.action==='download')writeGuard=await guardWriteAction(this.registry.resolve(snapshotId,action.elementRef),action,this.contract,this.writeAuthorization,this.baseUrl)
       if (action.action === 'switchPage') {
         if (!this.pages) throw new Error('当前执行上下文未启用标签页切换')
         await this.pages.select(snapshotId, action.pageRef)
@@ -109,6 +114,7 @@ export class SingleActionExecutor {
       } else if (action.action === 'click') {
         const locator = this.registry.resolve(snapshotId, action.elementRef)
         await locator.click({trial:true, timeout:10000})
+        writeGuard=await guardWriteAction(locator,action,this.contract,this.writeAuthorization,this.baseUrl)
         this.signal?.throwIfAborted()
         await attemptInputAction('click',()=>locator.click({timeout:10000}))
       } else if (action.action === 'fill') {
@@ -122,6 +128,7 @@ export class SingleActionExecutor {
       } else if (action.action === 'press') {
         const locator = this.registry.resolve(snapshotId, action.elementRef)
         await locator.waitFor({state:'visible',timeout:10000})
+        writeGuard=await guardWriteAction(locator,action,this.contract,this.writeAuthorization,this.baseUrl)
         this.signal?.throwIfAborted()
         await attemptInputAction('press',()=>locator.press(action.key,{timeout:10000}))
       } else if (action.action === 'hover') {
@@ -201,6 +208,7 @@ export class SingleActionExecutor {
         screenshotPath,
         usedFixture,
         download,
+        writeGuard,
       })
     } catch (error) {
       const classified = classifyError(error)
@@ -210,6 +218,7 @@ export class SingleActionExecutor {
         ...(error instanceof ActionOutcomeUnknownError ? {retryable:false,code:'action_outcome_unknown'} : {}),
         ...(action.action === 'uploadFile' ? { retryable: false, code: error instanceof RuntimeDataBindingBlockedError ? 'fixture_unavailable' : 'upload_failed', usedFixture } : {}),
         ...(action.action === 'download' ? { retryable: false, code: 'download_failed' } : {}),
+        ...(error instanceof WriteActionBlockedError ? {retryable:false,code:'write_authorization_required',writeGuard:error.evidence} : {writeGuard}),
         durationMs: Date.now() - startedAt,
         pageChanged: previousUrl !== this.page.url(),
       })

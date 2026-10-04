@@ -334,18 +334,26 @@ const keyboardKeySchema = z.enum([
   'Home', 'End', 'PageUp', 'PageDown', 'Backspace', 'Delete', 'Space',
 ])
 
+const writeActionReference = { writeOperationIndex: z.number().int().min(0).max(19).optional() }
+
+export const writeGuardEvidenceSchema = z.object({
+  allowed:z.boolean(), observedAt:z.string(), pageUrl:z.string(), label:z.string(), reason:z.string(),
+  operationIndex:z.number().int().nonnegative().optional(), operation:z.string().optional(),
+})
+export type WriteGuardEvidence = z.infer<typeof writeGuardEvidenceSchema>
+
 export const automationStepSchema = z.discriminatedUnion('action', [
-  z.object({ action:z.literal('openPage'), locator:locatorSchema, pageAlias:z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/).refine(value=>value!=='initial'&&value!=='caseStart','initial和caseStart是保留页面别名') }),
+  z.object({ action:z.literal('openPage'), ...writeActionReference, locator:locatorSchema, pageAlias:z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/).refine(value=>value!=='initial'&&value!=='caseStart','initial和caseStart是保留页面别名') }),
   z.object({ action:z.literal('switchPage'), pageAlias:z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/) }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
-  z.object({ action: z.literal('click'), locator: locatorSchema }),
+  z.object({ action: z.literal('click'), ...writeActionReference, locator: locatorSchema }),
   z.object({ action: z.literal('check'), locator: locatorSchema }),
   z.object({ action: z.literal('uncheck'), locator: locatorSchema }),
   z.object({ action: z.literal('hover'), locator: locatorSchema }),
-  z.object({ action: z.literal('press'), locator: locatorSchema, key: keyboardKeySchema }),
+  z.object({ action: z.literal('press'), ...writeActionReference, locator: locatorSchema, key: keyboardKeySchema }),
   z.object({ action: z.literal('selectOption'), locator: locatorSchema, value: z.string(), optionBy: z.enum(['value', 'label']).default('value') }),
   z.object({ action: z.literal('uploadFile'), locator: locatorSchema, fixtureId: z.string().uuid() }),
-  z.object({ action: z.literal('download'), locator: locatorSchema, downloadId: z.string().min(1).max(80) }),
+  z.object({ action: z.literal('download'), ...writeActionReference, locator: locatorSchema, downloadId: z.string().min(1).max(80) }),
   z.object({ action: z.literal('expectDownload'), downloadId: z.string().min(1).max(80), assertionIndex: z.number().int().nonnegative().optional(), name: z.string().min(1).optional(), minBytes: z.number().int().nonnegative().default(1), textIncludes: z.string().min(1).optional() }),
   z.object({ action: z.literal('expectChecked'), locator: locatorSchema, checked: z.boolean(), assertionIndex: z.number().int().nonnegative().optional() }),
   z.object({ action: z.literal('fill'), locator: locatorSchema, value: z.string().optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.value!==undefined)!==(item.valueRef!==undefined),'输入值与数据引用必须且只能提供一个'),
@@ -430,7 +438,7 @@ export interface ExecutionResult {
   startedAt: string
   finishedAt: string
   durationMs: number
-  steps: Array<{ index: number; action: string; status: 'passed' | 'failed'; durationMs: number; error?: string; pageBefore?: {ref:string;url:string}; pageAfter?: {ref:string;url:string}; openedPage?: {ref:string;url:string;alias:string} }>
+  steps: Array<{ writeGuard?: WriteGuardEvidence; index: number; action: string; status: 'passed' | 'failed'; durationMs: number; error?: string; pageBefore?: {ref:string;url:string}; pageAfter?: {ref:string;url:string}; openedPage?: {ref:string;url:string;alias:string} }>
   screenshots: string[]
   tracePath?: string
   error?: string
@@ -682,16 +690,16 @@ export const agentActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('switchPage'), pageRef: z.string().uuid() }),
   z.object({ action: z.literal('switchFrame'), frameRef: z.string().uuid() }),
   z.object({ action: z.literal('observeRegion'), elementRef:z.string().regex(/^e\d+$/) }),
-  z.object({ action: z.literal('download'), ...elementActionBase, downloadId: z.string().min(1).max(80) }),
+  z.object({ action: z.literal('download'), ...writeActionReference, ...elementActionBase, downloadId: z.string().min(1).max(80) }),
   z.object({ action: z.literal('expectDownload'), downloadId: z.string().min(1).max(80), assertionId: z.string().min(1), name: z.string().min(1).optional(), minBytes: z.number().int().nonnegative().default(1), textIncludes: z.string().min(1).optional() }),
   z.object({ action: z.literal('uploadFile'), ...elementActionBase, fixtureId: z.string().uuid() }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
-  z.object({ action: z.literal('click'), ...elementActionBase }),
+  z.object({ action: z.literal('click'), ...writeActionReference, ...elementActionBase }),
   z.object({ action: z.literal('fill'), ...elementActionBase, ...valueReferenceFields }).superRefine(requireExactlyOneValueReference),
   z.object({ action: z.literal('selectOption'), ...elementActionBase, ...valueReferenceFields }).superRefine(requireExactlyOneValueReference),
   z.object({ action: z.literal('check'), ...elementActionBase }),
   z.object({ action: z.literal('uncheck'), ...elementActionBase }),
-  z.object({ action: z.literal('press'), ...elementActionBase, key: keyboardKeySchema }),
+  z.object({ action: z.literal('press'), ...writeActionReference, ...elementActionBase, key: keyboardKeySchema }),
   z.object({ action: z.literal('hover'), ...elementActionBase }),
   z.object({
     action: z.literal('scroll'),
@@ -766,6 +774,7 @@ export const agentDecisionSchema = z.discriminatedUnion('type', [
 ])
 
 export const toolResultSchema = z.object({
+  writeGuard: writeGuardEvidenceSchema.optional(),
   ok: z.boolean(),
   code: z.string().min(1),
   retryable: z.boolean(),

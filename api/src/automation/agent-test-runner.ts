@@ -65,6 +65,7 @@ function executionSteps(result: TestAgentResult): ExecutionResult['steps'] {
       status: item.result.ok ? 'passed' as const : 'failed' as const,
       durationMs: item.result.durationMs,
       error: item.result.ok ? undefined : item.result.message,
+      writeGuard:item.result.writeGuard,
     }]
   }).map((step, index) => ({ ...step, index }))
 }
@@ -163,7 +164,7 @@ export async function runAgentTest(
         await context.tracing.startChunk({ title: `${contract.caseKey} ${goal.name}` })
         chunkStarted = true
         const observer = new PageObserver({}, pages)
-        const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, caseDirectory, goal.executionContract?.contract, options.signal, pages)
+        const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, caseDirectory, goal.executionContract?.contract, options.signal, pages, options.writeAuthorizations?.find(item=>item.caseKey===contract.caseKey&&item.contractFingerprint===contract.contractFingerprint))
         const caseGoal: AgentTestGoal = {
           ...goal,
           previousCaseSummaries: structuredClone(previousCaseSummaries),

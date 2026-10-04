@@ -21,6 +21,7 @@ export async function generateFixedPlan(targetUrl:string,testCase:ResolvedCaseEx
 原生 HTML select 可使用 selectOption{locator,value,optionBy:"value|label"}，optionBy 默认 value；显示名称和选项value可能不同，必须明确选择依据。只允许最终契约已声明且有依据的 fixture/manual 值，禁止猜测。此动作不支持搜索策略 valueRef，不替代自定义搜索下拉的 click/fill；不知道原生选项数据时明确受阻。选择动作不计业务断言，随后验证已确认预期。
 表单动作支持 check{locator}、uncheck{locator}、hover{locator}、press{locator,key}；key 只允许 Enter/Escape/Tab/ArrowUp/ArrowDown/ArrowLeft/ArrowRight/Home/End/PageUp/PageDown/Backspace/Delete/Space，不允许任意文本或组合键。check/uncheck 使用明确的选中目标，不用 click 切换代替；操作不是断言。expectChecked{locator,checked:true或false,assertionIndex} 验证真实选中状态。悬停/键盘若引发提交必须符合最终契约，不添加额外提交。
 元素断言支持 expectVisible{locator}、expectHidden{locator}、expectEnabled{locator}、expectDisabled{locator}、expectValue{locator,value或valueRef}、expectAttribute{locator,name,value,match:"exact|token"}。属性 exact 为完整值相等，token 为独立空白分隔标记（例如 class）。高亮必须有明确的标记元素及属性依据，没有依据就报告能力受阻，不猜样式或把文本存在当高亮。
+可能产生业务写操作的 click/press/download/openPage 必须带 writeOperationIndex，从0起引用最终契约 writeOperations 中语义相符的一项。没有明确声明则返回 blocked，不猜许可，也不能借无关声明或改换动作绕过限制。原生表单 Enter 也可能提交，普通查询和导航不要擅自增加业务写操作。运行时仍检查当前DOM与本次授权；授权不等于操作成功。
 每个 expect 动作必须带 assertionIndex，指向最终契约 expectedAssertions 数组的下标（从0开始）。每项预期至少有一个真正验证它的动作；不得重复验证容易的预期而漏掉其他项。
 locator={by:"role|label|text|css",value:"定位内容",name:"可选名称",exact:true或false,scope:[{by,value,name,exact}],framePath:[{by,value,name,exact}]}；scope 可省略或按外到内提供1至4级明确容器（例如命名表格→具体行，或命名弹窗），不能杜撰选择器。framePath为可选1至4级外到内iframe元素定位链，先进入框架再查scope/目标；每级必须唯一，不用first/nth消歧。语义名称可 exact 精确匹配；css 不使用 exact。已有计划未指定 framePath/scope 仍为主页面。存在同名按钮或表格行时应明确范围，不用 first/nth 猜测目标。
 框架中的运行时数据 resolveTestData{bindingId,framePath} 和整框架文本 expectText{text或valueRef,framePath,assertionIndex} 必须使用与目标控件一致的framePath，不能借主页面的选项或文本通过；未知框架依据时受阻。截图仍是整个顶层页面，固定计划不隐式维持“当前框架”，每步明确路径，主页面步骤省略framePath。
@@ -46,6 +47,7 @@ value 与 valueRef、text 与 valueRef 各自只能选一个。非运行时输�
       pageAliases.add(step.pageAlias)
     }
     if(step.action==='switchPage'&&!pageAliases.has(step.pageAlias))throw new Error('固定计划切换了尚未绑定的页面别名')
+    if('writeOperationIndex' in step&&step.writeOperationIndex!==undefined&&!testCase.contract.writeOperations?.[step.writeOperationIndex])throw new Error('固定计划引用了未声明的业务写操作')
     if(step.action==='selectOption')validateFixedSelectData(step.value,testCase.contract)
     if(step.action==='uploadFile')validateFixtureReference(step.fixtureId,testCase.contract)
     if(step.action==='resolveTestData'){

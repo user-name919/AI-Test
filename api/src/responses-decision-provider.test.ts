@@ -46,6 +46,8 @@ test('uses Responses API headers and returns a validated single action', async (
   assert.match(body.input[0].content, /学生姓名/)
   assert.match(body.instructions, /expectAttribute/)
   assert.match(body.instructions, /press/)
+  assert.match(body.instructions, /writeOperationIndex/)
+  assert.match(body.instructions, /不得为绕过门禁/)
   assert.equal(body.store, false)
 })
 

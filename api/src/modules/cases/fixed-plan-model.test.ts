@@ -19,6 +19,7 @@ test('固定规划使用最终契约，拒绝异地地址和未解析引用，�
     assert.match(JSON.stringify(body),/目标容器缺失或歧义时不会按0通过/)
     assert.match(JSON.stringify(body),/操作不是断言/)
     assert.match(JSON.stringify(body),/openPage/)
+    assert.match(JSON.stringify(body),/writeOperationIndex/)
     assert.match(JSON.stringify(body),/不得先click再openPage重复触发/)
     if(calls===1){assert.match(JSON.stringify(body),/先观察可见选项/);assert.match(JSON.stringify(body),/与最终契约冲突时忽略/)}
     response.setHeader('content-type','application/json');response.end(JSON.stringify({output_text:JSON.stringify(output)}))
@@ -42,6 +43,10 @@ test('固定规划使用最终契约，拒绝异地地址和未解析引用，�
     await assert.rejects(generateFixedPlan('http://example.test',item,undefined,config),/地址/)
     output={name:'计划',targetUrl:'http://example.test',steps:[{action:'fill',locator:{by:'label',value:'查询'},valueRef:'missing'}]}
     await assert.rejects(generateFixedPlan('http://example.test',item,undefined,config),/尚未解析/)
+    output={name:'提交',targetUrl:'http://example.test',steps:[{action:'click',locator:{by:'text',value:'保存'},writeOperationIndex:0},{action:'expectText',assertionIndex:0,text:'人工最终预期'}]}
+    await assert.rejects(generateFixedPlan('http://example.test',item,undefined,config),/未声明的业务写操作/)
+    const authorized=await generateFixedPlan('http://example.test',{...item,contract:{...item.contract,writeOperations:['保存合成记录']}},undefined,config)
+    assert.equal(authorized.steps[0].action==='click'&&authorized.steps[0].writeOperationIndex,0)
     const controller=new AbortController();controller.abort()
     const before=calls
     await assert.rejects(generateFixedPlan('http://example.test',item,controller.signal,config))

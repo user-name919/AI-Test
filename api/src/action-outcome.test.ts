@@ -25,19 +25,20 @@ test('真实提交已到服务器但导航超时，两模式记录结果不明�
   t.after(()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve())}))
   const address=server.address();assert.ok(address&&typeof address!=='string')
   const url=`http://127.0.0.1:${address.port}`
-  const goals:AgentTestGoal[]=[0,1].map(index=>({name:`提交${index}`,targetUrl:url,objective:'提交测试数据',requiredAssertions:[{id:'saved',description:'成功提示'}],executionContract:{caseKey:`0-TC-${index}`,contractFingerprint:`submit-${index}`,contract:{objective:'提交测试数据',preconditions:[],steps:['点击提交'],expectedAssertions:['成功提示'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}}}))
+  const goals:AgentTestGoal[]=[0,1].map(index=>({name:`提交${index}`,targetUrl:url,objective:'提交测试数据',requiredAssertions:[{id:'saved',description:'成功提示'}],executionContract:{caseKey:`0-TC-${index}`,contractFingerprint:`submit-${index}`,contract:{writeOperations:['提交一份合成测试数据'],objective:'提交测试数据',preconditions:[],steps:['点击提交'],expectedAssertions:['成功提示'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}}}))
+  const writeAuthorizations=goals.map(goal=>({caseId:goal.executionContract!.caseKey,caseKey:goal.executionContract!.caseKey,contractFingerprint:goal.executionContract!.contractFingerprint,operations:goal.executionContract!.contract.writeOperations!,targetUrl:url,confirmedAt:new Date().toISOString()}))
   let calls=0
-  const dynamic=await runAgentTest(goals,undefined,{artifactRoot:directory,projectProvider:{
+  const dynamic=await runAgentTest(goals,undefined,{writeAuthorizations,artifactRoot:directory,projectProvider:{
     async getProjectInfo(){return{id:'fixture',name:'fixture',configuredRoot:'.',connected:true,targetOrigins:[url]}},
     async resolveRoute(){return null},async searchSource(){return []},async inspectFiles(){return{projectId:'fixture',reason:'unused',files:[],totalCharacters:0}},
-  },decisionProvider:{async decide({snapshot}){calls++;return{type:'action',snapshotId:snapshot.snapshotId,reason:'按用例提交',action:{action:'click',elementRef:snapshot.elements.find(item=>item.role==='button'&&item.name==='提交')!.ref}}}}})
+  },decisionProvider:{async decide({snapshot}){calls++;return{type:'action',snapshotId:snapshot.snapshotId,reason:'按用例提交',action:{action:'click',writeOperationIndex:0,elementRef:snapshot.elements.find(item=>item.role==='button'&&item.name==='提交')!.ref}}}}})
   assert.equal(submissions,1)
   assert.equal(calls,1,'不重新请求模型决定再次提交')
   assert.deepEqual(dynamic.caseResults!.map(item=>item.status),['blocked','not_run'])
   assert.equal(dynamic.caseResults![0]!.trajectory[0]!.result!.code,'action_outcome_unknown')
   assert.equal(dynamic.caseResults![0]!.trajectory[0]!.recovery,undefined)
   assert.match(dynamic.caseResults![1]!.error!,/结果不明/)
-  const fixed=await runAutomationPlan({name:'固定提交',targetUrl:url,steps:[],casePlans:goals.map(goal=>({caseKey:goal.executionContract!.caseKey,title:goal.name,contractFingerprint:goal.executionContract!.contractFingerprint,contract:goal.executionContract!.contract,steps:[{action:'click',locator:{by:'role',value:'button',name:'提交'}},{action:'expectText',text:'成功提示',assertionIndex:0}]}))},undefined,{artifactRoot:directory})
+  const fixed=await runAutomationPlan({name:'固定提交',targetUrl:url,steps:[],casePlans:goals.map(goal=>({caseKey:goal.executionContract!.caseKey,title:goal.name,contractFingerprint:goal.executionContract!.contractFingerprint,contract:goal.executionContract!.contract,steps:[{action:'click',writeOperationIndex:0,locator:{by:'role',value:'button',name:'提交'}},{action:'expectText',text:'成功提示',assertionIndex:0}]}))},undefined,{writeAuthorizations,artifactRoot:directory})
   assert.equal(submissions,2,'每种执行方式最多实际提交一次，后续关联用例不重复')
   assert.deepEqual(fixed.caseResults!.map(item=>item.status),['blocked','not_run'])
   assert.match(fixed.caseResults![0]!.steps[0]!.error!,/原始错误/)

@@ -40,7 +40,7 @@ test('已声明业务写操作经人工审核、执行授权后运行，历史�
       let body='';for await(const chunk of request)body+=chunk
       assert.match(body,/只保存合成测试记录一次/)
       modelCalls++;response.writeHead(200,{'content-type':'application/json'})
-      response.end(JSON.stringify({output_text:JSON.stringify({name:'合成保存',targetUrl:target,steps:[{action:'click',locator:{by:'role',value:'button',name:'保存'}},{action:'expectText',text:'保存成功',assertionIndex:0}]})}));return
+      response.end(JSON.stringify({output_text:JSON.stringify({name:'合成保存',targetUrl:target,steps:[{action:'click',writeOperationIndex:0,locator:{by:'role',value:'button',name:'保存'}},{action:'expectText',text:'保存成功',assertionIndex:0}]})}));return
     }
     response.writeHead(200,{'content-type':'text/html; charset=utf-8'})
     response.end('<button onclick="fetch(\'/write\',{method:\'POST\'}).then(r=>r.text()).then(t=>document.querySelector(\'p\').textContent=t)">保存</button><p></p>')
@@ -109,7 +109,7 @@ test('已声明业务写操作经人工审核、执行授权后运行，历史�
   const dynamic=await runAgentTest([goal],undefined,{projectProvider:emptyProject,writeAuthorizations:job.writeAuthorizations,
     decisionProvider:{async decide(context){
       turn++
-      if(turn===1){const button=context.snapshot.elements.find(item=>item.role==='button'&&item.name==='保存');assert.ok(button);return {type:'action',snapshotId:context.snapshot.snapshotId,reason:'执行已授权保存',action:{action:'click',elementRef:button.ref}}}
+      if(turn===1){const button=context.snapshot.elements.find(item=>item.role==='button'&&item.name==='保存');assert.ok(button);return {type:'action',snapshotId:context.snapshot.snapshotId,reason:'执行已授权保存',action:{action:'click',writeOperationIndex:0,elementRef:button.ref}}}
       if(turn===2)return {type:'action',snapshotId:context.snapshot.snapshotId,reason:'验证保存结果',action:{action:'expectText',text:'保存成功',assertionId:goal.requiredAssertions[0]!.id}}
       return {type:'finish',summary:'已保存并验证'}
     }}})

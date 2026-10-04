@@ -20,6 +20,8 @@ import { validateFixedAssertionCoverage } from './fixed-assertion-coverage'
 import { BrowserPageSession } from './browser-page-session'
 import { capturePopup } from './capture-popup'
 import { ActionOutcomeUnknownError, attemptInputAction } from './action-outcome'
+import { guardWriteAction, WriteActionBlockedError } from './write-action-guard'
+import type { WriteGuardEvidence } from '@quality-ai/contracts'
 import { requireWriteAuthorization } from './write-authorization'
 
 interface AutomationRunnerOptions {
@@ -136,6 +138,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
     const checkpoints = plan.casePlans ?? [{ caseKey: '', title: plan.name, contractFingerprint: '', steps: plan.steps }]
     for (const [caseIndex, casePlan] of checkpoints.entries()) {
       options.signal?.throwIfAborted()
+      const writeAuthorization=options.writeAuthorizations?.find(item=>item.caseKey===casePlan.caseKey&&item.contractFingerprint===casePlan.contractFingerprint)
       const caseDirectory = plan.casePlans
         ? resolve(artifactDirectory, `${String(caseIndex + 1).padStart(2, '0')}-${casePlan.caseKey}`)
         : artifactDirectory
@@ -168,6 +171,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
         for (const [index, step] of casePlan.steps.entries()) {
           const stepStart = Date.now()
           const pageBefore = pages.identity()
+          let writeGuard:WriteGuardEvidence|undefined
           let openedPage: {ref:string;url:string;alias:string} | undefined
           const activity = describeAutomationStep(step, index)
           activity.id = `${casePlan.caseKey || id}:${activity.id}`
@@ -178,6 +182,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             if (sessionFailure()) throw new Error(sessionFailure())
             // Legacy ungrouped plans may begin on about:blank with goto; other actions require the configured origin.
             if(step.action!=='goto')pages.assertAllowed()
+            if(step.action==='download'||step.action==='openPage')writeGuard=await guardWriteAction(locatorFor(page,step.locator),step,casePlan.contract,writeAuthorization,plan.targetUrl)
             if (step.action === 'goto') {
               const destination = new URL(step.path, baseUrl)
               if (destination.origin !== baseUrl.origin) throw new Error('步骤不能跳转到测试环境之外')
@@ -198,6 +203,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             } else if (step.action === 'click') {
               const locator=locatorFor(page,step.locator)
               await locator.click({trial:true,timeout:10000})
+              writeGuard=await guardWriteAction(locator,step,casePlan.contract,writeAuthorization,plan.targetUrl)
               options.signal?.throwIfAborted()
               await attemptInputAction('click',()=>locator.click({timeout:10000}))
             } else if (step.action === 'download') {
@@ -212,6 +218,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             } else if (step.action === 'press') {
               const locator=locatorFor(page,step.locator)
               await locator.waitFor({state:'visible',timeout:10000})
+              writeGuard=await guardWriteAction(locator,step,casePlan.contract,writeAuthorization,plan.targetUrl)
               options.signal?.throwIfAborted()
               await attemptInputAction('press',()=>locator.press(step.key,{timeout:10000}))
             } else if (step.action === 'selectOption') {
@@ -277,14 +284,14 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               checkpoint.screenshots.push(filePath)
             }
             if (sessionFailure()) throw new Error(sessionFailure())
-            checkpoint.steps.push({ index, action: step.action, status: 'passed', durationMs: Date.now() - stepStart, pageBefore, pageAfter:pages.identity(), openedPage })
+            checkpoint.steps.push({ index, action: step.action, status: 'passed', durationMs: Date.now() - stepStart, pageBefore, pageAfter:pages.identity(), openedPage, writeGuard })
             emit({ ...activityEvent, activity: { ...activity, status: 'passed', durationMs: Date.now() - stepStart, message: '步骤执行成功' } })
             await livePageStream?.capture().catch(() => undefined)
           } catch (error) {
             checkpoint.error = error instanceof Error ? error.message : String(error)
-            checkpoint.status = error instanceof RuntimeDataBindingBlockedError||error instanceof ActionOutcomeUnknownError?'blocked':'failed'
+            checkpoint.status = error instanceof RuntimeDataBindingBlockedError||error instanceof ActionOutcomeUnknownError||error instanceof WriteActionBlockedError?'blocked':'failed'
             if(error instanceof ActionOutcomeUnknownError)uncertainAction=checkpoint.error
-            checkpoint.steps.push({ index, action: step.action, status: 'failed', durationMs: Date.now() - stepStart, error: checkpoint.error, pageBefore, pageAfter:pages.identity(), openedPage })
+            checkpoint.steps.push({ index, action: step.action, status: 'failed', durationMs: Date.now() - stepStart, error: checkpoint.error, pageBefore, pageAfter:pages.identity(), openedPage, writeGuard:error instanceof WriteActionBlockedError?error.evidence:writeGuard })
             emit({ ...activityEvent, activity: { ...activity, status: 'failed', durationMs: Date.now() - stepStart, message: checkpoint.error } })
             break
           }
