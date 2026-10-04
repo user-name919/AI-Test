@@ -72,6 +72,8 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
         lines.push(`  - 读取前源码：${text(source.id)} / ${text(source.branch)} / ${text(source.commit)}；${source.worktree?worktreeLabels[source.worktree.status]:'工作区历史未记录'}；检查时间 ${text(source.worktree?.observedAt)}`)
       }
       if(frame)lines.push(`  - 观察框架：${frame.main?'主页面':'嵌入页面'} / ${text(frame.name||'未命名')} / ${text(frame.ref)} / ${text(turn.observation?.url)}`)
+      const scope=turn.observation?.observationScope
+      if(scope)lines.push(`  - 局部观察：来自快照 ${text(scope.sourceSnapshotId)} 的区域 ${text(scope.sourceElementRef)}。未包含区域外元素，不代表整页或全部业务数据；不改变断言自身的作用范围。`)
       if(decision.type==='action')lines.push(`  - 技术动作：${text(JSON.stringify(decision.action))}`)
       if(turn.result)lines.push(`  - 实际结果：${turn.result.ok?'操作/断言成功':'操作/断言失败'} · ${text(turn.result.message)} · ${turn.result.durationMs} ms`)
       if(turn.recovery)lines.push(`  - 技术恢复 ${turn.recovery.attempt}/${turn.recovery.limit}：${{reobserved:'重新观察页面后交由模型决策，未盲目重放动作',exhausted:'恢复预算耗尽',observation_failed:'恢复时重新观察页面失败'}[turn.recovery.status]}；原因：${text(turn.recovery.reason)}`)
