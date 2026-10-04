@@ -105,10 +105,25 @@ export async function getManagedWorktreeStatus(changeSetId:string):Promise<Manag
   const state=['preparing','ready','removed'].includes(row.state)?row.state as 'preparing'|'ready'|'removed':'error'
   const result:ManagedWorktreeStatus={changeSetId,state,sha:row.sha,references,canRemove:false,reason:''}
   if(state==='removed')return {...result,reason:'快照已清理；后续任务可从固定SHA重新创建，历史报告仍保留'}
-  if(state!=='ready')return {...result,reason:row.error??'创建未完成或状态异常，保留现场，不自动清理'}
+  if(state!=='ready')return {...result,canRecover:!operations.has(changeSetId)&&!references.length,reason:operations.has(changeSetId)?'当前服务仍在处理该快照，请等待操作完成后刷新':references.length?'仍有引用登记，未经核实不恢复或清理':row.error??'创建未完成或状态异常，可手动校验现有快照；不自动重建或清理'}
   if(references.length)return {...result,reason:'仍有任务引用登记；可能包含中断遗留引用，未经核实不能清理'}
   try{await validateSnapshot(row);return {...result,canRemove:true,reason:'已核对无引用、版本正确且无改动；清理时仍会重新校验'}}
   catch(error){return {...result,reason:error instanceof Error?error.message:'快照校验失败，不能清理'}}
+}
+
+/** Reconcile a completed Git checkout whose durable ready transition was interrupted. */
+export async function recoverChangeSetWorktree(changeSetId:string){
+  if(operations.has(changeSetId))throw new Error('当前服务仍在处理该快照，不能同时恢复')
+  return serialized(changeSetId,async()=>{
+    const row=database.prepare('SELECT * FROM regression_worktrees WHERE change_set_id=?').get(changeSetId) as SnapshotRow|undefined
+    const changeSet=getChangeSet(changeSetId)
+    if(!row||!changeSet||changeSet.status!=='frozen'||row.sha!==changeSet.facts.targetSha)throw new Error('快照登记与冻结版本不一致，拒绝恢复')
+    if(!['preparing','error'].includes(row.state))throw new Error('仅准备中或异常的快照需要恢复登记')
+    if(database.prepare('SELECT token FROM regression_worktree_leases WHERE change_set_id=? LIMIT 1').get(changeSetId))throw new Error('仍有任务引用登记，不能恢复；不会自动清空引用')
+    // Never remove partial files, recreate paths, change SHA, or release unknown leases.
+    await validateSnapshot(row)
+    database.prepare("UPDATE regression_worktrees SET state='ready',error=NULL WHERE change_set_id=?").run(changeSetId)
+  })
 }
 
 export async function removeUnusedChangeSetWorktree(changeSetId: string) {

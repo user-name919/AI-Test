@@ -154,5 +154,6 @@ export interface ManagedWorktreeStatus {
   sha?:string
   references:Array<{owner:string;createdAt:string}>
   canRemove:boolean
+  canRecover?:boolean
   reason:string
 }
