@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import type { DeploymentConfirmation, RegressionReview } from '@quality-ai/contracts/regressions'
 import type { CaseAsset, ExecutionJob } from '@quality-ai/contracts/cases'
 import type { ExecutionCaseSnapshot, TestEnvironment } from '@quality-ai/contracts'
+import WriteAuthorization from '../../components/WriteAuthorization.vue'
 import ContractView from '../case-design/ContractView.vue'
 import CaseReuseNote from '../../components/CaseReuseNote.vue'
 import { regressionRequest } from './api'
@@ -17,6 +18,10 @@ const environment=computed(()=>environments.value.find(item=>item.id===environme
 const mode=ref<'agent'|'plan'>('agent');const deployedSha=ref('');const confirmedBy=ref('');const note=ref('')
 const confirmations=ref<DeploymentConfirmation[]>([]);const activeConfirmation=ref<DeploymentConfirmation>()
 const preview=ref<ExecutionCaseSnapshot[]>([]);const busy=ref(false);const loading=ref(false);const error=ref('');const notice=ref('')
+const authorizedWriteCaseIds=ref<string[]>([])
+const writeCases=computed(()=>preview.value.map(item=>({id:item.caseId,title:item.resolved.title,operations:item.resolved.contract.writeOperations})))
+const needsWriteAuthorization=computed(()=>writeCases.value.some(item=>item.operations?.length&&!authorizedWriteCaseIds.value.includes(item.id)))
+watch(preview,()=>{authorizedWriteCaseIds.value=[]},{flush:'sync'})
 let disposed=false;let epoch=0
 const deploymentInput=computed(()=>({reviewRevision:revision.value,environmentId:environmentId.value,targetUrl:targetUrl.value.trim(),deployedSha:deployedSha.value.trim()||undefined,confirmedBy:confirmedBy.value.trim(),note:note.value.trim()}))
 const input=computed(()=>({mode:mode.value,projectId:props.projectId,environmentId:environmentId.value,targetUrl:targetUrl.value.trim(),deploymentConfirmationId:activeConfirmation.value?.id,cases:assets.value.filter(item=>selected.value.includes(item.id)).map(item=>({caseId:item.id,revision:item.revision,contractFingerprint:item.resolved.contractFingerprint}))}))
@@ -62,10 +67,10 @@ async function prepare(){
   catch(cause){if(!disposed)error.value=cause instanceof Error?cause.message:'预览失败'}finally{if(!disposed)busy.value=false}
 }
 async function start(){
-  if(executionReason.value||busy.value||!preview.value.length)return
+  if(executionReason.value||busy.value||!preview.value.length||needsWriteAuthorization.value)return
   busy.value=true;error.value=''
-  try{const result=await regressionRequest<{job:ExecutionJob}>('/api/execution-jobs',input.value);if(!disposed)await router.push(`/execution-jobs/${result.job.id}`)}
-  catch(cause){if(!disposed){preview.value=[];error.value=`${cause instanceof Error?cause.message:'启动失败'}。若响应丢失，先检查后台执行任务列表，避免重复执行有副作用的操作。`}}finally{if(!disposed)busy.value=false}
+  try{const result=await regressionRequest<{job:ExecutionJob}>('/api/execution-jobs',{...input.value,authorizedWriteCaseIds:authorizedWriteCaseIds.value});if(!disposed)await router.push(`/execution-jobs/${result.job.id}`)}
+  catch(cause){if(!disposed){preview.value=[];error.value=`${cause instanceof Error?cause.message:'启动失败'}。若响应丢失，先检查后台执行任务列表，避免重复执行有副作用的操作。`}}finally{authorizedWriteCaseIds.value=[];if(!disposed)busy.value=false}
 }
 onMounted(()=>{void load()});onUnmounted(()=>{disposed=true;epoch++})
 </script>
@@ -89,7 +94,7 @@ onMounted(()=>{void load()});onUnmounted(()=>{disposed=true;epoch++})
     <p v-if="activeConfirmation" :class="activeConfirmation.status==='matched'?'':'reg-warning'">{{ activeConfirmation.status==='matched'?'人工登记版本匹配（非自动探测证明）':activeConfirmation.status==='unverified'?'部署版本未核实：本次结果不能证明目标版本已经部署':'登记版本不匹配，禁止执行' }}</p>
     <fieldset :disabled="busy||loading||disabled"><legend>选择本次执行用例</legend><p v-if="!assets.length">当前版本没有纳入的回归用例。</p><label v-for="asset in assets" :key="asset.id"><input v-model="selected" type="checkbox" :value="asset.id" />{{ asset.title }}<small>{{ preview.some(item=>item.caseId===asset.id)?'本次配置已通过服务端执行预检':`预检前提示：${asset.resolved.readiness[mode].reason||'待服务端执行预览确认'}` }}</small></label><label>回归执行模式<select v-model="mode" aria-label="回归执行模式"><option value="agent">动态 Agent</option><option value="plan">固定计划</option></select></label></fieldset>
     <p>{{ executionReason||'可以预览最终口径；服务端会核验部署确认时效及每条用例的可执行性。' }}</p><button :disabled="!!executionReason||busy||loading" @click="prepare">预览回归执行口径</button>
-    <section v-if="preview.length"><h3>本次冻结执行 {{ preview.length }} 条 · 审核 v{{ revision }}</h3><details v-for="snapshot in preview" :key="snapshot.caseId"><summary>{{ snapshot.resolved.title }}</summary><CaseReuseNote :source="snapshot.source" /><ContractView :contract="snapshot.resolved.contract" /><p>版本 {{ snapshot.revision }} · 指纹 {{ snapshot.resolved.contractFingerprint }}</p></details><p>相关用例共享会话，普通失败记录后继续；配置改变需要重新预览。</p><button :disabled="busy||!!executionReason||disabled" @click="start">确认并启动回归执行</button></section>
+    <section v-if="preview.length"><h3>本次冻结执行 {{ preview.length }} 条 · 审核 v{{ revision }}</h3><details v-for="snapshot in preview" :key="snapshot.caseId"><summary>{{ snapshot.resolved.title }}</summary><CaseReuseNote :source="snapshot.source" /><ContractView :contract="snapshot.resolved.contract" /><p>版本 {{ snapshot.revision }} · 指纹 {{ snapshot.resolved.contractFingerprint }}</p></details><p>相关用例共享会话，普通失败记录后继续；配置改变需要重新预览。</p><WriteAuthorization v-model="authorizedWriteCaseIds" :cases="writeCases" :target-url="targetUrl" :disabled="busy" /><button :disabled="busy||!!executionReason||disabled||needsWriteAuthorization" @click="start">确认并启动回归执行</button></section>
     <details><summary>部署确认历史（{{ confirmations.length }}）</summary><article v-for="item in confirmations" :key="item.id"><p>审核 v{{ item.reviewRevision }} · {{ item.status==='matched'?'人工登记匹配':item.status==='unverified'?'未核实':'不匹配' }} · {{ item.createdAt }}<br />环境 {{ item.environmentId }} · {{ item.targetUrl }}<br />部署 SHA {{ item.deployedSha??'未提供' }} · {{ item.confirmedBy }}<br />{{ item.note }}</p></article><p>历史仅供追溯，不自动认为旧确认仍有效。重新保存确认会使同环境旧确认失效。</p></details>
   </section>
 </template>

@@ -114,6 +114,7 @@ export interface TestDataBinding {
 }
 
 export interface CaseExecutionContract {
+  writeOperations?: string[]
   objective: string
   preconditions: string[]
   steps: string[]
@@ -249,6 +250,8 @@ export const testDataBindingSchema = dataBindingBaseSchema.extend({
 })
 
 export const caseExecutionContractSchema = z.object({
+  // Optional for historical contracts: absence is not permission to perform writes.
+  writeOperations: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
   objective: z.string().min(1),
   preconditions: z.array(z.string().min(1)),
   steps: z.array(z.string().min(1)).min(1),
@@ -257,6 +260,15 @@ export const caseExecutionContractSchema = z.object({
   forbiddenBehaviors: z.array(z.string().min(1)),
   uncertainties: z.array(z.string().min(1)),
 })
+
+export interface ExecutionWriteAuthorization {
+  caseId: string
+  caseKey: string
+  contractFingerprint: string
+  operations: string[]
+  targetUrl: string
+  confirmedAt: string
+}
 
 export const caseReviewSchema = z.object({
   status: z.enum(['draft', 'confirmed', 'needs_data_review']),
@@ -406,6 +418,7 @@ export interface ExecutionCaseSnapshot {
 }
 
 export interface ExecutionResult {
+  writeAuthorizations?: ExecutionWriteAuthorization[]
   memoryHints?: MemoryReference[]
   interruptionRecovery?: { recoveredAt: string; timingsUnknown: true }
   deploymentConfirmation?: import('./regressions').DeploymentConfirmation

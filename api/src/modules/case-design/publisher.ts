@@ -84,7 +84,7 @@ export function exportPublicationMarkdown(publication: DesignPublication): strin
   for (const item of cases) {
     const value = item
     lines.push(`## ${text(value.title)}`, '', `用例 ID：${item.id}`, `验证方式：${value.verification} — ${text(value.verificationReason)}`, `目标：${text(value.contract.objective)}`, '')
-    for (const [label, values] of [['前置条件',value.contract.preconditions],['执行步骤',value.contract.steps],['预期断言',value.contract.expectedAssertions],['禁止行为',value.contract.forbiddenBehaviors],['未确定事项',value.contract.uncertainties]] as const) lines.push(`### ${label}`, '', ...values.map(entry => `- ${text(entry)}`), ...(values.length ? [] : ['无']), '')
+    for (const [label, values] of [['前置条件',value.contract.preconditions],['执行步骤',value.contract.steps],['预期断言',value.contract.expectedAssertions],['已声明的业务写操作（执行时仍需单独授权）',value.contract.writeOperations??[]],['禁止行为',value.contract.forbiddenBehaviors],['未确定事项',value.contract.uncertainties]] as const) lines.push(`### ${label}`, '', ...values.map(entry => `- ${text(entry)}`), ...(values.length ? [] : ['无']), '')
     lines.push('### 数据策略', '')
     for (const binding of value.contract.dataBindings) lines.push(`- ${text(JSON.stringify(binding))}`)
     if (!value.contract.dataBindings.length) lines.push('无')

@@ -16,6 +16,7 @@ import { captureExecutionCases } from '../cases/repository'
 import { createExecutionJob, createExecutionRerunJob, getExecutionJob, listExecutionJobs, executionJobEvents, cancelExecutionJob } from './jobs'
 import { proposeFixedPlanData } from '../cases/fixed-plan-model'
 import { handleExecutionEvidenceRoutes } from './evidence-routes'
+import { requireWriteAuthorization } from '../../automation/write-authorization'
 
 
 export async function handleExecutionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
@@ -70,6 +71,8 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
     if (!original) return json(response, 404, { error: '执行记录不存在' })
     if(original.deploymentConfirmation||original.caseKeys.some(key=>key.startsWith('regression:')))return json(response,409,{error:'回归用例重跑须返回回归任务重新确认部署版本并创建后台任务'})
     if (!original.plan) return json(response, 409, { error: '历史记录未保存自动化计划，无法直接重跑' })
+    try { requireWriteAuthorization(original.plan.casePlans ?? [], original.targetUrl) }
+    catch (error) { return json(response,409,{error:error instanceof Error?error.message:'需要重新授权业务写操作'}) }
     const environment = original.environmentId ? getEnvironmentById(original.environmentId) : null
     if (original.environmentId && !environment) return json(response, 409, { error: '原测试环境已不存在，无法安全重跑' })
     const result = await runAutomationPlan(original.plan, environment?.storageStatePath,{resolveTestData:proposeFixedPlanData})
@@ -131,6 +134,8 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
       }
     }
     if(wrappedPlan.casePlans?.some(item=>item.caseKey.startsWith('regression:')))return json(response,409,{error:'回归用例必须从回归任务确认部署版本后创建后台任务'})
+    try { requireWriteAuthorization(wrappedPlan.casePlans ?? [], wrappedPlan.targetUrl) }
+    catch (error) { return json(response,409,{error:error instanceof Error?error.message:'请从后台执行配置确认业务写操作'}) }
     const stream = streamPlanExecution ? openNdjsonResponse(response) : null
     try {
       const result = await runAutomationPlan(wrappedPlan, environment?.storageStatePath, {
@@ -187,6 +192,7 @@ export async function handleExecutionRoutes(request: IncomingMessage, response: 
     try {
       goals = input.caseKeys.map(caseKey => buildAgentTestGoal(analysis, caseKey, target.href))
       caseSnapshots = captureExecutionCases(analysis.id, goals.map(goal => goal.executionContract!), 'agent')
+      requireWriteAuthorization(goals.map(goal=>goal.executionContract!),input.targetUrl)
     } catch (error) {
       return json(response, 409, { error: error instanceof Error ? error.message : '测试目标构造失败' })
     }

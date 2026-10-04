@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { caseExecutionContractSchema, type CaseExecutionContract } from '@quality-ai/contracts'
 import type { CaseAsset } from '@quality-ai/contracts/cases'
+import WriteOperationsEditor from './WriteOperationsEditor.vue'
 import CaseContractDetails from './CaseContractDetails.vue'
 
 const props = defineProps<{ analysisId: string; selected: Record<string, boolean> }>()
@@ -153,6 +154,7 @@ function rebase() {
           <legend>人工最终口径 · 基于 v{{ draft.revision }}</legend>
           <label>测试目标<input v-model="draft.contract.objective" /></label>
           <label v-for="field in listFields" :key="field.key">{{ field.label }}（每行一项）<textarea :value="draft.contract[field.key].join('\n')" rows="3" @input="updateLines(field.key,$event)" /></label>
+          <WriteOperationsEditor v-model="draft.contract.writeOperations" />
           <h3>测试数据来源</h3><p>AI 根据当前选项选值，分别验证完整名称、部分关键词或无匹配负例。无匹配必须有完整候选范围依据，不能把当前可见列表当成全部远程数据。</p>
           <section v-for="(binding,index) in draft.contract.dataBindings" :key="binding.id" class="data-editor">
             <label>数据名称<input v-model="binding.label" /></label><label>目标控件<input v-model="binding.targetHint" /></label><label>业务用途<input v-model="binding.businessIntent" /></label>

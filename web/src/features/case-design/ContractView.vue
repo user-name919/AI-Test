@@ -8,6 +8,7 @@ const strategies={visible_option_full:'完整名称搜索',visible_option_substr
   <div class="design-contract-view">
     <h4>测试目标</h4><p>{{ contract.objective }}</p>
     <section v-for="[key,label] in fields" :key="key"><h4>{{ label }}</h4><ol v-if="contract[key].length"><li v-for="(line,index) in contract[key]" :key="index">{{ line }}</li></ol><p v-else>无</p></section>
+    <h4>已声明的业务写操作</h4><ul v-if="contract.writeOperations?.length"><li v-for="(operation,index) in contract.writeOperations" :key="index">{{ operation }}</li></ul><p v-else>未声明；不代表已证明只读，也不是任意写操作授权。</p>
     <h4>数据策略</h4><p v-if="!contract.dataBindings.length">无单独数据规则</p>
     <section v-for="binding in contract.dataBindings" :key="binding.id"><h5>{{ binding.label }}</h5><p>目标：{{ binding.targetHint }}；用途：{{ binding.businessIntent }}</p><p>来源：{{ {runtime_dom:'当前页面',fixture:'测试夹具',manual:'人工指定'}[binding.mode] }}{{ binding.strategy ? `；${strategies[binding.strategy]}` : '' }}</p>
       <p v-if="binding.manual">值：{{ binding.manual.value }}；理由：{{ binding.manual.rationale }}</p><p v-if="binding.fixture">值：{{ binding.fixture.value }}；依据：{{ binding.fixture.evidence }}</p>

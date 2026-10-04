@@ -15,6 +15,7 @@ export function interruptedExecution(job: ExecutionJob): ExecutionResult {
       resolvedDataBindings:[],passedAssertions:[],trajectory:[],steps:[],screenshots:[]}
   })
   return {id:job.id,name:`${job.snapshots[0]?.resolved.title??'执行任务'} · 中断恢复报告`,targetUrl:job.targetUrl,mode:job.mode,status:'infrastructure_failed',
+    writeAuthorizations:job.writeAuthorizations,
     startedAt:job.createdAt,finishedAt:recoveredAt,durationMs:0,interruptionRecovery:{recoveredAt,timingsUnknown:true},
     error:'服务重启后从逐用例检查点恢复。已完成结论保留；在途用例结论未知，不自动重放。实际执行起止时间及耗时未知。',
     steps:caseResults.flatMap(item=>item.steps),screenshots:caseResults.flatMap(item=>item.screenshots),caseResults,

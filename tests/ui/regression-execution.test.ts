@@ -12,10 +12,10 @@ test('回归部署确认、旧审核版本选择、预览失效和后台执行�
     const page=await browser.newPage({viewport:{width:1440,height:1000}})
     const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message))
     const id='11111111-1111-4111-8111-111111111111';const sha='a'.repeat(40)
-    const contract={objective:'确认按钮文字',preconditions:[],steps:['人工最终点击步骤'],expectedAssertions:['显示成功'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}
+    const contract={writeOperations:['只保存专用测试记录'],objective:'确认按钮文字',preconditions:[],steps:['人工最终点击步骤'],expectedAssertions:['显示成功'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}
     const items={risks:[],cases:[]}
     const reviews=[2,1].map(revision=>({regressionId:id,revision,createdAt:'now',analysisHash:'hash',content:{status:'confirmed',scopeNote:'已确认范围',risks:[],cases:[]}}))
-    let previewCount=0;let started:{mode:string;projectId:string;cases:Array<{revision:number}>;deploymentConfirmationId:string}|undefined
+    let previewCount=0;let started:{mode:string;projectId:string;cases:Array<{revision:number}>;deploymentConfirmationId:string;authorizedWriteCaseIds:string[]}|undefined
     const makeAsset=(revision:number)=>({id:`regression:${id}:${revision}:0`,revision,title:`已确认 v${revision} 用例`,resolved:{caseKey:`regression:${id}:${revision}:0`,title:`已确认 v${revision} 用例`,contract,contractFingerprint:`fingerprint-${revision}`,readiness:{agent:{executable:false,reason:'需要部署确认'},plan:{executable:false,reason:'需要部署确认'}},resolvedQuestions:[]}})
     await page.route('**/api/**',async route=>{
       const url=new URL(route.request().url());const path=url.pathname
@@ -52,16 +52,22 @@ test('回归部署确认、旧审核版本选择、预览失效和后台执行�
     await panel.getByRole('checkbox').check()
     await panel.getByRole('button',{name:'预览回归执行口径'}).click()
     await panel.getByRole('button',{name:'确认并启动回归执行'}).waitFor()
+    assert.equal(await panel.getByRole('button',{name:'确认并启动回归执行'}).isDisabled(),true)
+    await panel.getByRole('checkbox',{name:'允许本次执行：已确认 v1 用例'}).check()
+    assert.equal(await panel.getByRole('button',{name:'确认并启动回归执行'}).isDisabled(),false)
     await panel.getByLabel('回归执行模式',{exact:true}).selectOption('plan')
     assert.equal(await panel.getByRole('button',{name:'确认并启动回归执行'}).count(),0)
     await panel.getByRole('button',{name:'预览回归执行口径'}).click()
     await panel.getByRole('button',{name:'确认并启动回归执行'}).waitFor()
+    assert.equal(await panel.getByRole('checkbox',{name:'允许本次执行：已确认 v1 用例'}).isChecked(),false,'切换模式并重新预览后必须再次授权')
+    assert.equal(await panel.getByRole('button',{name:'确认并启动回归执行'}).isDisabled(),true)
+    await panel.getByRole('checkbox',{name:'允许本次执行：已确认 v1 用例'}).check()
     await page.setViewportSize({width:390,height:844})
     await page.screenshot({path:'/private/tmp/quality-ai-regression-execution.png',fullPage:true})
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1))
     await panel.getByRole('button',{name:'确认并启动回归执行'}).click()
     await page.waitForURL('**/#/execution-jobs/job')
-    assert.ok(started);assert.equal(previewCount,2);assert.equal(started.mode,'plan');assert.equal(started.projectId,'fixture');assert.equal(started.cases[0]!.revision,1);assert.equal(started.deploymentConfirmationId,'confirmation')
+    assert.ok(started);assert.equal(previewCount,2);assert.equal(started.mode,'plan');assert.equal(started.projectId,'fixture');assert.equal(started.cases[0]!.revision,1);assert.equal(started.deploymentConfirmationId,'confirmation');assert.deepEqual(started.authorizedWriteCaseIds,[`regression:${id}:1:0`])
     assert.deepEqual(errors,[])
   }finally{await browser.close();await server.close()}
 })

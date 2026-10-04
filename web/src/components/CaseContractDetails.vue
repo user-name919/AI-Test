@@ -22,6 +22,7 @@ defineProps<{ resolved?: ResolvedCaseExecutionContract; unavailableReason: strin
           <p v-if="binding.strategy">策略：{{ binding.strategy }}；{{ binding.constraints.mustComeFromCurrentDom ? '必须基于当前 DOM' : '不要求当前 DOM 来源' }}{{ binding.constraints.mustBePartialOfSource ? '；必须为严格部分关键词' : '' }}{{ binding.constraints.mustRemainAfterFiltering ? '；筛选后来源选项仍需存在' : '' }}</p>
           <p v-if="binding.optionUniverse">候选范围声明：{{ binding.optionUniverse.completeness }}；依据：{{ binding.optionUniverse.evidence || '尚未提供' }}；候选：{{ binding.optionUniverse.options.join('、') || '尚未提供' }}。范围声明不等于系统已证明全局不存在。</p>
         </div><span v-if="!resolved.contract.dataBindings.length">未配置结构化数据来源；不会因此证明示例数据真实存在。</span></dd>
+        <dt>已声明的业务写操作</dt><dd>{{ resolved.contract.writeOperations?.join("；") || "未声明；不代表已证明只读，也不是任意写操作授权。" }}</dd>
         <dt>禁止行为</dt><dd>{{ resolved.contract.forbiddenBehaviors.join('；') || '未指定' }}</dd>
         <dt>未确定事项</dt><dd>{{ resolved.contract.uncertainties.join('；') || '无' }}</dd>
         <dt>关联问题</dt><dd><p v-if="resolved.questionAssociation.warning" class="contract-warning">{{ resolved.questionAssociation.warning }}</p>{{ resolved.questionAssociation.questionKeys.join('、') || '无' }}<p v-for="question in resolved.resolvedQuestions" :key="question.questionKey">{{ question.questionKey }}：{{ question.finalStatement }}</p></dd>

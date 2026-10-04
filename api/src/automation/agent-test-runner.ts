@@ -14,8 +14,10 @@ import { TestAgent } from './test-agent'
 import { startLivePageStream } from './live-page-stream'
 import { completeCaseResults } from './complete-case-results'
 import { BrowserPageSession } from './browser-page-session'
+import { requireWriteAuthorization } from './write-authorization'
 
 export interface AgentTestRunnerOptions {
+  writeAuthorizations?: ExecutionResult['writeAuthorizations']
   signal?: AbortSignal
   executionId?: string
   projectProvider: ProjectKnowledgeProvider
@@ -78,6 +80,7 @@ export async function runAgentTest(
   if (goals.some(goal => new URL(goal.targetUrl).origin !== target.origin)) throw new Error('批次用例必须属于同一测试环境')
   if (goals.some(goal => !goal.executionContract)) throw new Error('每条用例必须包含已解析的执行契约')
   if (new Set(goals.map(goal => goal.executionContract!.caseKey)).size !== goals.length) throw new Error('测试用例不能重复')
+  for (const goal of goals) requireWriteAuthorization([goal.executionContract!], goal.targetUrl, options.writeAuthorizations)
 
   const id = options.executionId ?? randomUUID()
   if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('执行 ID 不合法')
@@ -244,6 +247,7 @@ export async function runAgentTest(
   const finishedAt = new Date()
   const summary = options.signal?.aborted ? '用户取消执行；已提交的业务操作不会回滚' : infrastructureError ?? previousCaseSummaries.map(item => `[${item.caseKey}] ${item.status}：${item.summary}`).join('\n')
   return {
+    writeAuthorizations: options.writeAuthorizations,
     id, name, targetUrl: target.href, mode: 'agent',
     status: options.signal?.aborted ? 'cancelled' : infrastructureError ? 'infrastructure_failed' : aggregateExecutionStatus(caseResults),
     startedAt: startedAt.toISOString(), finishedAt: finishedAt.toISOString(),

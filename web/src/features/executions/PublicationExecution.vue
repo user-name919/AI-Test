@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import type { DesignPublication } from '@quality-ai/contracts/case-design'
 import type { CaseAsset, ExecutionJob } from '@quality-ai/contracts/cases'
 import type { TestEnvironment, ExecutionCaseSnapshot } from '@quality-ai/contracts'
+import WriteAuthorization from '../../components/WriteAuthorization.vue'
 import ContractView from '../case-design/ContractView.vue'
 const props=defineProps<{publication:DesignPublication}>()
 const router=useRouter()
@@ -19,6 +20,10 @@ const environment=computed(()=>environments.value.find(item=>item.id===environme
 const projects=ref<Array<{id:string;name:string;connected:boolean;targetOrigins:string[];branch?:string;commit?:string}>>([])
 const projectId=ref('')
 const preview=ref<ExecutionCaseSnapshot[]>([])
+const authorizedWriteCaseIds=ref<string[]>([])
+const writeCases=computed(()=>preview.value.map(item=>({id:item.caseId,title:item.resolved.title,operations:item.resolved.contract.writeOperations})))
+const needsWriteAuthorization=computed(()=>writeCases.value.some(item=>item.operations?.length&&!authorizedWriteCaseIds.value.includes(item.id)))
+watch(preview,()=>{authorizedWriteCaseIds.value=[]},{flush:'sync'})
 let disposed=false
 onUnmounted(()=>{disposed=true})
 async function request<T>(path:string,body?:unknown):Promise<T>{
@@ -69,13 +74,13 @@ async function prepare(){
   finally{if(!disposed)busy.value=false}
 }
 async function start(){
-  if(reason.value||!preview.value.length||busy.value)return
+  if(reason.value||!preview.value.length||busy.value||needsWriteAuthorization.value)return
   busy.value=true;error.value=''
   try{
-    const result=await request<{job:ExecutionJob}>('/api/execution-jobs',input.value)
+    const result=await request<{job:ExecutionJob}>('/api/execution-jobs',{...input.value,authorizedWriteCaseIds:authorizedWriteCaseIds.value})
     if(!disposed)await router.push(`/execution-jobs/${result.job.id}`)
-  }catch(cause){if(!disposed)error.value=cause instanceof Error?cause.message:'启动失败'}
-  finally{if(!disposed)busy.value=false}
+  }catch(cause){if(!disposed)error.value=`${cause instanceof Error?cause.message:'启动失败'}。若响应丢失，请先检查后台任务，避免重复提交。`}
+  finally{authorizedWriteCaseIds.value=[];if(!disposed)busy.value=false}
 }
 </script>
 <template>
@@ -99,7 +104,7 @@ async function start(){
       </fieldset>
       <p>{{ reason||'配置条件满足，可预览；服务端启动时仍会重新校验版本和环境。' }}</p>
       <button :disabled="!!reason||busy" @click="prepare">预览最终执行口径</button>
-      <div v-if="preview.length"><h4>本次执行 {{ preview.length }} 条</h4><details v-for="snapshot in preview" :key="snapshot.caseId"><summary>{{ snapshot.resolved.title }}</summary><ContractView :contract="snapshot.resolved.contract" /><p v-for="question in snapshot.resolved.resolvedQuestions" :key="question.questionKey">关联人工决定：{{ question.finalStatement }}</p><p>版本 {{ snapshot.revision }} · 指纹 {{ snapshot.resolved.contractFingerprint }}</p></details><p>共享浏览器会话；普通失败记录后继续。启动后可关闭页面，在后台执行任务中找回。</p><button :disabled="!!reason||busy" @click="start">{{ busy?'正在提交…':'确认口径并启动后台执行' }}</button></div>
+      <div v-if="preview.length"><h4>本次执行 {{ preview.length }} 条</h4><details v-for="snapshot in preview" :key="snapshot.caseId"><summary>{{ snapshot.resolved.title }}</summary><ContractView :contract="snapshot.resolved.contract" /><p v-for="question in snapshot.resolved.resolvedQuestions" :key="question.questionKey">关联人工决定：{{ question.finalStatement }}</p><p>版本 {{ snapshot.revision }} · 指纹 {{ snapshot.resolved.contractFingerprint }}</p></details><p>共享浏览器会话；普通失败记录后继续。启动后可关闭页面，在后台执行任务中找回。</p><WriteAuthorization v-model="authorizedWriteCaseIds" :cases="writeCases" :target-url="targetUrl" :disabled="busy" /><button :disabled="!!reason||busy||needsWriteAuthorization" @click="start">{{ busy?'正在提交…':'确认口径并启动后台执行' }}</button></div>
       <button :disabled="busy" @click="open=false">收起执行配置</button>
     </template>
   </section>

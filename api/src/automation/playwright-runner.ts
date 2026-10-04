@@ -20,8 +20,10 @@ import { validateFixedAssertionCoverage } from './fixed-assertion-coverage'
 import { BrowserPageSession } from './browser-page-session'
 import { capturePopup } from './capture-popup'
 import { ActionOutcomeUnknownError, attemptInputAction } from './action-outcome'
+import { requireWriteAuthorization } from './write-authorization'
 
 interface AutomationRunnerOptions {
+  writeAuthorizations?: ExecutionResult['writeAuthorizations']
   signal?: AbortSignal
   executionId?: string
   artifactRoot?: string
@@ -66,6 +68,7 @@ async function countWithin(page:Page,locator:FixedLocator){
 
 export async function runAutomationPlan(input: unknown, storageStatePath?: string, options: AutomationRunnerOptions = {}): Promise<ExecutionResult> {
   const plan: AutomationPlan = automationPlanSchema.parse(input)
+  requireWriteAuthorization(plan.casePlans ?? [], plan.targetUrl, options.writeAuthorizations)
   const baseUrl = new URL(plan.targetUrl)
   if (!['http:', 'https:'].includes(baseUrl.protocol)) throw new Error('测试地址只允许 HTTP 或 HTTPS')
   if (!options.resolveTestData && plan.casePlans?.some(item => item.contract?.dataBindings.some(binding => binding.mode === 'runtime_dom'))) {
@@ -329,6 +332,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
 
   const finishedAt = new Date()
   return {
+    writeAuthorizations: options.writeAuthorizations,
     id, name: plan.name, targetUrl: plan.targetUrl,
     status: options.signal?.aborted ? 'cancelled' : infrastructureError ? 'infrastructure_failed' : aggregateExecutionStatus(caseResults),
     mode: 'plan',

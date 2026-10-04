@@ -16,6 +16,7 @@ import { LocalProjectKnowledgeProvider } from '../../integrations/project-knowle
 import { getAutomationPlanById } from '../cases/plan-repository'
 import { interruptedExecution } from './interruption'
 import { selectMemoryHints } from '../memories/repository'
+import { captureWriteAuthorizations } from '../../automation/write-authorization'
 
 let initialized = false
 let working = false
@@ -96,6 +97,7 @@ export async function createExecutionRerunJob(id:string):Promise<ExecutionJob>{
   if(!original)throw new Error('原执行记录不存在')
   if(original.deploymentConfirmation||original.caseSnapshots?.some(item=>item.source?.type==='change_regression')||original.caseKeys.some(key=>key.startsWith('regression:')))throw new Error('回归重跑须返回回归任务重新确认部署版本')
   if(!original.caseSnapshots?.length)throw new Error('历史报告缺少用例版本快照，请返回用例重新确认执行')
+  if(original.caseSnapshots.some(item=>item.resolved.contract.writeOperations?.length))throw new Error('含业务写操作的用例须返回执行配置重新逐条授权，历史授权不能复用')
   if(original.mode==='plan'&&!original.plan)throw new Error('历史报告未保存固定计划，请重新生成并确认')
   return createExecutionJob({mode:original.mode,targetUrl:original.targetUrl,environmentId:original.environmentId,projectId:original.projectId,
     cases:original.caseSnapshots.map(item=>({caseId:item.caseId,revision:item.revision,contractFingerprint:item.resolved.contractFingerprint}))},original)
@@ -116,6 +118,7 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
   // 所有异步配置查询之后重新固定资产，不接受客户端准备接口返回的快照。
   const preparation = prepareAssetExecution({ mode:request.mode,targetUrl:request.targetUrl,cases:request.cases,environmentId:request.environmentId,deploymentConfirmationId:request.deploymentConfirmationId })
   const deployment = preparation.deploymentConfirmation
+  const writeAuthorizations = captureWriteAuthorizations(preparation.snapshots, request.authorizedWriteCaseIds ?? [], request.targetUrl)
   const savedPlan = request.automationPlanId ? getAutomationPlanById(request.automationPlanId) : null
   if(request.automationPlanId&&!savedPlan)throw new Error('已确认计划不存在，请重新生成并查看计划')
   let confirmedPlan:AutomationPlan|undefined
@@ -144,6 +147,7 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
   const now = new Date().toISOString()
   const job: ExecutionJob = {id:randomUUID(),status:'queued',mode:request.mode,targetUrl:request.targetUrl,snapshots:preparation.snapshots,createdAt:now,updatedAt:now,
     completedCases:[],
+    writeAuthorizations,
     environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,automationPlanId:savedPlan?.id??replay?.automationPlanId,rerunOf:replay?.id,
     sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit,worktree:project.worktree} : undefined}
   writeJob(job)
@@ -204,6 +208,7 @@ export async function createExecutionJob(input: unknown, replay?:ExecutionRecord
       job.executionPlan=plan
       writeJob(job)
       const checkpoints = {
+        writeAuthorizations:job.writeAuthorizations,
         onCaseStarted(value:NonNullable<ExecutionJob['activeCase']>){job.activeCase=value;writeJob(job)},
         onCaseCompleted(value:NonNullable<ExecutionJob['completedCases']>[number]){
           job.completedCases=[...(job.completedCases??[]).filter(item=>item.caseKey!==value.caseKey),value]

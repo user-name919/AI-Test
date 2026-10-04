@@ -11,6 +11,11 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
   const passed=results.filter(item=>item.status==='passed').length
   const verified=results.filter(item=>item.status==='passed'||item.status==='failed').length
   const lines=[`# ${text(execution.name)} · 执行报告`,'',`- 执行 ID：${text(execution.id)}`,`- 批次状态：${labels[execution.status]}`,`- 测试地址：${text(execution.targetUrl)}`,`- 执行模式：${execution.mode==='agent'?'动态 Agent':execution.mode==='plan'?'固定计划':'历史未记录'}`,execution.interruptionRecovery?`- 实际起止与耗时：未知；中断恢复记录时间：${text(execution.interruptionRecovery.recoveredAt)}`:`- 开始：${text(execution.startedAt)}；结束：${text(execution.finishedAt)}；耗时 ${execution.durationMs} ms`,'', '本报告来自当次保存的契约和运行事实，不重新调用模型评判。失败不直接等同于产品缺陷，需结合证据定位。','']
+  if(execution.writeAuthorizations?.length){
+    lines.push('## 本次业务写操作授权','','以下为启动时保存的确认，不代表操作已成功；取消不回滚业务，历史重跑须重新授权。')
+    for(const authorization of execution.writeAuthorizations)lines.push(`- 用例 ${text(authorization.caseKey)} / ${text(authorization.caseId)}；指纹 ${text(authorization.contractFingerprint)}；地址 ${text(authorization.targetUrl)}；确认时间 ${text(authorization.confirmedAt)}`,...authorization.operations.map(operation=>`  - ${text(operation)}`))
+    lines.push('')
+  }
   if(execution.rerunOf)lines.push(`重跑来源：${text(execution.rerunOf)}（独立记录，未覆盖原执行）`,'')
   if(execution.sourceProject)lines.push(`源码参考：${text(execution.sourceProject.id)} / 分支 ${text(execution.sourceProject.branch)} / SHA ${text(execution.sourceProject.commit)}`,'源码版本不是测试环境部署版本证明。','')
   else lines.push('源码参考：本次未记录。','')
@@ -59,6 +64,7 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
         for(const value of snapshot.resolved.contract[key])lines.push(`  - ${text(value)}`)
         if(!snapshot.resolved.contract[key].length)lines.push('  - 无')
       }
+      lines.push(`- 已声明的业务写操作：${snapshot.resolved.contract.writeOperations?.map(text).join('；') || '未声明；不代表已证明只读或授权任意操作'}`)
       for(const question of snapshot.resolved.resolvedQuestions)lines.push(`- 关联人工决定：${text(question.questionTitle)} → ${text(question.finalStatement)}`)
     }else lines.push('未保存该用例的契约快照，不从当前编辑记录补写。')
     lines.push('','### 实际数据与结果','',`- 起始页面：${item.startedFromUrl?text(item.startedFromUrl):'未开始/未记录'}`,`- 起始 DOM 快照：${text(item.startedFromSnapshotId)}`,`- 结果说明：${text(item.error??labels[item.status])}`)

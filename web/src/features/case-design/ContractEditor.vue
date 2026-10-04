@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CaseExecutionContract, TestDataBinding } from '@quality-ai/contracts'
+import WriteOperationsEditor from '../../components/WriteOperationsEditor.vue'
 const contract=defineModel<CaseExecutionContract>({required:true})
 const fields=[['preconditions','前置条件'],['steps','执行步骤'],['expectedAssertions','预期断言'],['forbiddenBehaviors','禁止行为'],['uncertainties','未确定事项']] as const
 function lines(key: typeof fields[number][0], event:Event) { contract.value[key]=(event.target as HTMLTextAreaElement).value.split('\n') }
@@ -24,6 +25,7 @@ function addData(){contract.value.dataBindings.push({id:crypto.randomUUID(),labe
   <div class="contract-editor">
     <label>测试目标<textarea v-model="contract.objective" rows="2" /></label>
     <label v-for="[key,label] in fields" :key="key">{{ label }}（每行一项）<textarea :value="contract[key].join('\n')" rows="3" @input="lines(key,$event)" /></label>
+    <WriteOperationsEditor v-model="contract.writeOperations" />
     <h3>测试数据策略</h3><p>从页面取值不预填账号数据；无匹配负例需要完整候选依据。</p>
     <section v-for="(binding,index) in contract.dataBindings" :key="binding.id">
       <label>数据名称<input v-model="binding.label" /></label><label>目标控件<input v-model="binding.targetHint" /></label><label>数据用途<input v-model="binding.businessIntent" /></label>

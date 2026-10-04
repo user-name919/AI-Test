@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { ExecutionRecord } from '@quality-ai/contracts'
 import CaseExecutionEvidence from './CaseExecutionEvidence.vue'
 import ExecutionArtifacts from './ExecutionArtifacts.vue'
+import WriteAuthorizationEvidence from '../../components/WriteAuthorizationEvidence.vue'
 import ExecutionContractEvidence from '../../components/ExecutionContractEvidence.vue'
 import SourceWorktreeNote from '../projects/SourceWorktreeNote.vue'
 
@@ -18,6 +19,7 @@ const rerunReason=computed(()=>{
   const item=report.value
   if(!item)return '请先打开报告'
   if(item.deploymentConfirmation||item.caseSnapshots?.some(snapshot=>snapshot.source?.type==='change_regression'))return '回归重跑须返回回归任务重新确认部署版本'
+  if(item.caseSnapshots?.some(snapshot=>snapshot.resolved.contract.writeOperations?.length))return '含业务写操作，请返回来源任务重新配置并逐条授权'
   if(!item.caseSnapshots?.length)return '历史报告没有用例版本快照，请从用例重新确认'
   if(item.mode==='plan'&&!item.plan)return '历史报告未保存固定计划'
   if(!item.mode)return '历史记录未记录执行模式'
@@ -67,7 +69,7 @@ onUnmounted(()=>{epoch++})
       <button :disabled="Boolean(rerunReason)" @click="rerun">创建独立重跑任务</button><p>{{ rerunReason||'服务端会再次检查用例版本和环境条件，不会覆盖本报告。' }}</p>
       <template v-if="report.caseResults"><h3>逐用例结果</h3><p>通过 / 已记录结果：{{ passed }} / {{ report.caseResults.length }}。选中快照：{{ report.caseSnapshots?.length??'历史未记录' }}，不将缺失结果推断为通过。</p><details v-for="result in report.caseResults" :key="result.caseKey"><summary>{{ result.title }} · {{ labels[result.status] }}</summary><p>用例：{{ result.caseKey }} · 执行指纹：{{ result.contractFingerprint }}</p><p v-if="result.error" role="alert">{{ result.error }}</p><p>通过断言：{{ result.passedAssertions.join('、')||'无' }}</p><CaseExecutionEvidence :result="result" /></details></template>
       <section v-else><h3>历史批次证据</h3><p>历史记录没有逐用例结果，不能根据成功步骤数计算用例通过率。</p><p v-if="report.agent">{{ report.agent.summary }}</p><details><summary>查看历史步骤与决策原始记录</summary><pre>{{ JSON.stringify({steps:report.steps,agent:report.agent},null,2) }}</pre></details></section>
-      <ExecutionContractEvidence :snapshots="report.caseSnapshots" />
+      <WriteAuthorizationEvidence :authorizations="report.writeAuthorizations" /><ExecutionContractEvidence :snapshots="report.caseSnapshots" />
       <ExecutionArtifacts :execution="report" />
     </article>
   </main>

@@ -55,12 +55,14 @@ export const executionPreparationSchema = z.object({
 }).strict()
 
 export const executionJobRequestSchema = executionPreparationSchema.extend({
+  authorizedWriteCaseIds: z.array(z.string().min(1)).max(20).optional(),
   automationPlanId: z.string().uuid().optional(),
   environmentId: z.string().uuid().optional(),
   projectId: z.string().min(1).optional(),
 })
 
 export interface ExecutionJob {
+  writeAuthorizations?: import('./contracts').ExecutionWriteAuthorization[]
   memoryHints?: import('./memories').MemoryReference[]
   rerunOf?: string
   automationPlanId?: string
