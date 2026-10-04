@@ -3,12 +3,18 @@ import { resolve } from 'node:path'
 import { samples } from './samples'
 
 interface RecordedStage {stage:string;status?:string;promptVersion?:string;skills?:Array<{id:string;version:string;hash:string}>}
-interface Row {provider:{id:string};success:boolean;error?:string;response?:{output?:string;error?:string;metadata?:{completedStages?:string[];failedStage?:string;provenance?:Record<string,string>;stages?:RecordedStage[];failedRun?:RecordedStage}};gradingResult?:{reason?:string};vars:{payload:string}}
+interface Row {provider:{id:string};success:boolean;error?:string;response?:{output?:string;error?:string;metadata?:{completedStages?:string[];failedStage?:string;provenance?:Record<string,string>;stages?:RecordedStage[];failedRun?:RecordedStage}};gradingResult?:{reason?:string;pass?:boolean;componentResults?:Array<{pass?:boolean;assertion?:unknown}>}|null;vars:{payload:string}}
 const cell=(value:unknown)=>String(value??'未记录').replace(/\|/g,'\\|').replace(/\r?\n/g,' ')
+
+function isAssertionFailure(row:Row):boolean {
+  // Promptfoo 同时把断言失败理由写到顶层 error，不能仅凭 error 字段判调用失败。
+  return !row.response?.error&&!!row.gradingResult?.reason&&(!row.error||row.gradingResult.pass===false&&!!row.gradingResult.componentResults?.some(result=>result.pass===false&&result.assertion))
+}
 
 // 这是错误表现分类，不把校验发现层冒充模型推理或业务根因。
 export function failureCategory(row:Row):string {
   if(row.success)return '机器检查通过'
+  if(isAssertionFailure(row))return '评估断言未通过'
   const error=row.response?.error??row.error
   if(!error)return row.gradingResult?.reason?'评估断言未通过':'原因缺失'
   if(/timeout|超时/i.test(error))return '请求超时'
@@ -78,7 +84,7 @@ export function summarize(rows:Row[]){
     const count=final?.cases?.length??legacy?.requirements?.reduce((sum,item)=>sum+(item.testCases?.length??0),0)??'未记录'
     const issues=issueRows(output)
     const completed=row.response?.metadata?.completedStages
-    const failure=row.success?'机器检查通过；非业务验收':row.response?.error??row.error
+    const failure=row.success?'机器检查通过；非业务验收':isAssertionFailure(row)?`评估断言层：${row.gradingResult?.reason}`:row.response?.error??row.error
       ?`${failureCategory(row)}；生成流程/请求失败；已完成阶段：${completed?.join('、')||'未记录'}；失败时所在阶段：${row.response?.metadata?.failedStage??'未记录'}；具体失败层需核对错误：${row.response?.error??row.error}`
       :`评估断言层：${row.gradingResult?.reason??'原因缺失'}`
     lines.push(`| ${cell(key)} / ${attempt} | ${count} | ${issues.length?`审查层 ${issues.length} 项`:'未记录审查问题（不代表无问题）'} | ${cell(failure)} |`)

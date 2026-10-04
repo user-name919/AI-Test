@@ -2,6 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { summarize, failureCategory } from './report'
 
+test('Promptfoo 顶层重复断言错误不冒充生成失败，真实 Provider 错误仍优先',()=>{
+  const row={provider:{id:'quality-ai-skills'},success:false,error:'未观察到样本要求的搜索数据策略',vars:{payload:JSON.stringify({sampleId:'no-match'})},response:{output:JSON.stringify({evidenceMode:'real-model',output:{cases:[{}]}})},gradingResult:{pass:false,reason:'未观察到样本要求的搜索数据策略',componentResults:[{pass:false,assertion:{type:'javascript'}}]}}
+  assert.equal(failureCategory(row),'评估断言未通过')
+  const report=summarize([row])
+  assert.match(report,/评估断言未通过 \| 0 \| 0 \| 1 \| 1/)
+  assert.match(report,/评估断言层：未观察到样本要求的搜索数据策略/)
+  assert.doesNotMatch(report,/生成流程\/请求失败/)
+  assert.equal(failureCategory({...row,response:{error:'Provider 请求 timeout'}}),'请求超时')
+  assert.equal(failureCategory({...row,gradingResult:null}),'其他调用或处理错误')
+})
+
 test('失败元数据可验证比较条件，但不能将失败计为通过或补造旧记录',()=>{
   const rows=['legacy','pipeline','skills'].flatMap(variant=>Array.from({length:3},()=>({provider:{id:`quality-ai-${variant}`},success:false,response:{error:'timeout',metadata:{failedStage:'generating',provenance:{evidenceMode:'stub',inputHash:'i',modelConfigHash:'m'}}},vars:{payload:JSON.stringify({sampleId:'full-search'})}})))
   assert.match(summarize(rows),/0\/3（期望3） \| 0\/3（期望3） \| 0\/3（期望3） \| 一致/)
