@@ -2,7 +2,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { samples } from './samples'
 
-interface Row {provider:{id:string};success:boolean;error?:string;response?:{output?:string;error?:string;metadata?:{completedStages?:string[];failedStage?:string;provenance?:Record<string,string>}};gradingResult?:{reason?:string};vars:{payload:string}}
+interface RecordedStage {stage:string;status?:string;promptVersion?:string;skills?:Array<{id:string;version:string;hash:string}>}
+interface Row {provider:{id:string};success:boolean;error?:string;response?:{output?:string;error?:string;metadata?:{completedStages?:string[];failedStage?:string;provenance?:Record<string,string>;stages?:RecordedStage[];failedRun?:RecordedStage}};gradingResult?:{reason?:string};vars:{payload:string}}
 const cell=(value:unknown)=>String(value??'未记录').replace(/\|/g,'\\|').replace(/\r?\n/g,' ')
 
 // 这是错误表现分类，不把校验发现层冒充模型推理或业务根因。
@@ -61,10 +62,17 @@ export function summarize(rows:Row[]){
   lines.push('','## 逐次产物与问题分层','','次数按每个样本、每个配置的结果出现顺序编号。这里记录发现问题的层，不把审查发现直接当作根因；解析/推理/生成责任需结合原文与阶段产物人工判定。执行层未在本评估中运行。','','| 样本 / 配置 / 次数 | 生成用例数 | 审查问题 | 失败发现层 / 说明 |','|---|---|---|---|')
   const attempts=new Map<string,number>()
   const details:string[]=[]
+  const versions:string[]=['','## 实际记录的方法版本','','只展示原始结果保存的版本，不根据当前代码回填历史。旧 Provider 曾固定写入 modeling/planning-v1，因此历史 v1 标记不能单独证明实际调用版本；需结合当时源码与运行证据。相同输入和模型不等于相同方法版本。','','| 样本 / 配置 / 次数 | 阶段 | 状态 | 提示版本 / 基线 | Skills 版本与 hash |','|---|---|---|---|---|']
   for(const {row,input,output} of entries){
     const key=`${input.sampleId} / ${row.provider.id}`
     const attempt=(attempts.get(key)??0)+1
     attempts.set(key,attempt)
+    const recorded=(output?.stages??row.response?.metadata?.stages) as RecordedStage[]|undefined
+    const failedRun=row.response?.metadata?.failedRun
+    const methodStages=[...(Array.isArray(recorded)?recorded:[]),...(failedRun?[failedRun]:[])]
+    if(methodStages.length){
+      for(const stage of methodStages)versions.push(`| ${cell(key)} / ${attempt} | ${cell(stage.stage)} | ${cell(stage.status)} | ${cell(stage.promptVersion)} | ${stage.skills?stage.skills.length?stage.skills.map(skill=>cell(`${skill.id}@${skill.version} (${skill.hash})`)).join('；'):'未启用':'未记录'} |`)
+    }else versions.push(`| ${cell(key)} / ${attempt} | ${row.provider.id==='quality-ai-legacy'?'旧生成器':'未记录阶段产物'} | ${row.success?'机器检查通过':'失败'} | ${cell(output?.legacySourceHash??row.response?.metadata?.provenance?.legacySourceHash)} | 未记录 |`)
     const final=output?.output as {cases?:unknown[]}|undefined
     const legacy=output?.analysis as {requirements?:Array<{testCases?:unknown[]}>}|undefined
     const count=final?.cases?.length??legacy?.requirements?.reduce((sum,item)=>sum+(item.testCases?.length??0),0)??'未记录'
@@ -76,7 +84,7 @@ export function summarize(rows:Row[]){
     lines.push(`| ${cell(key)} / ${attempt} | ${count} | ${issues.length?`审查层 ${issues.length} 项`:'未记录审查问题（不代表无问题）'} | ${cell(failure)} |`)
     if(issues.length)details.push('',`### ${cell(key)} / ${attempt} 的审查问题`,'',...issues.map(issue=>`- ${issue}`))
   }
-  lines.push(...details,'', '## 人工复核候选','')
+  lines.push(...details,...versions,'', '## 人工复核候选','')
   for(const sample of samples)lines.push(`### ${sample.title}`,`- 显式材料：${sample.expectations.explicitFacts}`,`- 必须覆盖候选：${sample.expectations.mustCover}`,`- 禁止编造：${sample.expectations.forbidden}`,`- 允许多解：${sample.expectations.alternatives}`,'- 评审人 / 日期 / 逐项结论 / 改善或退化：待填写','')
   return lines.join('\n')
 }

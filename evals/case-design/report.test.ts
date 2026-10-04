@@ -68,3 +68,13 @@ test('真实矩阵错误按保存的表现分类，兼容顶层错误且不把�
   assert.equal(failureCategory({...base,error:'未知错误'}),'其他调用或处理错误')
   assert.equal(failureCategory({...base,success:true}),'机器检查通过')
 })
+
+test('报告展示保存的阶段与失败版本，不给历史缺失记录回填当前版本',()=>{
+  const row={provider:{id:'quality-ai-skills'},success:false,response:{error:'结构错误',metadata:{stages:[{stage:'modeling',status:'completed',promptVersion:'modeling-recorded',skills:[]}],failedRun:{stage:'generating',status:'failed',promptVersion:'generating-recorded',skills:[{id:'test-data-design',version:'1.0.0',hash:'recorded-hash'}]}}},vars:{payload:JSON.stringify({sampleId:'full-search'})}}
+  const report=summarize([row])
+  assert.match(report,/modeling \| completed \| modeling-recorded \| 未启用/)
+  assert.match(report,/generating \| failed \| generating-recorded \| test-data-design@1.0.0 \(recorded-hash\)/)
+  const older={...row,response:{error:'timeout'}}
+  assert.match(summarize([older]),/未记录阶段产物 \| 失败 \| 未记录/)
+  assert.doesNotMatch(summarize([older]),/modeling-recorded|generating-recorded/)
+})
