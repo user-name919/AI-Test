@@ -13,6 +13,15 @@ export function publicationBlockers(design: CaseDesign, run: DesignRun, review: 
   const final = review.content
   const included = drafts.filter(item => final.cases[item.id]?.status === 'confirmed')
   if (run.status !== 'completed' || run.stage !== 'checking' || !run.output.modelReviewCompleted) reasons.push('质量审查尚未完成')
+  const batches=run.output.qualityBatches
+  if(batches&&(!batches.length||batches.some(batch=>batch.status!=='completed')
+    ||drafts.some(item=>!batches.some(batch=>batch.caseIds.includes(item.id)))
+    ||facts.some(item=>!batches.some(batch=>batch.factIds.includes(item.id)))
+    ||run.output.scenarios?.some(item=>!batches.some(batch=>batch.scenarioIds.includes(item.id)))
+    ||run.output.questions.some(item=>!batches.some(batch=>batch.questionIds.includes(item.id)))
+    ||run.output.factModel?.conflicts.some(item=>!batches.some(batch=>batch.conflictIds.includes(item.id)))
+    ||design.documents.some(document=>document.blocks.some(block=>!batches.some(batch=>batch.blockIds.includes(block.id))))))reasons.push('质量审查批次或目标范围尚未完成')
+  if(run.output.unreviewedBlockIds?.length)reasons.push('仍有未审查原文')
   if (run.inputHash !== design.inputHash || review.inputHash !== design.inputHash || review.inputRevision !== design.revision || run.inputRevision !== design.revision) reasons.push('材料版本变化，需要重新生成与审核')
   if (run.output.unprocessedBlockIds.length || run.output.unprocessedScenarioIds?.length) reasons.push('仍有未处理材料或场景')
   if (!included.length) reasons.push('至少确认一条用例才能发布')

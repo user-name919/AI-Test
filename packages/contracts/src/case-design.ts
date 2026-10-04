@@ -159,6 +159,7 @@ export interface DesignRun {
     issues?: DesignIssue[]; modelReviewCompleted?: boolean; reviewedBlockIds?: string[]; unreviewedBlockIds?: string[]
     modelingBatches?: Array<{id:string;factIds:string[];status:'pending'|'completed';model?:FactModel}>
     planningBatches?: Array<{id:string;kind:'whole'|'local'|'cross';factIds:string[];status:'pending'|'completed';scenarioIds:string[]}>
+    qualityBatches?: Array<{id:string;kind:'documents'|'cross';caseIds:string[];factIds:string[];scenarioIds:string[];questionIds:string[];conflictIds:string[];blockIds:string[];status:'pending'|'completed'}>
   }
   statistics: { calls: number; inputCharacters: number; outputCharacters: number }
 }

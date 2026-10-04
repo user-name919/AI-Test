@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { CaseDesign, DesignRun } from '@quality-ai/contracts/case-design'
-import { checkDesignRules, checkCaseQuality, qualityReviewBatches } from './quality-checker'
+import { checkDesignRules, checkCaseQuality } from './quality-checker'
+import { qualityReviewBatches } from './quality-review-batches'
 import { createServer } from 'node:http'
 import { getModelConfig } from '../../model-config'
 
@@ -33,7 +34,7 @@ test('大原文分批审查保留全量用例，失败保留已审查范围且�
     assert.ok(failed.output.reviewedBlockIds!.length>0)
     assert.ok(failed.output.unreviewedBlockIds!.length>0)
     const oversized=fixture();oversized.output.cases![0]!.contract.objective='x'.repeat(120001)
-    assert.throws(()=>qualityReviewBatches(design,oversized,100),/全量事实、场景与用例超过/)
+    assert.throws(()=>qualityReviewBatches(design,oversized,100),/审查单元.*超过交叉审查预算/)
   }finally{await new Promise<void>(resolve=>server.close(()=>resolve()))}
 })
 

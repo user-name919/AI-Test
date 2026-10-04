@@ -81,6 +81,11 @@ function locate(value:EvidenceRef) { reference.value=value; showSource.value=tru
             <p>先规划分区内部场景，再补充两侧规则的联动场景；没有依据时允许不生成联动。仅合并字段完全相同的建议，近似重复仍需审核；两两分析不能证明全部复合业务关系已覆盖。</p>
             <details v-for="batch in selected.output.planningBatches" :key="batch.id"><summary>{{ batch.id }} · {{ {whole:'全量规划',local:'分区内部',cross:'跨分区联动'}[batch.kind] }} · {{ batch.status==='completed'?'已校验批次':'尚未完成' }}</summary><p>参与事实：{{ batch.factIds.join('、') }}</p><p>场景：{{ batch.scenarioIds.join('、')||'尚无场景' }}</p></details>
           </section>
+          <section v-if="selected?.stage==='checking' && selected.output.qualityBatches" class="card" aria-label="质量审查批次">
+            <h2>质量审查批次</h2><p>已完成 {{ selected.output.qualityBatches.filter(batch=>batch.status==='completed').length }} / {{ selected.output.qualityBatches.length }} 批。{{ selected.output.modelReviewCompleted?'所有审查请求已完成，问题仍需人工判断，不代表测试通过。':'仍有未完成审查，已保存的问题与局部结果不能用于发布。' }}</p>
+            <p>大上下文保留用例与直接依据，再交叉检查不同分区。原文阅读范围与跨用例审查进度分开统计；原文全部出现过，也不代表所有交叉批次完成。模型可能漏判，不替代人工审核。</p>
+            <details v-for="batch in selected.output.qualityBatches" :key="batch.id"><summary>{{ batch.id }} · {{ batch.kind==='documents'?'全量目标与原文分批':'分区交叉审查' }} · {{ batch.status==='completed'?'请求已完成':'尚未完成' }}</summary><p>用例：{{ batch.caseIds.join('、')||'本批无用例' }}</p><p>规则：{{ batch.factIds.join('、')||'本批无规则' }}</p><p>场景：{{ batch.scenarioIds.join('、')||'本批无场景' }}</p><p>原文块：{{ batch.blockIds.join('、')||'本批只含依据摘录，未提供完整原文块' }}</p></details>
+          </section>
           <section v-if="selected?.stage==='checking' && selected.output.reviewedBlockIds" class="card" aria-label="原文审查范围">
             <h2>原文审查范围</h2><p>已审查 {{ selected.output.reviewedBlockIds.length }} 块 · 未完成 {{ selected.output.unreviewedBlockIds?.length??0 }} 块。{{ selected.output.modelReviewCompleted?'模型审查完成，仍需人工审核。':'审查尚未完成，已保存批次不代表全量通过。' }}</p>
             <details v-if="selected.output.unreviewedBlockIds?.length"><summary>查看未完成的原文块</summary><p v-for="id in selected.output.unreviewedBlockIds" :key="id">{{ id }}</p></details>
