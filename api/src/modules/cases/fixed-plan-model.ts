@@ -24,6 +24,7 @@ export async function generateFixedPlan(targetUrl:string,testCase:ResolvedCaseEx
 locator={by:"role|label|text|css",value:"定位内容",name:"可选名称",exact:true或false,scope:[{by,value,name,exact}],framePath:[{by,value,name,exact}]}；scope 可省略或按外到内提供1至4级明确容器（例如命名表格→具体行，或命名弹窗），不能杜撰选择器。framePath为可选1至4级外到内iframe元素定位链，先进入框架再查scope/目标；每级必须唯一，不用first/nth消歧。语义名称可 exact 精确匹配；css 不使用 exact。已有计划未指定 framePath/scope 仍为主页面。存在同名按钮或表格行时应明确范围，不用 first/nth 猜测目标。
 框架中的运行时数据 resolveTestData{bindingId,framePath} 和整框架文本 expectText{text或valueRef,framePath,assertionIndex} 必须使用与目标控件一致的framePath，不能借主页面的选项或文本通过；未知框架依据时受阻。截图仍是整个顶层页面，固定计划不隐式维持“当前框架”，每步明确路径，主页面步骤省略framePath。
 局部文本使用 expectElementText{locator,text,exact:true或false,assertionIndex}，读取目标元素的可见渲染文本；exact 默认 false 表示包含。弹窗、表格行或具体控件的结果必须在对应范围内验证，不能用整页 expectText 或背景文字替代。范围选择需要真实依据，未知时受阻；容器拼接文本也不能冒充其中特定单元格结果。
+数量断言使用 expectCount{locator,count,assertionIndex}，count为非负整数，允许0。locator是待计数的多个匹配元素，scope/framePath限定真实且唯一可见的容器/框架；目标容器缺失或歧义时不会按0通过。计数等待最多10秒达到预期，只证明当前DOM匹配数量，不能冒充分页/虚拟列表或服务端全量总数；CSS按匹配节点计数（可能包括隐藏节点），需要可见选项时优先使用有依据的role及明确scope。预期数量必须来自最终契约，不编造测试账号数据量；无匹配时仍需完成契约要求的空态断言，不能只计数替代全部预期。
 runtime_dom 的输入不能在生成时猜测：先通过操作展开真实选项，再 resolveTestData，随后 fill 使用 valueRef。完整名称、部分词、负例的策略来自契约，实际值执行时才提议。绑定不存在或未解析不能使用；重复搜索可再次解析。
 value 与 valueRef、text 与 valueRef 各自只能选一个。非运行时输入必须来自已确认 fixture/manual。无匹配场景断言原始空态，不把不存在的搜索词当可见预期。禁止跳转目标域外、禁止改业务断言或把不支持的验证偷换为文本存在。不能用 expectText 证明样式高亮。无法表达的验证返回 {"blocked":"具体缺口"}，不要伪造步骤。
 最终执行契约（唯一执行依据）：${JSON.stringify(testCase.contract)}

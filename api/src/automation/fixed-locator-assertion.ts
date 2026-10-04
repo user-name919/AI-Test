@@ -4,6 +4,17 @@ import type { AutomationPlan } from '@quality-ai/contracts'
 import { readCheckedState } from './checked-state'
 
 type Assertion=Extract<AutomationPlan['steps'][number],{action:'expectVisible'|'expectHidden'|'expectEnabled'|'expectDisabled'|'expectChecked'|'expectValue'|'expectElementText'|'expectAttribute'}>
+export async function assertFixedCount(readCount:()=>Promise<number>,expected:number,signal?:AbortSignal){
+  const deadline=Date.now()+10000
+  while(true){
+    signal?.throwIfAborted()
+    const actual=await readCount()
+    signal?.throwIfAborted()
+    if(actual===expected)return
+    if(Date.now()>=deadline)throw new Error(`expectCount 断言失败：实际 ${actual} 个；预期 ${expected} 个`)
+    await setTimeout(100,undefined,{signal})
+  }
+}
 export async function assertFixedLocator(locator:Locator,step:Assertion,expectedValue:string|undefined,signal?:AbortSignal){
   signal?.throwIfAborted()
   if(step.action==='expectVisible'||step.action==='expectHidden'){

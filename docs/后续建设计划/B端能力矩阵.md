@@ -20,7 +20,7 @@
 | 弹窗内同名按钮，与背景按钮区分 | 部分支持 | 部分支持 | 动态弹窗注册为 e 引用，摘要 elementRef 关联它，限定容器计数已实测；固定 scope 已验证背景同名按钮不被误点。预算截断时不伪造容器引用，模型理解正确性未保证 |
 | 禁用/启用、输入值、错误提示 | 已支持 | 已支持 | `expectEnabled/expectDisabled/expectValue` 和文本/属性断言；两模式有局部 `expectElementText`。固定旧 expectText 仍是页面范围，局部结果需使用带范围的元素断言 |
 | 匹配关键词高亮 | 部分支持 | 部分支持 | 验证明确 class/data-state 等属性；固定 token 匹配、动态属性匹配规则不同。文本出现不能代替高亮，也未验证像素颜色或视觉规范 |
-| 容器中 option 数量为 0 | 部分支持 | 缺失 | 动态 `expectCount` 可带 containerRef；容器必须可被观察/引用。固定无计数动作 |
+| 容器中 option 数量为 0 | 部分支持 | 部分支持 | 动态 `expectCount` 可带containerRef；固定expectCount{locator,count,assertionIndex}支持scope/framePath，计数前逐级确认唯一可见容器，缺失不当作0通过。当前DOM计数不代表服务端/分页全量；CSS可能包含隐藏节点，空态和加载完成仍需按契约另行验证 |
 | 选择已配置附件并上传 | 部分支持 | 部分支持 | `/#/test-fixtures` 登记不可覆盖附件，两模式 uploadFile 只接受契约授权UUID并保存指纹。动态只操作当前快照中的文件控件，上传异常不自动恢复重试；隐藏输入/文件选择对话框/多文件待扩展，真实input上传不等于业务处理成功 |
 | 点击导出，等待下载并验证文件 | 部分支持 | 部分支持 | 两模式 download 点击前监听，15秒接收期限、10MB证据保存上限，expectDownload 验证名称/大小/UTF-8文本包含；逐用例隔离文件和指纹关联报告，动态异常不自动重复导出。PDF/Excel解析、多文件未接入；页面“下载成功”不能代替文件证据 |
 | iframe 内控件操作 | 部分支持 | 部分支持 | 动态观察列出最多50个真实可见框架，switchFrame后重新观察并失效旧引用；元素、文本、数量及滚动限定所选框架。固定framePath为每步1至4级明确iframe定位链，运行时数据解析、来源保留及文本断言使用对应框架。固定跨源两层嵌套正反例已验证；动态跨源/嵌套独立操作仍待验收，截图仍为顶层页面 |
@@ -51,6 +51,7 @@ node --import tsx --test api/src/modules/test-fixtures/store.test.ts
 node --import tsx --test api/src/agent-upload.test.ts
 node --import tsx --test api/src/download-capture.test.ts
 node --import tsx --test api/src/shadow-observer.test.ts api/src/page-observer.test.ts
+node --import tsx --test api/src/fixed-count.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。

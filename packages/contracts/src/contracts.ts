@@ -342,6 +342,7 @@ export const automationStepSchema = z.discriminatedUnion('action', [
   z.object({ action:z.literal('expectEnabled'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),
   z.object({ action:z.literal('expectDisabled'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema }),
   z.object({ action:z.literal('expectElementText'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema, text:z.string().min(1), exact:z.boolean().default(false) }),
+  z.object({ action:z.literal('expectCount'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema, count:z.number().int().nonnegative() }),
   z.object({ action:z.literal('expectValue'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema, value:z.string().optional(), valueRef:z.string().min(1).optional() }).refine(item=>(item.value!==undefined)!==(item.valueRef!==undefined),'预期值与数据引用必须且只能提供一个'),
   z.object({ action:z.literal('expectAttribute'), assertionIndex:z.number().int().nonnegative().optional(), locator:locatorSchema, name:z.string().min(1), value:z.string(), match:z.enum(['exact','token']).default('exact') }),
   z.object({ action: z.literal('screenshot'), name: z.string().min(1) }),

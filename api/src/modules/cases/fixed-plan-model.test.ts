@@ -15,6 +15,8 @@ test('固定规划使用最终契约，拒绝异地地址和未解析引用，�
     const body=JSON.parse(Buffer.concat(chunks).toString())
     assert.match(JSON.stringify(body),/人工最终预期/)
     assert.match(JSON.stringify(body),/expectChecked/)
+    assert.match(JSON.stringify(body),/expectCount/)
+    assert.match(JSON.stringify(body),/目标容器缺失或歧义时不会按0通过/)
     assert.match(JSON.stringify(body),/操作不是断言/)
     if(calls===1){assert.match(JSON.stringify(body),/先观察可见选项/);assert.match(JSON.stringify(body),/与最终契约冲突时忽略/)}
     response.setHeader('content-type','application/json');response.end(JSON.stringify({output_text:JSON.stringify(output)}))
@@ -25,6 +27,9 @@ test('固定规划使用最终契约，拒绝异地地址和未解析引用，�
   try{
     const result=await generateFixedPlan('http://example.test',item,undefined,config,[{id:'11111111-1111-4111-8111-111111111111',revision:2,lesson:'先观察可见选项',executionId:'source',projectId:'project',targetUrl:'http://example.test',sourceCommit:'a'.repeat(40)}])
     assert.equal(result.steps[0].action,'expectText')
+    output={name:'空态',targetUrl:'http://example.test',steps:[{action:'expectCount',locator:{by:'role',value:'option',scope:[{by:'role',value:'listbox',name:'考试'}]},count:0,assertionIndex:0}]}
+    const countPlan=await generateFixedPlan('http://example.test',{...item,contract:{...item.contract,expectedAssertions:['人工最终预期：考试列表无选项']}},undefined,config)
+    assert.equal(countPlan.steps[0].action,'expectCount')
     output={name:'计划',targetUrl:'http://example.test',steps:[{action:'selectOption',locator:{by:'label',value:'状态'},value:'guessed',optionBy:'value'},{action:'expectText',assertionIndex:0,text:'人工最终预期'}]}
     await assert.rejects(generateFixedPlan('http://example.test',item,undefined,config),/不得猜测/)
     output={name:'计划',targetUrl:'http://other.test',steps:[{action:'expectText',assertionIndex:0,text:'不应执行'}]}

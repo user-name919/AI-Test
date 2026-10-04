@@ -225,6 +225,9 @@ export function describeAutomationStep(step: AutomationStep, index: number): Liv
   } else if(step.action==='resolveTestData'){
     title=`从当前页面解析测试数据 ${step.bindingId}`
     technicalAction=`resolveTestData ${step.bindingId}`
+  } else if(step.action==='expectCount'){
+    title=`确认匹配${quoted(step.locator.name??step.locator.value)}的元素数量为 ${step.count}`
+    technicalAction=JSON.stringify(step)
   } else if('locator' in step){
     const names={expectVisible:'可见',expectHidden:'隐藏',expectEnabled:'可操作',expectDisabled:'不可操作',expectChecked:step.action==='expectChecked'&&step.checked?'已选中':'未选中',expectValue:'输入值符合预期',expectElementText:step.action==='expectElementText'?`文本${step.exact?'等于':'包含'}${quoted(step.text)}`:'文本符合预期',expectAttribute:'属性符合预期'}
     title=`确认${quoted(step.locator.name??step.locator.value)}${names[step.action]}`

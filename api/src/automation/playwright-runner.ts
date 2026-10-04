@@ -15,7 +15,7 @@ import { aggregateExecutionStatus, observeSessionFailure } from './agent-test-ru
 import { completeCaseResults } from './complete-case-results'
 import type { PageSnapshot, TestDataBinding, ResolveTestDataDecision } from '@quality-ai/contracts'
 import { resolveRuntimeDataBinding, RuntimeDataBindingBlockedError } from './test-data-binding'
-import { assertFixedLocator } from './fixed-locator-assertion'
+import { assertFixedCount, assertFixedLocator } from './fixed-locator-assertion'
 import { validateFixedAssertionCoverage } from './fixed-assertion-coverage'
 
 interface AutomationRunnerOptions {
@@ -48,6 +48,17 @@ function frameRootFor(page: Page, framePath: FixedLocator['framePath']): Page | 
   let root: Page | FrameLocator = page
   for (const selector of framePath ?? []) root = selectWithin(root, selector).contentFrame()
   return root
+}
+
+async function countWithin(page:Page,locator:FixedLocator){
+  let root:Page|FrameLocator|Locator=frameRootFor(page,locator.framePath)
+  // A missing frame/container must not make an expected zero pass accidentally.
+  await root.locator('html').waitFor({state:'visible',timeout:10000})
+  for(const scope of locator.scope??[]){
+    root=selectWithin(root,scope)
+    await root.waitFor({state:'visible',timeout:10000})
+  }
+  return selectWithin(root,locator).count()
 }
 
 export async function runAutomationPlan(input: unknown, storageStatePath?: string, options: AutomationRunnerOptions = {}): Promise<ExecutionResult> {
@@ -210,6 +221,9 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               options.signal?.throwIfAborted()
               const resolved=resolveRuntimeDataBinding(binding,snapshot,proposal)
               checkpoint.resolvedDataBindings=checkpoint.resolvedDataBindings.filter(item=>item.bindingId!==binding.id).concat(resolved)
+            } else if(step.action==='expectCount'){
+              await assertFixedCount(()=>countWithin(page,step.locator),step.count,options.signal)
+              checkpoint.passedAssertions.push(step.assertionIndex===undefined?`step-${index+1}`:`assertion-${step.assertionIndex}`)
             } else if('locator' in step){
               const expected=step.action==='expectValue'?(step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value):undefined
               if(step.action==='expectValue'&&expected===undefined)throw new RuntimeDataBindingBlockedError(`断言引用尚未解析：${step.valueRef}`)
