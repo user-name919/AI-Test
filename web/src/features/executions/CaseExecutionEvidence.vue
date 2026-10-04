@@ -31,7 +31,15 @@ const recoveryNames={reobserved:'已重新观察页面，再由 AI 决定下一�
       <small>DOM 快照：{{ turn.snapshotId }}</small>
       <details><summary>查看本步技术动作与观察</summary><pre>{{ JSON.stringify({decision:turn.decision,observation:turn.observation,projectContext:turn.projectContext},null,2) }}</pre></details>
     </article>
-    <template v-if="!result.trajectory.length"><p v-if="!result.steps.length">没有操作证据。</p><article v-for="step in result.steps" :key="step.index"><p>第 {{ step.index+1 }} 步 · {{ step.action }} · {{ step.status==='passed'?'成功':'失败' }} · {{ step.durationMs }} ms</p><p v-if="step.error">{{ step.error }}</p></article></template>
+    <template v-if="!result.trajectory.length">
+      <p v-if="!result.steps.length">没有操作证据。</p>
+      <article v-for="step in result.steps" :key="step.index">
+        <p>第 {{ step.index+1 }} 步 · {{ step.action }} · {{ step.status==='passed'?'成功':'失败' }} · {{ step.durationMs }} ms</p><p v-if="step.error">{{ step.error }}</p>
+        <p v-if="step.pageBefore">操作前页面：{{ step.pageBefore.url }} · {{ step.pageBefore.ref }}</p>
+        <p v-if="step.openedPage">实际打开页面：{{ step.openedPage.url }} · {{ step.openedPage.ref }}；请求别名 {{ step.openedPage.alias }}，是否成功绑定请看步骤结果。</p>
+        <p v-if="step.pageAfter">操作后当前页面：{{ step.pageAfter.url }} · {{ step.pageAfter.ref }}</p>
+      </article>
+    </template>
     <details><summary>查看原始执行数据（排障）</summary><pre>{{ JSON.stringify({data:result.resolvedDataBindings,steps:result.steps,trajectory:result.trajectory},null,2) }}</pre></details>
   </section>
 </template>

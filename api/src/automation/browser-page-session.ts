@@ -14,8 +14,15 @@ export class BrowserPageSession {
   ) {}
 
   assertAllowed(page = this.current) {
+    if (page.context() !== this.current.context()) throw new Error('标签页不属于当前浏览器会话')
     if (page.isClosed()) throw new Error('当前标签页已关闭，禁止自动改用其他页面')
     if (new URL(page.url()).origin !== this.origin) throw new Error('标签页不属于测试环境，禁止观察或操作')
+  }
+
+  identity(page = this.current) {
+    let ref = this.ids.get(page)
+    if (!ref) { ref = randomUUID(); this.ids.set(page, ref) }
+    return { ref, url: page.url() }
   }
 
   observe(snapshotId: string) {
@@ -25,8 +32,7 @@ export class BrowserPageSession {
     const all = this.current.context().pages().filter(page => !page.isClosed())
     // Always retain the active page even if many unrelated tabs exist.
     const pages = [this.current, ...all.filter(page => page !== this.current)].slice(0, 50).map(page => {
-      let ref = this.ids.get(page)
-      if (!ref) { ref = randomUUID(); this.ids.set(page, ref) }
+      const { ref } = this.identity(page)
       this.observed.set(ref, page)
       return { ref, url: page.url(), active: page === this.current, allowed: new URL(page.url()).origin === this.origin }
     })
@@ -37,6 +43,11 @@ export class BrowserPageSession {
     if (snapshotId !== this.snapshotId) throw new Error('标签页切换引用了过期快照')
     const page = this.observed.get(ref)
     if (!page) throw new Error('目标标签页未出现在当前观察中')
+    await this.activate(page)
+  }
+
+  // Fixed plans may select a Page captured by their own popup listener, never a client-provided object.
+  async activate(page: Page) {
     this.assertAllowed(page)
     await page.bringToFront()
     this.current = page

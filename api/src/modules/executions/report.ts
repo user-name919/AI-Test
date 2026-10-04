@@ -85,7 +85,12 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       if(turn.result)lines.push(`  - 实际结果：${turn.result.ok?'操作/断言成功':'操作/断言失败'} · ${text(turn.result.message)} · ${turn.result.durationMs} ms`)
       if(turn.recovery)lines.push(`  - 技术恢复 ${turn.recovery.attempt}/${turn.recovery.limit}：${{reobserved:'重新观察页面后交由模型决策，未盲目重放动作',exhausted:'恢复预算耗尽',observation_failed:'恢复时重新观察页面失败'}[turn.recovery.status]}；原因：${text(turn.recovery.reason)}`)
     }
-    if(!item.trajectory.length)for(const step of item.steps)lines.push(`- 步骤 ${step.index+1}：${text(step.action)} · ${step.status==='passed'?'成功':'失败'} · ${step.durationMs} ms${step.error?` · ${text(step.error)}`:''}`)
+    if(!item.trajectory.length)for(const step of item.steps){
+      lines.push(`- 步骤 ${step.index+1}：${text(step.action)} · ${step.status==='passed'?'成功':'失败'} · ${step.durationMs} ms${step.error?` · ${text(step.error)}`:''}`)
+      if(step.pageBefore)lines.push(`  - 操作前页面：${text(step.pageBefore.url)} / ${text(step.pageBefore.ref)}`)
+      if(step.openedPage)lines.push(`  - 实际打开页面：${text(step.openedPage.url)} / ${text(step.openedPage.ref)}；请求别名 ${text(step.openedPage.alias)}，是否成功绑定请看步骤结果。`)
+      if(step.pageAfter)lines.push(`  - 操作后当前页面：${text(step.pageAfter.url)} / ${text(step.pageAfter.ref)}`)
+    }
     if(!item.trajectory.length&&!item.steps.length)lines.push('- 没有操作证据。')
     lines.push('','### 附件','')
     const attachments=artifacts.filter(artifact=>artifact.caseKey===item.caseKey)

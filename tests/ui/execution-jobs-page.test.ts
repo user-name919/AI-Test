@@ -16,7 +16,7 @@ test('后台任务刷新找回、关闭重开预览、历史合并及完整用�
     const snapshots=[0,1].map(index=>({caseId:`c${index}`,revision:1,capturedAt:'now',resolved:{caseKey:`0-TC-${index}`,title:index?'后续验证':'部分搜索',contract,contractFingerprint:'frozen'}}))
     let status='running'
     let executionId:string|undefined
-    const completedCases=[{caseKey:'0-TC-0',title:'部分搜索',contractFingerprint:'frozen',status:'passed',passedAssertions:['匹配项保留'],startedFromUrl:'https://example.test',resolvedDataBindings:[],steps:[],trajectory:[],screenshots:[]}]
+    const completedCases=[{caseKey:'0-TC-0',title:'部分搜索',contractFingerprint:'frozen',status:'passed',passedAssertions:['匹配项保留'],startedFromUrl:'https://example.test',resolvedDataBindings:[],steps:[{index:0,action:'switchPage',status:'passed',durationMs:5,pageBefore:{ref:'fixed-initial-page',url:'https://example.test'},pageAfter:{ref:'fixed-detail-page',url:'https://example.test/detail'}}],trajectory:[],screenshots:[]}]
     const deploymentConfirmation={status:'unverified',reviewRevision:2,targetSha:'a'.repeat(40),confirmedBy:'合成审核人',createdAt:'2026-10-04',note:'尚未核实环境版本',regressionId:'regression-fixture',changeSetId:'change-fixture'}
     const history=[{sequence:1,event:{type:'activity',executionId:'job',caseKey:'0-TC-0',caseTitle:'部分搜索',activity:{id:'same',title:'点击搜索框',purpose:'准备筛选',status:'running',technicalAction:'click e10'}}},{sequence:2,event:{type:'activity',executionId:'job',caseKey:'0-TC-0',caseTitle:'部分搜索',activity:{id:'same',title:'点击搜索框',purpose:'准备筛选',status:'passed',message:'点击完成',technicalAction:'click e10'}}}]
     await page.route('**/api/**',async route=>{
@@ -45,6 +45,8 @@ test('后台任务刷新找回、关闭重开预览、历史合并及完整用�
     await page.getByText('整批报告尚未完成；已保存 1 条用例最终结果，其余不推断为通过。',{exact:true}).waitFor()
     await page.locator('summary').filter({hasText:'部分搜索 · 通过'}).click()
     await page.getByText('通过断言：匹配项保留',{exact:true}).waitFor()
+    await page.getByText('操作后当前页面：https://example.test/detail · fixed-detail-page',{exact:true}).waitFor()
+    await page.locator('.evidence').first().screenshot({path:'/private/tmp/quality-ai-fixed-page-evidence.png'})
     await page.locator('summary').filter({hasText:'部分搜索 · 通过'}).click()
     await page.getByText('部署版本未核实：本次结果不能证明目标版本已经部署',{exact:true}).waitFor()
     page.once('dialog',dialog=>dialog.accept())

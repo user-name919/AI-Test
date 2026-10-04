@@ -323,6 +323,8 @@ const keyboardKeySchema = z.enum([
 ])
 
 export const automationStepSchema = z.discriminatedUnion('action', [
+  z.object({ action:z.literal('openPage'), locator:locatorSchema, pageAlias:z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/).refine(value=>value!=='initial'&&value!=='caseStart','initial和caseStart是保留页面别名') }),
+  z.object({ action:z.literal('switchPage'), pageAlias:z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/) }),
   z.object({ action: z.literal('goto'), path: z.string().min(1) }),
   z.object({ action: z.literal('click'), locator: locatorSchema }),
   z.object({ action: z.literal('check'), locator: locatorSchema }),
@@ -415,7 +417,7 @@ export interface ExecutionResult {
   startedAt: string
   finishedAt: string
   durationMs: number
-  steps: Array<{ index: number; action: string; status: 'passed' | 'failed'; durationMs: number; error?: string }>
+  steps: Array<{ index: number; action: string; status: 'passed' | 'failed'; durationMs: number; error?: string; pageBefore?: {ref:string;url:string}; pageAfter?: {ref:string;url:string}; openedPage?: {ref:string;url:string;alias:string} }>
   screenshots: string[]
   tracePath?: string
   error?: string

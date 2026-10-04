@@ -17,6 +17,8 @@ import type { PageSnapshot, TestDataBinding, ResolveTestDataDecision } from '@qu
 import { resolveRuntimeDataBinding, RuntimeDataBindingBlockedError } from './test-data-binding'
 import { assertFixedCount, assertFixedLocator } from './fixed-locator-assertion'
 import { validateFixedAssertionCoverage } from './fixed-assertion-coverage'
+import { BrowserPageSession } from './browser-page-session'
+import { capturePopup } from './capture-popup'
 
 interface AutomationRunnerOptions {
   signal?: AbortSignal
@@ -96,21 +98,32 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, storageState: storageStatePath })
     await context.tracing.start({ screenshots: true, snapshots: true })
     traceStarted = true
-    const page = await context.newPage()
+    const failures = new WeakMap<Page, () => string | undefined>()
+    context.on('page', opened => { failures.set(opened, observeSessionFailure(browser!, opened)) })
+    let page = await context.newPage()
+    const initialPage = page
     cancellationPage = page
     options.signal?.throwIfAborted()
-    const sessionFailure = observeSessionFailure(browser, page)
-    try {
-      livePageStream = await startLivePageStream(context, page, frame => {
-        emit({ type: 'browser_frame', executionId: id, caseKey: currentCase?.caseKey || undefined, caseTitle: currentCase?.title, ...frame })
-      })
-    } catch (error) {
-      emit({ type: 'activity', executionId: id, activity: {
-        id: `${id}:preview-unavailable`, phase: 'observing', title: '实时画面暂不可用',
-        purpose: 'Playwright 测试仍会继续执行，完成后可查看截图和 Trace',
-        status: 'info', message: error instanceof Error ? error.message : String(error),
-      } })
+    const sessionFailure = () => failures.get(page)?.()
+    const followPage = async (next:Page) => {
+      page = next
+      cancellationPage = next
+      await livePageStream?.stop().catch(()=>undefined)
+      livePageStream = undefined
+      try {
+        livePageStream = await startLivePageStream(context!, next, frame => {
+          if(page===next)emit({ type:'browser_frame', executionId:id, caseKey:currentCase?.caseKey||undefined, caseTitle:currentCase?.title, pageUrl:next.url(), ...frame })
+        })
+      } catch(error) {
+        emit({ type:'activity', executionId:id, activity:{
+          id:`${id}:preview-unavailable`, phase:'observing', title:'实时画面暂不可用',
+          purpose:'Playwright 测试仍会继续执行，完成后可查看截图和 Trace',
+          status:'info', message:error instanceof Error?error.message:String(error),
+        } })
+      }
     }
+    const pages = new BrowserPageSession(page, baseUrl.origin, followPage)
+    await followPage(page)
     if (plan.casePlans) {
       await page.goto(baseUrl.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
       if (sessionFailure()) throw new Error(sessionFailure())
@@ -130,6 +143,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
       }
       currentCase = checkpoint
       caseResults.push(checkpoint)
+      const aliases = new Map<string, Page | undefined>([['initial', initialPage], ['caseStart', page]])
       let chunkStarted = false
       try {
         options.onCaseStarted?.({caseKey:checkpoint.caseKey,startedFromUrl:checkpoint.startedFromUrl})
@@ -148,6 +162,8 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
         checkpoint.startedFromSnapshotId = (await new PageObserver().observe(page)).snapshotId
         for (const [index, step] of casePlan.steps.entries()) {
           const stepStart = Date.now()
+          const pageBefore = pages.identity()
+          let openedPage: {ref:string;url:string;alias:string} | undefined
           const activity = describeAutomationStep(step, index)
           activity.id = `${casePlan.caseKey || id}:${activity.id}`
           const activityEvent = { type: 'activity' as const, executionId: id, caseKey: casePlan.caseKey || undefined, caseTitle: casePlan.title }
@@ -155,10 +171,25 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
           try {
             options.signal?.throwIfAborted()
             if (sessionFailure()) throw new Error(sessionFailure())
+            // Legacy ungrouped plans may begin on about:blank with goto; other actions require the configured origin.
+            if(step.action!=='goto')pages.assertAllowed()
             if (step.action === 'goto') {
               const destination = new URL(step.path, baseUrl)
               if (destination.origin !== baseUrl.origin) throw new Error('步骤不能跳转到测试环境之外')
               await page.goto(destination.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+            } else if(step.action==='openPage') {
+              if(aliases.has(step.pageAlias))throw new RuntimeDataBindingBlockedError('页面别名已使用，禁止重新绑定或重复点击')
+              aliases.set(step.pageAlias, undefined)
+              const opened = await capturePopup(page, ()=>locatorFor(page,step.locator).click({timeout:10000}), options.signal)
+              openedPage = {...pages.identity(opened),alias:step.pageAlias}
+              try { pages.assertAllowed(opened) }
+              catch(error) { throw new RuntimeDataBindingBlockedError(error instanceof Error?error.message:String(error)) }
+              aliases.set(step.pageAlias, opened)
+            } else if(step.action==='switchPage') {
+              const selected=aliases.get(step.pageAlias)
+              if(!selected)throw new RuntimeDataBindingBlockedError('页面别名尚未绑定，禁止按URL或下标猜测页面')
+              try { await pages.activate(selected) }
+              catch(error) { throw new RuntimeDataBindingBlockedError(error instanceof Error?error.message:String(error)) }
             } else if (step.action === 'click') {
               await locatorFor(page, step.locator).click({ timeout: 10_000 })
             } else if (step.action === 'download') {
@@ -215,7 +246,7 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               try{
                 const frame=await document.ownerFrame()
                 if(!frame)throw new RuntimeDataBindingBlockedError('测试数据框架已失效')
-                snapshot=await new PageObserver().observe(page,frame)
+                snapshot=await new PageObserver({},pages).observe(page,frame)
               }finally{await document.dispose()}
               const proposal=await options.resolveTestData(binding,snapshot)
               options.signal?.throwIfAborted()
@@ -235,13 +266,13 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               checkpoint.screenshots.push(filePath)
             }
             if (sessionFailure()) throw new Error(sessionFailure())
-            checkpoint.steps.push({ index, action: step.action, status: 'passed', durationMs: Date.now() - stepStart })
+            checkpoint.steps.push({ index, action: step.action, status: 'passed', durationMs: Date.now() - stepStart, pageBefore, pageAfter:pages.identity(), openedPage })
             emit({ ...activityEvent, activity: { ...activity, status: 'passed', durationMs: Date.now() - stepStart, message: '步骤执行成功' } })
             await livePageStream?.capture().catch(() => undefined)
           } catch (error) {
             checkpoint.error = error instanceof Error ? error.message : String(error)
             checkpoint.status = error instanceof RuntimeDataBindingBlockedError?'blocked':'failed'
-            checkpoint.steps.push({ index, action: step.action, status: 'failed', durationMs: Date.now() - stepStart, error: checkpoint.error })
+            checkpoint.steps.push({ index, action: step.action, status: 'failed', durationMs: Date.now() - stepStart, error: checkpoint.error, pageBefore, pageAfter:pages.identity(), openedPage })
             emit({ ...activityEvent, activity: { ...activity, status: 'failed', durationMs: Date.now() - stepStart, message: checkpoint.error } })
             break
           }

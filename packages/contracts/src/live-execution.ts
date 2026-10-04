@@ -199,7 +199,13 @@ function locatorDetail(locator: Extract<AutomationStep, { action: 'click' | 'fil
 export function describeAutomationStep(step: AutomationStep, index: number): LiveExecutionActivity {
   let title: string
   let technicalAction: string
-  if (step.action === 'goto') {
+  if (step.action === 'openPage') {
+    title = `点击${quoted(step.locator.name??step.locator.value)}打开新页并记为${quoted(step.pageAlias)}（尚未切换）`
+    technicalAction = JSON.stringify(step)
+  } else if (step.action === 'switchPage') {
+    title = `切换到${step.pageAlias==='initial'?'批次初始页面':step.pageAlias==='caseStart'?'本条用例起始页面':`已绑定页面${quoted(step.pageAlias)}`}`
+    technicalAction = JSON.stringify(step)
+  } else if (step.action === 'goto') {
     title = `打开页面${quoted(step.path)}`
     technicalAction = `goto ${step.path}`
   } else if (step.action === 'click') {

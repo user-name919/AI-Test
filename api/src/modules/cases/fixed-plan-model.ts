@@ -15,6 +15,7 @@ export async function generateFixedPlan(targetUrl:string,testCase:ResolvedCaseEx
   const prompt=`你是 Playwright 自动化测试规划器。返回严格 JSON，不输出脚本。
 格式 {"name":"计划名称","targetUrl":"${targetUrl}","steps":[]}。
 允许 goto{path}、click{locator}、fill{locator,value或valueRef}、expectText{text或valueRef}、screenshot{name}、resolveTestData{bindingId}；每步有 action 字段。
+新标签页使用 openPage{locator,pageAlias}：点击前监听当前页popup，将这次真实打开的唯一同源页面绑定别名，但不自动切换；然后 switchPage{pageAlias} 才切换。别名用英文字母开头加字母数字/下划线/连字符，最长64字，单条用例内不可重复。initial保留为整批初始Page，caseStart保留为本条用例开始时Page；可用switchPage返回。每条用例的自定义别名重新开始，不跨用例引用；后续用例仍继承当前真实Page。普通click打开的页面不会自动绑定；不得先click再openPage重复触发。不得按URL、标签页下标或猜测Page ID选择；多个弹页、外部页、超时或关闭明确受阻，不自动重试。仅当最终契约确实要求打开新页时使用，不能把同页导航改成弹页。框架内点击仍由locator.framePath限定，切页后各步定位基于新Page。打开/切换本身不是业务断言。
 下载用 download{locator,downloadId}：一次点击并监听当前页下载，最多等待15秒、最多保存10MB证据，同一用例ID不能重复；不得先普通click再监听而漏掉事件。完成后使用 expectDownload{downloadId,name可选,minBytes默认1,textIncludes可选,assertionIndex} 验证原契约。name为完整文件名；textIncludes仅验证UTF-8文本（如CSV），不支持PDF/Excel内容解析。下载完成不证明内容正确，不能删除业务内容预期或用页面提示替代；无法表达的文件验证明确受阻。参数必须有契约依据，不编造期望内容，不自动重复触发导出。
 已登记测试附件可用 uploadFile{locator,fixtureId} 上传到真实 input[type=file]。fixtureId 必须是最终契约 fixture/manual 中已确认的附件 UUID，不允许路径、URL或生成文件。此动作会触发 change，网站可能自动上传，须符合人工确认的用例；不额外点击提交。上传动作不证明服务端处理成功，仍需执行契约的业务断言。附件缺失/内容改变时受阻，不替换附件。
 原生 HTML select 可使用 selectOption{locator,value,optionBy:"value|label"}，optionBy 默认 value；显示名称和选项value可能不同，必须明确选择依据。只允许最终契约已声明且有依据的 fixture/manual 值，禁止猜测。此动作不支持搜索策略 valueRef，不替代自定义搜索下拉的 click/fill；不知道原生选项数据时明确受阻。选择动作不计业务断言，随后验证已确认预期。
@@ -38,7 +39,13 @@ value 与 valueRef、text 与 valueRef 各自只能选一个。非运行时输�
   // 地址由平台配置固定，不接受模型把整个计划指向其他环境。
   if(plan.targetUrl!==targetUrl)throw new Error('模型计划测试地址与已确认环境不一致')
   const resolved=new Set<string>()
+  const pageAliases=new Set(['initial','caseStart'])
   for(const step of plan.steps){
+    if(step.action==='openPage'){
+      if(pageAliases.has(step.pageAlias))throw new Error('固定计划重复使用页面别名')
+      pageAliases.add(step.pageAlias)
+    }
+    if(step.action==='switchPage'&&!pageAliases.has(step.pageAlias))throw new Error('固定计划切换了尚未绑定的页面别名')
     if(step.action==='selectOption')validateFixedSelectData(step.value,testCase.contract)
     if(step.action==='uploadFile')validateFixtureReference(step.fixtureId,testCase.contract)
     if(step.action==='resolveTestData'){

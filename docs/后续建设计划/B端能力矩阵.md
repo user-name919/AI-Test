@@ -24,7 +24,7 @@
 | 选择已配置附件并上传 | 部分支持 | 部分支持 | `/#/test-fixtures` 登记不可覆盖附件，两模式 uploadFile 只接受契约授权UUID并保存指纹。动态只操作当前快照中的文件控件，上传异常不自动恢复重试；隐藏输入/文件选择对话框/多文件待扩展，真实input上传不等于业务处理成功 |
 | 点击导出，等待下载并验证文件 | 部分支持 | 部分支持 | 两模式 download 点击前监听，15秒接收期限、10MB证据保存上限，expectDownload 验证名称/大小/UTF-8文本包含；逐用例隔离文件和指纹关联报告，动态异常不自动重复导出。PDF/Excel解析、多文件未接入；页面“下载成功”不能代替文件证据 |
 | iframe 内控件操作 | 部分支持 | 部分支持 | 动态观察列出最多50个真实可见框架，switchFrame后重新观察并失效旧引用；元素、文本、数量及滚动限定所选框架。固定framePath为每步1至4级明确iframe定位链，运行时数据解析、来源保留及文本断言使用对应框架。固定跨源两层嵌套正反例已验证；动态跨源/嵌套独立操作仍待验收，截图仍为顶层页面 |
-| 新标签页打开、切回原页面 | 部分支持 | 缺失 | 动态会话保存真实Page稳定ID，观察最多50页，switchPage只选当前观察的同源页面；显式切换后旧元素/iframe/局部区域失效，画面与截图跟随。普通失败后后续用例继承当前页；活动页关闭停止整批，不擅自回退。about:blank/外部页不操作；固定计划仍待接入，未验证真实公司模型多页决策 |
+| 新标签页打开、切回原页面 | 部分支持 | 部分支持 | 动态会话保存真实Page稳定ID，观察最多50页，switchPage只选当前观察的同源页面；切换后旧元素/iframe/局部区域失效。固定openPage点击前捕获来源页popup，绑定本用例别名后再switchPage；initial/caseStart分别指向批次/用例起始Page，不按URL或下标猜测。同URL页面仍有独立身份；捕获期间多弹页/别名重复/外部或关闭目标拒绝。两模式画面与截图跟随，普通失败后继承当前页，活动页关闭停止整批。迟到异步弹页不保证归因，非点击触发弹页未提供固定绑定，真实公司模型多页决策未验证 |
 | Shadow DOM 内控件 | 部分支持 | 部分支持（定位层） | 观察器递归遍历开放shadow root，覆盖嵌套控件、根内标签、跨宿主/slot容器、表格及消息；快照属性与预算规则不变。本地观察→填值/点击/断言→重新观察已验证，隐藏祖先排除；封闭root不可读取，未承诺任意组件内部结构，固定未作本地场景验收 |
 
 协议依据：`packages/contracts/src/contracts.ts` 中的 `agentActionSchema` 与 `automationStepSchema`。页面摘要依据：`api/src/automation/page-observer.ts`、`api/src/automation/page-observer-browser.js`。引用依据：`api/src/automation/element-registry.ts`。上表历史实现文件已迁至automation目录，测试仍在api/src根目录。
@@ -54,6 +54,7 @@ node --import tsx --test api/src/shadow-observer.test.ts api/src/page-observer.t
 node --import tsx --test api/src/fixed-count.test.ts
 node --import tsx --test api/src/region-observer.test.ts
 node --import tsx --test api/src/agent-pages.test.ts api/src/agent-frame.test.ts
+node --import tsx --test api/src/fixed-pages.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。
