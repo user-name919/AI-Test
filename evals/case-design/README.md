@@ -38,3 +38,13 @@ node --import tsx --test evals/case-design/assertions.test.ts evals/case-design/
 2026-10-04 完整真实矩阵已结束：108 项中 86 项机器检查通过、22 项错误（16 项数据绑定缺策略、4 项取值类型错误、2 项超时）。报告支持 Promptfoo 顶层和 response 内错误，并按错误表现分类，保留已完成阶段。分类不是语义根因判定；失败记录元数据不全时不宣称同条件验证通过。详情见 `docs/后续建设计划/用例生成评估结果.md`。人工评审仍未完成，G4 未验收。复验使用新的输出文件名，保留原始 full 结果。
 
 参考：[Promptfoo 自定义 Provider](https://www.promptfoo.dev/docs/providers/custom-api/) 与[配置参考](https://www.promptfoo.dev/docs/configuration/reference/)。
+
+## 逐项人工审核材料
+
+```sh
+node --import tsx evals/case-design/review-pack.ts outputs/case-design-real-generating-v3-focused.json outputs/case-design-generating-v3-human-review
+```
+
+输出目录必须尚不存在，避免重新生成覆盖人员已填写的意见。目录索引连接每个样本、配置、次数；每份展示原始输入、完整目标/前置/步骤/断言/数据策略/禁止行为/待确认项，保留旧流程产物、失败阶段局部产物和完整原始记录。原始结果SHA256及数组位置用于追溯。参考期望来自生成审核包时仓库的samples.ts，并非历史人工金标准；应先结合保存的输入核对其适用性。空数组和缺失字段分别显示，不补写业务规则。
+
+人员填写覆盖、准确性、数据真实性、执行能力及改善/退化结论，留下评审人和日期。生成审核包不等于完成审核，不改变平台发布状态，也不自动采纳模型建议。文件仅保存到忽略的outputs目录，真实材料不得提交。
