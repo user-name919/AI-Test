@@ -2,6 +2,8 @@ import { prdAnalysisSchema, caseExecutionContractSchema } from '@quality-ai/cont
 import type { CaseDesign, DesignRun } from '@quality-ai/contracts/case-design'
 import { validateFactEvidence } from '../../api/src/modules/case-design/evidence-validator'
 
+export const assertionsVersion='case-design-checks-v2-deferred-negative'
+
 // Machine checks only; pass never means semantic completeness or human acceptance.
 export default function check(output:string){
   try{
@@ -34,7 +36,15 @@ export default function check(output:string){
         }
       }
       const expected:Record<string,string>={'full-search':'visible_option_full','partial-search':'visible_option_substring','no-match':'non_matching_option_query'}
-      if(expected[value.sampleId]&&!final.output.cases?.some(item=>item.contract.dataBindings.some(binding=>binding.strategy===expected[value.sampleId])))problems.push('未观察到样本要求的搜索数据策略')
+      const hasStrategy=final.output.cases?.some(item=>item.contract.dataBindings.some(binding=>binding.strategy===expected[value.sampleId]))
+      // 远程候选负例允许明确待准备，不迫使模型生成不存在的账号数据。
+      // 这是受阻设计的结构候选，仍须负例场景、空值、解释、不确定项与阻塞审查同时存在。
+      const deferredNegative=value.sampleId==='no-match'&&final.output.cases?.some(item=>
+        final.output.scenarios?.some(scenario=>scenario.id===item.scenarioId&&scenario.coverage==='negative')
+        &&item.contract.uncertainties.some(reason=>reason.trim())
+        &&final.output.issues?.some(issue=>issue.targetType==='case'&&issue.targetId===item.id&&issue.severity==='blocking'&&issue.kind==='unverifiable')
+        &&item.contract.dataBindings.some(binding=>binding.mode==='manual'&&binding.manual?.value===''&&binding.manual.rationale.trim()&&binding.constraints.mustComeFromCurrentDom===false))
+      if(expected[value.sampleId]&&!hasStrategy&&!deferredNegative)problems.push('未观察到样本要求的搜索数据策略或明确受阻的负例数据准备')
     }
     return {pass:problems.length===0,score:problems.length?0:1,reason:problems.length?problems.join('；'):'机器结构检查通过；覆盖、业务准确性、固定值来源仍需人工审核'}
   }catch(error){return {pass:false,score:0,reason:`评估结果结构无法检查：${error instanceof Error?error.message:String(error)}`}}

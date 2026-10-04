@@ -7,6 +7,7 @@ import { modelingPromptVersion,planningPromptVersion } from '../../api/src/modul
 import { generatingPromptVersion } from '../../api/src/modules/case-design/case-generator'
 import { checkingPromptVersion } from '../../api/src/modules/case-design/quality-checker'
 import type { DesignRun } from '@quality-ai/contracts/case-design'
+import { assertionsVersion } from './assertions'
 
 test('真实生成器解析失败仍保存输入配置指纹及当前阶段，不泄露配置密钥',async()=>{
   const original={...process.env}
@@ -25,6 +26,7 @@ test('真实生成器解析失败仍保存输入配置指纹及当前阶段，�
     assert.match(result.metadata.provenance?.inputHash??'',/^[a-f0-9]{64}$/)
     assert.match(result.metadata.provenance?.modelConfigHash??'',/^[a-f0-9]{64}$/)
     assert.equal(result.metadata.provenance?.evidenceMode,'stub')
+    assert.equal(result.metadata.provenance?.evaluationChecksVersion,assertionsVersion)
     assert.doesNotMatch(JSON.stringify(result),/synthetic-secret-not-for-output/)
     const invalid=await provider.callApi('not-json')
     assert.equal(invalid.metadata.failedStage,'input')
@@ -61,6 +63,7 @@ test('评估沿用生产阶段版本，失败保留完整上游与当前格式�
     const input=JSON.stringify({sampleId:'versions',documents:[{fileName:'公开合成材料',role:'prd',content:'点击查询显示结果'}]})
     const success=await provider.callApi(input)
     assert.equal(success.error,undefined)
+    assert.equal(JSON.parse(success.output!).evaluationChecksVersion,assertionsVersion)
     const stages=JSON.parse(success.output!).stages as DesignRun[]
     assert.deepEqual(stages.slice(1).map(stage=>stage.promptVersion),[modelingPromptVersion,planningPromptVersion,generatingPromptVersion,checkingPromptVersion])
     assert.ok(stages[0].skills.some(skill=>skill.id==='requirement-facts'&&/^[a-f0-9]{64}$/.test(skill.hash)))

@@ -11,6 +11,27 @@ function fixture(){
   return {variant:'pipeline',humanReview:'pending',sampleId:'partial-search',inputHash:'hash',design,stages:(['extracting','modeling','planning','generating','checking'] as const).map(stage=>({...structuredClone(run),stage})),output:run.output}
 }
 test('合法夹具结构通过，但结果明确不等于人工审核',()=>{const result=check(JSON.stringify(fixture()));assert.equal(result.pass,true);assert.match(result.reason,/仍需人工审核/)})
+test('分页无匹配允许明确待准备，但不能把缺失数据或其他场景冒充可用负例',()=>{
+  const value=fixture();value.sampleId='no-match'
+  const item=value.output.cases![0]!
+  item.contract.dataBindings=[{id:'pending',label:'无匹配搜索词',mode:'manual',targetHint:'搜索框',businessIntent:'负例',manual:{value:'',rationale:'服务端范围未知，需人工准备并核实无匹配搜索词'},constraints:{mustComeFromCurrentDom:false}}]
+  item.contract.uncertainties=['待准备服务端无匹配数据及证明']
+  value.output.scenarios![0]!.coverage='negative'
+  value.output.issues=[{id:'blocked',targetType:'case',targetId:item.id,kind:'unverifiable',severity:'blocking',reason:'缺少测试数据，不可发布',evidence:[],checkedBy:'rule'}]
+  const sync=(input:typeof value)=>{input.stages[4]!.output=structuredClone(input.output);return check(JSON.stringify(input))}
+  assert.equal(sync(value).pass,true)
+  for(const attack of [
+    (v:typeof value)=>{v.output.cases![0]!.contract.uncertainties=[]},
+    (v:typeof value)=>{v.output.issues=[]},
+    (v:typeof value)=>{v.output.issues![0]!.targetId='another-case'},
+    (v:typeof value)=>{v.output.issues![0]!.severity='warning'},
+    (v:typeof value)=>{v.output.scenarios![0]!.coverage='positive'},
+    (v:typeof value)=>{v.output.cases![0]!.contract.dataBindings[0]!.manual!.value='猜测不存在的记录'},
+    (v:typeof value)=>{v.output.cases![0]!.contract.dataBindings[0]!.manual!.rationale=''},
+    (v:typeof value)=>{v.output.cases![0]!.contract.dataBindings=[]},
+  ]){const changed=structuredClone(value);attack(changed);assert.equal(sync(changed).pass,false)}
+  value.sampleId='partial-search';assert.equal(sync(value).pass,false,'正向搜索仍需来自当前DOM，不能用此例外绕过')
+})
 test('故意伪造引用、固定值、策略、版本及关联的反例全部拒绝',()=>{
   const attacks:Array<(value:ReturnType<typeof fixture>)=>void>=[
     value=>{value.output.factModel!.consolidatedFacts[0].evidence[0].quote='凭空编造依据'},

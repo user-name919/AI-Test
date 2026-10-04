@@ -9,6 +9,7 @@ import { generateCases, generatingPromptVersion } from '../../api/src/modules/ca
 import { checkCaseQuality, checkingPromptVersion } from '../../api/src/modules/case-design/quality-checker'
 import { loadStageSkills } from '../../api/src/modules/case-design/skill-loader'
 import type { CaseDesign, DesignRun } from '@quality-ai/contracts/case-design'
+import { assertionsVersion } from './assertions'
 
 type Variant='legacy'|'pipeline'|'skills'
 export default class CaseDesignProvider {
@@ -28,7 +29,7 @@ export default class CaseDesignProvider {
     const started=Date.now()
     const stages:DesignRun[]=[]
     let activeRun:DesignRun|undefined
-    let provenance:Record<string,string>={variant:this.variant,humanReview:'pending',evidenceMode:process.env.QUALITY_AI_EVAL_MODE==='stub'?'stub':'real-model'}
+    let provenance:Record<string,string>={variant:this.variant,humanReview:'pending',evaluationChecksVersion:assertionsVersion,evidenceMode:process.env.QUALITY_AI_EVAL_MODE==='stub'?'stub':'real-model'}
     let failedStage:string='input'
     try{
       const input=JSON.parse(prompt) as {sampleId:string;documents:SourceDocument[]}

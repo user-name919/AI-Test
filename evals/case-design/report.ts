@@ -73,6 +73,7 @@ export function summarize(rows:Row[]){
     const key=`${input.sampleId} / ${row.provider.id}`
     const attempt=(attempts.get(key)??0)+1
     attempts.set(key,attempt)
+    versions.push(`| ${cell(key)} / ${attempt} | 机器检查 | ${row.success?'通过':'未通过'} | ${cell(output?.evaluationChecksVersion??row.response?.metadata?.provenance?.evaluationChecksVersion)} | 非模型方法；历史版本不回填 |`)
     const recorded=(output?.stages??row.response?.metadata?.stages) as RecordedStage[]|undefined
     const failedRun=row.response?.metadata?.failedRun
     const methodStages=[...(Array.isArray(recorded)?recorded:[]),...(failedRun?[failedRun]:[])]
