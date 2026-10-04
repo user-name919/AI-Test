@@ -13,6 +13,7 @@ import { SingleActionExecutor } from './single-action-executor'
 import { TestAgent } from './test-agent'
 import { startLivePageStream } from './live-page-stream'
 import { completeCaseResults } from './complete-case-results'
+import { BrowserPageSession } from './browser-page-session'
 
 export interface AgentTestRunnerOptions {
   signal?: AbortSignal
@@ -109,23 +110,33 @@ export async function runAgentTest(
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, storageState: storageStatePath })
     await context.tracing.start({ screenshots: true, snapshots: true })
     traceStarted = true
-    const page = await context.newPage()
+    const failures = new WeakMap<Page, () => string | undefined>()
+    context.on('page', opened => { failures.set(opened, observeSessionFailure(browser!, opened)) })
+    let page = await context.newPage()
     cancellationPage = page
     options.signal?.throwIfAborted()
-    const sessionFailure = observeSessionFailure(browser, page)
+    const sessionFailure = () => failures.get(page)?.()
     await page.goto(target.href, { waitUntil: 'domcontentloaded', timeout: 30_000 })
     if (sessionFailure()) throw new Error(sessionFailure())
-    try {
-      livePageStream = await startLivePageStream(context, page, frame => {
-        emit({ type: 'browser_frame', executionId: id, caseKey: currentCase?.caseKey, caseTitle: currentCase?.title, ...frame })
-      })
-    } catch (error) {
-      emit({ type: 'activity', executionId: id, activity: {
-        id: `${id}:preview-unavailable`, phase: 'observing', title: '实时画面暂不可用',
-        purpose: 'Playwright 测试仍会继续执行，完成后可查看截图和 Trace',
-        status: 'info', message: error instanceof Error ? error.message : String(error),
-      } })
+    const followPage = async (next: Page) => {
+      page = next
+      cancellationPage = next
+      await livePageStream?.stop().catch(() => undefined)
+      livePageStream = undefined
+      try {
+        livePageStream = await startLivePageStream(context!, next, frame => {
+          if (page === next) emit({ type: 'browser_frame', executionId: id, caseKey: currentCase?.caseKey, caseTitle: currentCase?.title, pageUrl: next.url(), ...frame })
+        })
+      } catch (error) {
+        emit({ type: 'activity', executionId: id, activity: {
+          id: `${id}:preview-unavailable`, phase: 'observing', title: '实时画面暂不可用',
+          purpose: 'Playwright 测试仍会继续执行，完成后可查看截图和 Trace',
+          status: 'info', message: error instanceof Error ? error.message : String(error),
+        } })
+      }
     }
+    const pages = new BrowserPageSession(page, target.origin, followPage)
+    await followPage(page)
     const decisionProvider = options.decisionProvider ?? new ResponsesDecisionProvider()
     for (const [index, goal] of goals.entries()) {
       options.signal?.throwIfAborted()
@@ -147,8 +158,8 @@ export async function runAgentTest(
         options.onCaseStarted?.({caseKey:checkpoint.caseKey,startedFromUrl:checkpoint.startedFromUrl})
         await context.tracing.startChunk({ title: `${contract.caseKey} ${goal.name}` })
         chunkStarted = true
-        const observer = new PageObserver()
-        const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, caseDirectory, goal.executionContract?.contract, options.signal)
+        const observer = new PageObserver({}, pages)
+        const executor = new SingleActionExecutor(page, observer.registry, goal.targetUrl, caseDirectory, goal.executionContract?.contract, options.signal, pages)
         const caseGoal: AgentTestGoal = {
           ...goal,
           previousCaseSummaries: structuredClone(previousCaseSummaries),

@@ -27,10 +27,11 @@ const decisionSystemPrompt = `你是 B 端网页自动化测试的单步决策�
 11. 若 goal.executionContract 的 dataBindings 包含 runtime_dom，具体业务值不是示例数据：先在当前 DOM 找到可见 option，再输出 resolve_test_data。该决策不是 Playwright action，必须带当前 snapshotId、bindingId、sourceElementRef、value 与原因。visible_option_full 使用完整名称；visible_option_substring 使用非空严格子串；non_matching_option_query 仅允许已声明完整本地候选范围且当前 DOM 与范围一致的负例，分页/远程/未知范围应 blocked，不能凭可见项证明全局无匹配。解析成功后，fill、selectOption、expectValue 对该绑定只能使用 valueRef，禁止把未经解析的文字作为 value。找不到安全来源时返回 blocked。
 12. 高亮类断言只允许使用当前可观察 elementRef 的 class、data-state 属性；其预期值必须明确表达高亮或匹配（highlight、match、mark、keyword 或中文同义词）。仅看到匹配文本不算高亮通过。当前 DOM 没有这类证据时返回 blocked，不要编造 CSS 或脚本检查。
 
-框架上下文：snapshot.frameContext列出当前实际可见框架（最多50个，truncated表示不完整），active标记当前观察范围。需要进入iframe时使用 {"action":"switchFrame","frameRef":"当前列表中的ref"}；随后会重新观察，旧snapshot和元素引用不可复用。元素、文本、数量和无目标滚动都只作用于当前框架；返回主页面也必须选择main=true的引用。goto是顶层导航并重置框架；截图/实时画面仍为整个顶层页面，不是frame截图。框架未出现或信息不足时等待或受阻，不猜引用。新标签页尚不支持。
+框架上下文：snapshot.frameContext列出当前实际可见框架（最多50个，truncated表示不完整），active标记当前观察范围。需要进入iframe时使用 {"action":"switchFrame","frameRef":"当前列表中的ref"}；随后会重新观察，旧snapshot和元素引用不可复用。元素、文本、数量和无目标滚动都只作用于当前框架；返回主页面也必须选择main=true的引用。goto是顶层导航并重置框架；截图/实时画面仍为整个顶层页面，不是frame截图。框架未出现或信息不足时等待或受阻，不猜引用。
+标签页上下文：snapshot.pageContext.pages列出实际已打开页面及稳定ref（最多50页，truncated表示不完整）。点击可能打开新页，但系统不会自动切页；确认真实URL和业务目标后使用 {"action":"switchPage","pageRef":"当前列表中的ref"}。只可切换allowed=true的同源页面，about:blank/外部地址不可操作；新页尚未就绪时可以等待重观测，不猜URL或引用。切页后iframe、局部区域和元素引用全部失效，重新观察目标页主框架。实时画面/截图随当前页，后续相关用例继承当前页；旧页返回也必须显式switchPage。当前页关闭不自动选择其他页，报告会话失效。
 
 允许的决策：
-- action：observeRegion、switchFrame、goto、click、fill、selectOption、uploadFile、download、expectDownload、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
+- action：observeRegion、switchPage、switchFrame、goto、click、fill、selectOption、uploadFile、download、expectDownload、check、uncheck、press、hover、scroll、expectVisible、expectHidden、expectEnabled、expectDisabled、expectChecked、expectValue、expectText、expectElementText、expectAttribute、expectCount、waitFor、screenshot
 - resolve_test_data：为 runtime_dom binding 从当前可见 option 解析真实值
 - need_project_context：resolve_route、search_source、inspect_files
 - finish
@@ -83,6 +84,7 @@ checkedState=mixed 表示半选，unknown 表示无效或未知状态；两者�
 {"type":"resolve_test_data","snapshotId":"当前 UUID","bindingId":"exam-keyword","sourceElementRef":"e8","value":"数学","reason":"从当前可见 option“模考数学一”选择部分关键词"}`
 
 const allowedActionNames = [
+  'switchPage',
   'observeRegion',
   'switchFrame',
   'download', 'expectDownload',

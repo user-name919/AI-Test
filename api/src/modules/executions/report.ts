@@ -72,6 +72,8 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       const purpose=decision.type==='finish'?decision.summary:decision.reason
       lines.push(`- 第 ${turn.iteration} 轮 · ${text(decision.type)}：${text(purpose)}；DOM ${text(turn.snapshotId)}`)
       const frame = turn.observation?.frameContext?.frames.find(frame=>frame.active)
+      const activePage = turn.observation?.pageContext?.pages.find(page=>page.active)
+      if(activePage)lines.push(`  - 当前标签页：${text(activePage.url)} / 页面标识 ${text(activePage.ref)}。页面列表${turn.observation?.pageContext?.truncated?'不完整':'未截断'}；切页后需使用新DOM证据。`)
       if(turn.sourceProject){
         const source=turn.sourceProject
         lines.push(`  - 读取前源码：${text(source.id)} / ${text(source.branch)} / ${text(source.commit)}；${source.worktree?worktreeLabels[source.worktree.status]:'工作区历史未记录'}；检查时间 ${text(source.worktree?.observedAt)}`)

@@ -122,7 +122,7 @@ test('reduces a live event stream without carrying the previous execution frame'
     targetUrl: 'https://example.com', cases: [{ key: '0-TC-2', title: '按关键词筛选考试' }],
   })
   state = reduceLiveExecutionState(state, {
-    type: 'browser_frame', executionId: 'run-1', dataUrl: 'data:image/jpeg;base64,one', capturedAt: '2026-09-01T00:00:01.000Z',
+    type: 'browser_frame', executionId: 'run-1', dataUrl: 'data:image/jpeg;base64,one', capturedAt: '2026-09-01T00:00:01.000Z', pageUrl: 'https://example.com/detail',
   })
   state = reduceLiveExecutionState(state, {
     type: 'activity', executionId: 'run-1',
@@ -135,6 +135,7 @@ test('reduces a live event stream without carrying the previous execution frame'
   assert.equal(state.status, 'running')
   assert.equal(state.cases[0]?.title, '按关键词筛选考试')
   assert.equal(state.frameDataUrl, 'data:image/jpeg;base64,one')
+  assert.equal(state.framePageUrl, 'https://example.com/detail')
   assert.equal(state.activity?.technicalAction, 'click e10')
 
   state = reduceLiveExecutionState(state, {

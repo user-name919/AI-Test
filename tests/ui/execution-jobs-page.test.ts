@@ -22,13 +22,14 @@ test('后台任务刷新找回、关闭重开预览、历史合并及完整用�
     await page.route('**/api/**',async route=>{
       const url=new URL(route.request().url())
       if(url.pathname.endsWith('/cancel')){status='cancelled';executionId='job';await route.fulfill({json:{job:{id:'job',status,mode:'agent',snapshots,targetUrl:'https://example.test',executionId}}});return}
-      if(url.pathname.endsWith('/events')){const events=Number(url.searchParams.get('after'))?[]:history;await route.fulfill({json:{events,nextCursor:2,frame:{type:'browser_frame',capturedAt:'2026-10-04T00:00:00Z',dataUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='}}});return}
-      if(url.pathname==='/api/executions/job'){await route.fulfill({json:{execution:{id:'job',status:'cancelled',caseResults:snapshots.map((item,index)=>({caseKey:item.resolved.caseKey,status:index?'not_run':'passed',passedAssertions:index?[]:['verified'],error:index?'批次取消，尚未开始':undefined,startedFromUrl:index?'':'https://example.test',resolvedDataBindings:[],steps:[],trajectory:index?[]:[{iteration:1,snapshotId:'snapshot-before',decision:{type:'action',reason:'展开可搜索选项',action:{action:'click',elementRef:'e10'}},result:{ok:false,message:'控件重新渲染',durationMs:10},recovery:{attempt:1,limit:2,status:'reobserved',reason:'控件重新渲染'}}]}))}}});return}
+      if(url.pathname.endsWith('/events')){const events=Number(url.searchParams.get('after'))?[]:history;await route.fulfill({json:{events,nextCursor:2,frame:{type:'browser_frame',pageUrl:'https://example.test/detail',capturedAt:'2026-10-04T00:00:00Z',dataUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='}}});return}
+      if(url.pathname==='/api/executions/job'){await route.fulfill({json:{execution:{id:'job',status:'cancelled',caseResults:snapshots.map((item,index)=>({caseKey:item.resolved.caseKey,status:index?'not_run':'passed',passedAssertions:index?[]:['verified'],error:index?'批次取消，尚未开始':undefined,startedFromUrl:index?'':'https://example.test',resolvedDataBindings:[],steps:[],trajectory:index?[]:[{iteration:1,snapshotId:'snapshot-before',observation:{url:'https://example.test/detail',title:'详情',elementCount:1,elements:[],dialogs:[],messages:[],pageContext:{pages:[{ref:'stable-page-ref',url:'https://example.test/detail',active:true,allowed:true}],truncated:false}},decision:{type:'action',reason:'展开可搜索选项',action:{action:'click',elementRef:'e10'}},result:{ok:false,message:'控件重新渲染',durationMs:10},recovery:{attempt:1,limit:2,status:'reobserved',reason:'控件重新渲染'}}]}))}}});return}
       const job={id:'job',status,mode:'agent',snapshots,targetUrl:'https://example.test',executionId,updatedAt:'now',deploymentConfirmation,rerunOf:'original-report',completedCases}
       await route.fulfill({json:url.pathname==='/api/execution-jobs'?{jobs:[job]}:{job}})
     })
     await page.goto(`http://127.0.0.1:${address.port}/#/execution-jobs/job`)
     await page.getByText('完整操作历史（1 步）').waitFor()
+    await page.getByText('画面所在页面：https://example.test/detail',{exact:true}).waitFor()
     await page.getByText('整批报告尚未完成；已保存 1 条用例最终结果，其余不推断为通过。',{exact:true}).waitFor()
     await page.locator('summary').filter({hasText:'部分搜索 · 通过'}).waitFor()
     await page.locator('summary').filter({hasText:'后续验证 · 尚无最终结果'}).waitFor()
@@ -52,6 +53,8 @@ test('后台任务刷新找回、关闭重开预览、历史合并及完整用�
     await page.locator('summary').filter({hasText:'部分搜索 · 通过'}).click()
     await page.getByRole('heading',{name:'第 1 步 · 展开可搜索选项'}).waitFor()
     await page.getByText('本步失败：控件重新渲染 · 10 ms',{exact:true}).waitFor()
+    await page.getByText(/当前标签页：.*stable-page-ref/).waitFor()
+    await page.locator('.evidence').first().screenshot({path:'/private/tmp/quality-ai-page-identity.png'})
     await page.getByText(/技术恢复 1\/2：已重新观察页面/).waitFor()
     await page.getByText('查看本步技术动作与观察',{exact:true}).click()
     await page.locator('.case-result').filter({has:page.getByRole('heading',{name:'第 1 步 · 展开可搜索选项'})}).getByText('查看原始执行数据（排障）',{exact:true}).waitFor()

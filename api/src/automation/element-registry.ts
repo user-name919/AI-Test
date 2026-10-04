@@ -73,6 +73,12 @@ export class ElementRegistry {
 
   resetFrame() { this.selectedFrame = undefined; this.invalidate() }
 
+  async resetPage() {
+    this.resetFrame()
+    this.frames.clear()
+    await this.takeObservationRegion()?.element.dispose()
+  }
+
   replace(snapshotId: string, page: Page | Frame, refAttribute: string, elements: RegisteredElement[]) {
     this.snapshotId = snapshotId
     this.elements.clear()

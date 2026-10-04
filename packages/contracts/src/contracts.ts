@@ -430,6 +430,7 @@ export interface ExecutionResult {
       snapshotId: string
       decision: AgentDecision
       observation?: {
+        pageContext?: PageSnapshot['pageContext']
         frameContext?: PageSnapshot['frameContext']
         observationScope?: PageSnapshot['observationScope']
         url: string
@@ -513,7 +514,7 @@ export type LiveExecutionEvent =
     cases?: Array<{ key: string; title: string }>
   }
   | { type: 'activity'; executionId: string; caseKey?: string; caseTitle?: string; activity: LiveExecutionActivity }
-  | { type: 'browser_frame'; executionId: string; caseKey?: string; caseTitle?: string; dataUrl: string; capturedAt: string }
+  | { type: 'browser_frame'; executionId: string; caseKey?: string; caseTitle?: string; dataUrl: string; capturedAt: string; pageUrl?: string }
   | { type: 'execution_completed'; execution: ExecutionRecord }
   | { type: 'execution_error'; executionId?: string; error: string }
 
@@ -545,6 +546,10 @@ export const pageSnapshotSchema = z.object({
   url: z.string(),
   title: z.string(),
   loading: z.boolean(),
+  pageContext: z.object({
+    pages: z.array(z.object({ ref:z.string().uuid(), url:z.string(), active:z.boolean(), allowed:z.boolean() })).max(50),
+    truncated:z.boolean(),
+  }).optional(),
   observationScope: z.object({ mode:z.literal('region'), sourceElementRef:z.string(), sourceSnapshotId:z.string().uuid() }).optional(),
   frameContext: z.object({
     pageUrl: z.string(),
@@ -659,6 +664,7 @@ function requireExactlyOneValueReference(
 }
 
 export const agentActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('switchPage'), pageRef: z.string().uuid() }),
   z.object({ action: z.literal('switchFrame'), frameRef: z.string().uuid() }),
   z.object({ action: z.literal('observeRegion'), elementRef:z.string().regex(/^e\d+$/) }),
   z.object({ action: z.literal('download'), ...elementActionBase, downloadId: z.string().min(1).max(80) }),

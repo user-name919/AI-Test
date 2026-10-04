@@ -20,6 +20,7 @@ export interface AgentTrajectoryItem {
   snapshotId: string
   decision: AgentDecision
   observation?: {
+    pageContext?: PageSnapshot['pageContext']
     frameContext?: PageSnapshot['frameContext']
     observationScope?: PageSnapshot['observationScope']
     url: string
@@ -72,6 +73,7 @@ function summarizeSnapshot(snapshot: PageSnapshot): NonNullable<AgentTrajectoryI
   return {
     url: snapshot.url,
     title: snapshot.title,
+    pageContext: snapshot.pageContext,
     frameContext: snapshot.frameContext,
     observationScope: snapshot.observationScope,
     elementCount: snapshot.stats.discoveredElements,

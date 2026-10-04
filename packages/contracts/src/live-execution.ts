@@ -20,6 +20,7 @@ export interface LiveExecutionState {
   cases: Array<{ key: string; title: string }>
   frameDataUrl: string
   frameCapturedAt: string
+  framePageUrl?: string
   activity: LiveExecutionActivity | null
   execution: ExecutionRecord | null
   error: string
@@ -72,6 +73,7 @@ export function reduceLiveExecutionState(state: LiveExecutionState, event: LiveE
     ...state,
     frameDataUrl: event.dataUrl,
     frameCapturedAt: event.capturedAt,
+    framePageUrl: event.pageUrl,
   }
   return { ...state, activity: event.activity }
 }
@@ -90,6 +92,7 @@ function targetName(action: AgentAction, snapshot: PageSnapshot) {
 }
 
 function rawAgentAction(action: AgentAction) {
+  if (action.action === 'switchPage') return `switchPage ${action.pageRef}`
   if (action.action === 'switchFrame') return `switchFrame ${action.frameRef}`
   if (action.action === 'goto') return `goto ${action.path}`
   if (action.action === 'waitFor') return `waitFor ${action.durationMs}ms`
@@ -123,6 +126,7 @@ function rawAgentAction(action: AgentAction) {
 }
 
 function readableAgentAction(action: AgentAction, snapshot: PageSnapshot) {
+  if (action.action === 'switchPage') return `切换到标签页 ${quoted(snapshot.pageContext?.pages.find(page=>page.ref===action.pageRef)?.url||action.pageRef)}，随后重新观察`
   const name = targetName(action, snapshot)
   if(action.action==='observeRegion')return `局部观察${quoted(name)}，重新读取其中的元素`
   const value = 'value' in action && action.value !== undefined ? quoted(action.value) : 'valueRef' in action ? `已解析数据“${action.valueRef}”` : ''

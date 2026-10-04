@@ -9,6 +9,7 @@ import { captureDownload, assertDownload } from './download-capture'
 import type { TestFixture } from '@quality-ai/contracts/test-fixtures'
 import { loadTestFixture, validateFixtureReference } from '../modules/test-fixtures/store'
 import { RuntimeDataBindingBlockedError } from './test-data-binding'
+import type { BrowserPageSession } from './browser-page-session'
 
 function safeArtifactName(value: string) {
   return value.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 80) || 'screenshot'
@@ -49,13 +50,16 @@ function actionValue(
 export class SingleActionExecutor {
   private readonly downloads = new Map<string, DownloadEvidence>()
   constructor(
-    private readonly page: Page,
+    private readonly initialPage: Page,
     private readonly registry: ElementRegistry,
     private readonly baseUrl: string,
     private readonly artifactDirectory: string,
     private readonly contract?: CaseExecutionContract,
     private readonly signal?: AbortSignal,
+    private readonly pages?: BrowserPageSession,
   ) {}
+
+  private get page() { return this.pages?.current ?? this.initialPage }
 
   async execute(
     snapshotId: string,
@@ -67,9 +71,14 @@ export class SingleActionExecutor {
     let usedFixture: TestFixture | undefined
     let download: DownloadEvidence | undefined
     try {
+      this.pages?.assertAllowed()
       if (snapshotId !== this.registry.activeSnapshotId) throw new Error('页面快照已失效，必须重新观察后执行')
       let screenshotPath: string | undefined
-      if (action.action === 'switchFrame') {
+      if (action.action === 'switchPage') {
+        if (!this.pages) throw new Error('当前执行上下文未启用标签页切换')
+        await this.pages.select(snapshotId, action.pageRef)
+        await this.registry.resetPage()
+      } else if (action.action === 'switchFrame') {
         this.registry.selectFrame(snapshotId, action.frameRef)
       } else if(action.action==='observeRegion'){
         await this.registry.observeRegion(snapshotId,action.elementRef)
@@ -174,7 +183,7 @@ export class SingleActionExecutor {
         await this.page.screenshot({ path: screenshotPath, fullPage: true })
       }
       const pageChanged = previousUrl !== this.page.url()
-        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile', 'download', 'switchFrame'].includes(action.action)
+        || ['goto', 'click', 'fill', 'selectOption', 'check', 'uncheck', 'press', 'hover', 'scroll', 'uploadFile', 'download', 'switchFrame', 'switchPage'].includes(action.action)
       return toolResultSchema.parse({
         ok: true,
         code: 'ok',

@@ -806,6 +806,7 @@ onMounted(loadSavedAnalysis)
           <div v-else class="live-browser-empty"><i></i><strong>正在连接真实浏览器</strong><span>首帧生成后会自动显示在这里</span></div>
           <span v-if="liveExecution.status==='running'" class="live-badge"><i></i> LIVE</span>
         </section>
+        <p v-if="liveExecution.framePageUrl" class="live-activity">画面所在页面：{{ liveExecution.framePageUrl }}</p>
         <section v-if="liveExecution.cases.length" class="live-cases">
           <small>本次验证</small>
           <div v-for="testCase in liveExecution.cases.slice(0,3)" :key="testCase.key"><strong>{{ testCase.title }}</strong><span>{{ displayCaseKey(testCase.key) }}</span></div>
