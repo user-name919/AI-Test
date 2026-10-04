@@ -5,6 +5,7 @@ import type { DeploymentConfirmation, RegressionReview } from '@quality-ai/contr
 import type { CaseAsset, ExecutionJob } from '@quality-ai/contracts/cases'
 import type { ExecutionCaseSnapshot, TestEnvironment } from '@quality-ai/contracts'
 import ContractView from '../case-design/ContractView.vue'
+import CaseReuseNote from '../../components/CaseReuseNote.vue'
 import { regressionRequest } from './api'
 
 const props=defineProps<{regressionId:string;projectId:string;targetSha:string;reviews:RegressionReview[];disabled:boolean}>()
@@ -88,7 +89,7 @@ onMounted(()=>{void load()});onUnmounted(()=>{disposed=true;epoch++})
     <p v-if="activeConfirmation" :class="activeConfirmation.status==='matched'?'':'reg-warning'">{{ activeConfirmation.status==='matched'?'人工登记版本匹配（非自动探测证明）':activeConfirmation.status==='unverified'?'部署版本未核实：本次结果不能证明目标版本已经部署':'登记版本不匹配，禁止执行' }}</p>
     <fieldset :disabled="busy||loading||disabled"><legend>选择本次执行用例</legend><p v-if="!assets.length">当前版本没有纳入的回归用例。</p><label v-for="asset in assets" :key="asset.id"><input v-model="selected" type="checkbox" :value="asset.id" />{{ asset.title }}<small>{{ preview.some(item=>item.caseId===asset.id)?'本次配置已通过服务端执行预检':`预检前提示：${asset.resolved.readiness[mode].reason||'待服务端执行预览确认'}` }}</small></label><label>回归执行模式<select v-model="mode" aria-label="回归执行模式"><option value="agent">动态 Agent</option><option value="plan">固定计划</option></select></label></fieldset>
     <p>{{ executionReason||'可以预览最终口径；服务端会核验部署确认时效及每条用例的可执行性。' }}</p><button :disabled="!!executionReason||busy||loading" @click="prepare">预览回归执行口径</button>
-    <section v-if="preview.length"><h3>本次冻结执行 {{ preview.length }} 条 · 审核 v{{ revision }}</h3><details v-for="snapshot in preview" :key="snapshot.caseId"><summary>{{ snapshot.resolved.title }}</summary><ContractView :contract="snapshot.resolved.contract" /><p>版本 {{ snapshot.revision }} · 指纹 {{ snapshot.resolved.contractFingerprint }}</p></details><p>相关用例共享会话，普通失败记录后继续；配置改变需要重新预览。</p><button :disabled="busy||!!executionReason||disabled" @click="start">确认并启动回归执行</button></section>
+    <section v-if="preview.length"><h3>本次冻结执行 {{ preview.length }} 条 · 审核 v{{ revision }}</h3><details v-for="snapshot in preview" :key="snapshot.caseId"><summary>{{ snapshot.resolved.title }}</summary><CaseReuseNote :source="snapshot.source" /><ContractView :contract="snapshot.resolved.contract" /><p>版本 {{ snapshot.revision }} · 指纹 {{ snapshot.resolved.contractFingerprint }}</p></details><p>相关用例共享会话，普通失败记录后继续；配置改变需要重新预览。</p><button :disabled="busy||!!executionReason||disabled" @click="start">确认并启动回归执行</button></section>
     <details><summary>部署确认历史（{{ confirmations.length }}）</summary><article v-for="item in confirmations" :key="item.id"><p>审核 v{{ item.reviewRevision }} · {{ item.status==='matched'?'人工登记匹配':item.status==='unverified'?'未核实':'不匹配' }} · {{ item.createdAt }}<br />环境 {{ item.environmentId }} · {{ item.targetUrl }}<br />部署 SHA {{ item.deployedSha??'未提供' }} · {{ item.confirmedBy }}<br />{{ item.note }}</p></article><p>历史仅供追溯，不自动认为旧确认仍有效。重新保存确认会使同环境旧确认失效。</p></details>
   </section>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ExecutionCaseSnapshot } from '@quality-ai/contracts'
 import CaseContractDetails from './CaseContractDetails.vue'
+import CaseReuseNote from './CaseReuseNote.vue'
 defineProps<{ snapshots?: ExecutionCaseSnapshot[] }>()
 </script>
 <template>
@@ -12,6 +13,7 @@ defineProps<{ snapshots?: ExecutionCaseSnapshot[] }>()
       <article v-for="snapshot in snapshots" :key="snapshot.caseId">
         <strong>{{ snapshot.resolved.title }} · v{{ snapshot.revision }}</strong>
         <small>资产 {{ snapshot.caseId }} · 快照时间 {{ snapshot.capturedAt }}</small>
+        <CaseReuseNote :source="snapshot.source" />
         <CaseContractDetails :resolved="snapshot.resolved" unavailable-reason="历史契约不可用" />
       </article>
     </template>

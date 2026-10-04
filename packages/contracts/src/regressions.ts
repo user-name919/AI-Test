@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { caseExecutionContractSchema } from './contracts'
+import { caseExecutionContractSchema, type CaseExecutionContract, type ResolvedCaseExecutionContract } from './contracts'
+import type { CaseAsset, CaseReuseProvenance } from './case-assets'
 
 const localRef = z.string().min(1).max(300).refine(value => !value.startsWith('-') && !/[\s\0]/.test(value), '请输入本地分支或提交 SHA')
 export const changeComparisonSchema = z.discriminatedUnion('mode', [
@@ -114,9 +115,27 @@ const riskDecisionSchema = z.discriminatedUnion('decision', [
   z.object({ key: z.string().min(1), decision: z.literal('include'), reason: z.string().max(2000).default('') }).strict(),
   z.object({ key: z.string().min(1), decision: z.literal('exclude'), reason: z.string().trim().min(1).max(2000) }).strict(),
 ])
+export const regressionReuseSchema = z.object({
+  caseId:z.string().min(1).max(300), revision:z.number().int().positive(),
+  contractFingerprint:z.string().regex(/^[a-f0-9]{64}$/), reason:z.string().trim().min(1).max(2000),
+}).strict()
+export type RegressionReuse = z.infer<typeof regressionReuseSchema>
+export interface RegressionReuseCandidate {
+  asset: CaseAsset
+  projectMatch: 'same' | 'unknown' | 'other'
+  reasons: string[]
+  matchedTerms: string[]
+}
+export interface RegressionReuseSnapshot {
+  key: string
+  provenance: CaseReuseProvenance
+  contract: CaseExecutionContract
+  resolvedQuestions: ResolvedCaseExecutionContract['resolvedQuestions']
+  questionAssociation: ResolvedCaseExecutionContract['questionAssociation']
+}
 const caseDecisionSchema = z.discriminatedUnion('decision', [
   z.object({ key: z.string().min(1), decision: z.literal('include'), title: z.string().trim().min(1).max(300), finalContract: caseExecutionContractSchema,
-    verification: z.enum(['browser', 'api', 'manual']), verificationReason: z.string().trim().min(1).max(2000) }).strict(),
+    verification: z.enum(['browser', 'api', 'manual']), verificationReason: z.string().trim().min(1).max(2000), reuse:regressionReuseSchema.optional() }).strict(),
   z.object({ key: z.string().min(1), decision: z.literal('exclude'), reason: z.string().trim().min(1).max(2000) }).strict(),
 ])
 export const regressionReviewContentSchema = z.object({
@@ -130,6 +149,7 @@ export interface RegressionReview {
   createdAt: string
   analysisHash: string
   content: z.infer<typeof regressionReviewContentSchema>
+  reusedSources?: RegressionReuseSnapshot[]
 }
 export const deploymentConfirmationSchema = z.object({
   reviewRevision: z.number().int().positive(), environmentId: z.string().uuid(),

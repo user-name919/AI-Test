@@ -3,7 +3,7 @@ import { caseReviewSchema, type CaseExecutionContract, type CaseReview, type Res
 
 export type CaseSource =
   | { type: 'requirement'; analysisId: string; caseKey: string }
-  | { type: 'change_regression'; regressionId: string; suggestionId: string; reviewRevision?: number; changeSetId?: string }
+  | { type: 'change_regression'; regressionId: string; suggestionId: string; reviewRevision?: number; changeSetId?: string; reusedFrom?: CaseReuseProvenance }
   | { type: 'case_design'; designId: string; draftId: string; publicationId: string; publicationVersion: number }
 
 export interface CaseAsset {
@@ -12,11 +12,22 @@ export interface CaseAsset {
   source: CaseSource
   revision: number
   reviewStatus: CaseReview['status'] | 'legacy_unreviewed'
+  verification?: 'browser' | 'api' | 'manual'
   originalSuggestion: CaseExecutionContract
   finalContract: CaseExecutionContract
   resolved: ResolvedCaseExecutionContract
   createdAt: string
   updatedAt: string
+}
+
+export interface CaseReuseProvenance {
+  caseId: string
+  revision: number
+  contractFingerprint: string
+  title: string
+  sourceType: CaseSource['type']
+  sourceId: string
+  reason: string
 }
 
 export interface CaseAssetRevision {

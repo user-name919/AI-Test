@@ -12,14 +12,19 @@ test('人工回归编辑保留 AI 原文，刷新草稿、版本冲突比较与�
   const browser=await chromium.launch({headless:true})
   try{
     const page=await browser.newPage({viewport:{width:1440,height:1000}})
-    const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept())
+    const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));let acceptDialog=true;page.on('dialog',dialog=>acceptDialog?dialog.accept():dialog.dismiss())
     const id='11111111-1111-4111-8111-111111111111'
     const contract={objective:'验证选择器',preconditions:[],steps:['AI 原始步骤'],expectedAssertions:['匹配项可见'],dataBindings:[],forbiddenBehaviors:[],uncertainties:[]}
     const items:RegressionReviewItems={risks:['搜索','下载'].map((title,index)=>({key:`b:r${index}`,batchId:'b',original:{id:`r${index}`,title,reason:'合成影响建议',severity:'medium',confidence:'low',evidenceIds:['e1']}})),cases:[{key:'b:case-0',batchId:'b',riskKeys:['b:r0'],original:{title:'搜索验证',riskIds:['r0'],verification:'browser',verificationReason:'可观察页面',contract}}]}
     const history:RegressionReview[]=[]
     let conflictOnce=true
+    let candidateFailure=true
     await page.route('**/api/**',async route=>{
       const path=new URL(route.request().url()).pathname
+      if(path.endsWith('/reuse-candidates')){
+        if(candidateFailure){candidateFailure=false;await route.fulfill({status:503,json:{error:'候选暂时不可读取，当前草稿不变'}});return}
+        await route.fulfill({json:{candidates:[{asset:{id:'existing-case',title:'已确认搜索资产',revision:7,source:{type:'requirement',analysisId:'source-analysis',caseKey:'0-TC-0'},verification:'manual',finalContract:{...contract,steps:['已有资产的明确操作']},resolved:{contractFingerprint:'a'.repeat(64),resolvedQuestions:[],questionAssociation:{mode:'explicit',questionKeys:[]}}},projectMatch:'unknown',reasons:['项目关联未知，不推断同项目','来源：合成需求 / v7'],matchedTerms:['搜索']}],total:1,truncated:false,executionHistoryTruncated:false}});return
+      }
       if(path.endsWith('/review')){
         if(route.request().method()==='PATCH'){
           const body=route.request().postDataJSON()
@@ -47,6 +52,24 @@ test('人工回归编辑保留 AI 原文，刷新草稿、版本冲突比较与�
     await panel.getByLabel('风险 下载 范围决定',{exact:true}).selectOption('exclude')
     await panel.getByLabel('风险 下载 理由',{exact:true}).fill('下载未在本次改造范围，另行人工验证')
     await panel.getByLabel('用例范围决定',{exact:true}).selectOption('include')
+    const reuse=panel.getByRole('region',{name:'已有用例复用'})
+    await reuse.getByText('查找并比较已确认资产',{exact:true}).click()
+    await reuse.getByRole('button',{name:'查找可复用用例'}).click()
+    await reuse.getByRole('alert').filter({hasText:'候选暂时不可读取'}).waitFor()
+    await reuse.getByRole('button',{name:'查找可复用用例'}).click()
+    const choose=reuse.getByRole('button',{name:'使用此版本替换当前草稿'})
+    await choose.waitFor();assert.equal(await choose.isDisabled(),true)
+    await reuse.getByLabel('复用适用理由').fill('覆盖当前选择器变更，保留风险关联并重新核对页面验证方式')
+    await reuse.getByText('比较完整执行内容',{exact:true}).click()
+    await reuse.getByText('已有资产的明确操作',{exact:true}).waitFor()
+    acceptDialog=false;await choose.click()
+    assert.equal(await panel.getByLabel('执行步骤（每行一项）',{exact:true}).inputValue(),'AI 原始步骤')
+    acceptDialog=true;await choose.click()
+    await panel.getByText(/已替换当前草稿，尚未保存/).waitFor()
+    assert.equal(await panel.getByLabel('执行步骤（每行一项）',{exact:true}).inputValue(),'已有资产的明确操作')
+    assert.equal(await panel.getByLabel('回归验证方式',{exact:true}).inputValue(),'manual','不把来源人工验证自动升级为浏览器')
+    await reuse.screenshot({path:'/private/tmp/quality-ai-regression-reuse.png'})
+    await panel.getByLabel('回归验证方式',{exact:true}).selectOption('browser')
     await panel.getByLabel('执行步骤（每行一项）',{exact:true}).fill('人工最终步骤：打开列表并选择现有选项')
     await panel.getByLabel('人工回归范围及已知限制',{exact:true}).fill('只覆盖搜索，动态依赖需补充人工验证')
     await panel.getByText('AI 原始用例（只读）',{exact:true}).click()
@@ -68,7 +91,10 @@ test('人工回归编辑保留 AI 原文，刷新草稿、版本冲突比较与�
     assert.equal(history[1]!.content.status,'draft')
     const finalCase=history[0]!.content.cases[0]!
     assert.equal(finalCase.decision,'include')
-    if(finalCase.decision==='include')assert.deepEqual(finalCase.finalContract.steps,['人工最终步骤：打开列表并选择现有选项'])
+    if(finalCase.decision==='include'){
+      assert.deepEqual(finalCase.finalContract.steps,['人工最终步骤：打开列表并选择现有选项'])
+      assert.equal(finalCase.reuse?.caseId,'existing-case');assert.equal(finalCase.reuse?.revision,7)
+    }
     assert.deepEqual(items.cases[0]!.original.contract.steps,['AI 原始步骤'])
     await panel.getByText('人工审核历史（3）',{exact:true}).click()
     await panel.getByRole('heading',{name:/v3 · 已确认/}).waitFor()

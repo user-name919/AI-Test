@@ -5,10 +5,21 @@ import { freezeChangeSet, getChangeSet, listChangeSets, previewChangeSet } from 
 import { createRegression, getRegression, listRegressions, cancelRegression } from './jobs'
 import { getRegressionReviews, regressionReviewItems, saveRegressionReview } from './review'
 import { listDeploymentConfirmations, saveDeploymentConfirmation } from './deployments'
+import { recommendRegressionCases } from './case-reuse'
 import { getManagedWorktreeStatus, removeUnusedChangeSetWorktree, recoverChangeSetWorktree } from '../../integrations/git/worktree-manager'
 
 export async function handleRegressionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+  const reuseMatch=pathname.match(/^\/api\/regressions\/([a-f0-9-]{36})\/reuse-candidates$/i)
+  if(reuseMatch&&request.method==='GET'){
+    const analysis=getRegression(reuseMatch[1]!)
+    if(!analysis)return json(response,404,{error:'回归分析不存在'})
+    const params=new URL(request.url!,'http://localhost').searchParams
+    const query=params.get('query')??''
+    if(query.length>200)return json(response,400,{error:'搜索文字不能超过200字'})
+    try{return json(response,200,recommendRegressionCases(analysis,params.get('caseKey')??'',query.trim()))}
+    catch(error){return json(response,409,{error:error instanceof Error?error.message:'读取候选失败'})}
+  }
   const worktreeMatch=pathname.match(/^\/api\/change-sets\/([a-f0-9-]{36})\/worktree(\/remove|\/recover)?$/i)
   if(worktreeMatch){
     const range=getChangeSet(worktreeMatch[1]!)

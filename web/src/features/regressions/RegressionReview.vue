@@ -2,16 +2,18 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import type { CaseExecutionContract } from '@quality-ai/contracts'
-import { regressionReviewContentSchema, type RegressionReview, type RegressionReviewItems } from '@quality-ai/contracts/regressions'
+import { regressionReviewContentSchema, type RegressionReview, type RegressionReviewItems, type RegressionReuse, type RegressionReuseSnapshot } from '@quality-ai/contracts/regressions'
+import type { CaseAsset } from '@quality-ai/contracts/cases'
 import ContractEditor from '../case-design/ContractEditor.vue'
 import ContractView from '../case-design/ContractView.vue'
 import RegressionExecution from './RegressionExecution.vue'
+import RegressionCaseReuse from './RegressionCaseReuse.vue'
 import { regressionRequest } from './api'
 
 const props=defineProps<{regressionId:string;projectId:string;targetSha:string}>()
 const route=useRoute();const router=useRouter()
 type Decision='pending'|'include'|'exclude'
-interface Draft {scopeNote:string;risks:Record<string,{decision:Decision;reason:string}>;cases:Record<string,{decision:Decision;reason:string;title:string;verification:'browser'|'api'|'manual';verificationReason:string;contract:CaseExecutionContract}>}
+interface Draft {scopeNote:string;risks:Record<string,{decision:Decision;reason:string}>;cases:Record<string,{decision:Decision;reason:string;title:string;verification:'browser'|'api'|'manual';verificationReason:string;contract:CaseExecutionContract;reuse?:RegressionReuse;reusePreview?:RegressionReuseSnapshot}>}
 const draft=ref<Draft>({scopeNote:'',risks:{},cases:{}})
 const items=ref<RegressionReviewItems>({risks:[],cases:[]});const history=ref<RegressionReview[]>([])
 const revision=ref(0);const ready=ref(false);const busy=ref(false);const dirty=ref(false);const error=ref('');const notice=ref('');const conflict=ref<RegressionReview>()
@@ -35,7 +37,7 @@ async function load(){
     for(const item of result.items.risks){const saved=latest?.risks.find(entry=>entry.key===item.key);value.risks[item.key]={decision:saved?.decision??'pending',reason:saved?.reason??''}}
     for(const item of result.items.cases){
       const saved=latest?.cases.find(entry=>entry.key===item.key)
-      value.cases[item.key]={decision:saved?.decision??'pending',reason:saved?.decision==='exclude'?saved.reason:'',title:saved?.decision==='include'?saved.title:item.original.title,verification:saved?.decision==='include'?saved.verification:item.original.verification,verificationReason:saved?.decision==='include'?saved.verificationReason:item.original.verificationReason,contract:copy(saved?.decision==='include'?saved.finalContract:item.original.contract)}
+      value.cases[item.key]={decision:saved?.decision??'pending',reason:saved?.decision==='exclude'?saved.reason:'',title:saved?.decision==='include'?saved.title:item.original.title,verification:saved?.decision==='include'?saved.verification:item.original.verification,verificationReason:saved?.decision==='include'?saved.verificationReason:item.original.verificationReason,contract:copy(saved?.decision==='include'?saved.finalContract:item.original.contract),reuse:saved?.decision==='include'?saved.reuse:undefined,reusePreview:result.reviews[0]?.reusedSources?.find(source=>source.key===item.key)}
     }
     draft.value=value
     const local=sessionStorage.getItem(storageKey)
@@ -58,7 +60,7 @@ async function save(status:'draft'|'confirmed'){
       if(item.decision==='include'){
         const contract=copy(item.contract)
         for(const key of ['preconditions','steps','expectedAssertions','forbiddenBehaviors','uncertainties'] as const)contract[key]=contract[key].map(line=>line.trim()).filter(Boolean)
-        content.cases.push({key,decision:'include',title:item.title,verification:item.verification,verificationReason:item.verificationReason,finalContract:contract})
+        content.cases.push({key,decision:'include',title:item.title,verification:item.verification,verificationReason:item.verificationReason,finalContract:contract,...(item.reuse?{reuse:item.reuse}:{})})
       }
     }
     const parsed=regressionReviewContentSchema.safeParse(content)
@@ -77,6 +79,15 @@ async function save(status:'draft'|'confirmed'){
   }catch(cause){if(!disposed)error.value=cause instanceof Error?cause.message:'保存失败'}finally{if(!disposed)busy.value=false}
 }
 function rebase(){if(conflict.value){revision.value=conflict.value.revision;conflict.value=undefined;dirty.value=true;remember();notice.value='保留你的草稿并采用最新版本号；请核对全部内容后再次保存。'}}
+function chooseReuse(asset:CaseAsset,reason:string){
+  if(!current.value||busy.value)return
+  const reuse={caseId:asset.id,revision:asset.revision,contractFingerprint:asset.resolved.contractFingerprint,reason}
+  current.value.reuse=reuse;current.value.contract=copy(asset.finalContract);current.value.title=asset.title;current.value.decision='include'
+  current.value.verification=asset.verification??'browser';current.value.verificationReason=`复用已确认资产，人工核对：${reason}`
+  current.value.reusePreview={key:selected.value,provenance:{...reuse,title:asset.title,sourceType:asset.source.type,sourceId:asset.source.type==='requirement'?asset.source.analysisId:asset.source.type==='case_design'?asset.source.designId:asset.source.regressionId},contract:copy(asset.finalContract),resolvedQuestions:copy(asset.resolved.resolvedQuestions),questionAssociation:copy(asset.resolved.questionAssociation)}
+  notice.value='已替换当前草稿，尚未保存。请核对风险关联、验证方式、来源人工决定及最终内容后确认。'
+}
+function clearReuse(){if(current.value){delete current.value.reuse;delete current.value.reusePreview}}
 function leave(){return !dirty.value||window.confirm('有未保存人工审核，离开后只保留此标签页草稿，是否离开？')}
 onBeforeRouteLeave(leave)
 onBeforeRouteUpdate(to=>to.params.id===route.params.id||leave())
@@ -94,10 +105,11 @@ onUnmounted(()=>{disposed=true;window.removeEventListener('beforeunload',beforeU
     <template v-if="ready">
       <fieldset :disabled="busy"><legend>逐项决定风险范围</legend><article v-for="item in items.risks" :key="item.key" class="risk-review"><h3>{{ item.original.title }}</h3><p>{{ item.original.reason }}</p><p>来源：{{ item.batchId }} · 依据 {{ item.original.evidenceIds.join('、') }}（原始依据见本页 AI 建议）</p><label>范围决定<select v-model="draft.risks[item.key]!.decision" :aria-label="`风险 ${item.original.title} 范围决定`"><option value="pending">尚未决定</option><option value="include">纳入回归</option><option value="exclude">本次排除</option></select></label><label>理由或验证安排<textarea v-model="draft.risks[item.key]!.reason" :aria-label="`风险 ${item.original.title} 理由`" placeholder="排除必须说明；纳入但没有对应用例时，说明验证安排" /></label></article></fieldset>
       <h3>回归用例审核</h3><div class="reg-review-columns"><nav aria-label="回归用例审核列表"><button v-for="item in items.cases" :key="item.key" :class="{selected:item.key===selected}" @click="router.replace({query:{...route.query,reviewCase:item.key}})">{{ draft.cases[item.key]?.title||item.original.title }}<small>{{ {pending:'待决定',include:'纳入',exclude:'排除'}[draft.cases[item.key]?.decision??'pending'] }}</small></button></nav>
-      <section v-if="current&&original"><fieldset :disabled="busy"><legend>完整最终口径</legend><label>用例范围决定<select v-model="current.decision" aria-label="用例范围决定"><option value="pending">尚未决定</option><option value="include">纳入回归</option><option value="exclude">本次排除</option></select></label><label v-if="current.decision==='exclude'">用例排除理由<textarea v-model="current.reason" /></label><p>关联风险：{{ original.riskKeys.map(key=>items.risks.find(item=>item.key===key)?.original.title??key).join('、') }}</p><label>回归用例标题<input v-model="current.title" /></label><label>验证方式<select v-model="current.verification" aria-label="回归验证方式"><option value="browser">浏览器</option><option value="api">接口</option><option value="manual">人工</option></select></label><label>验证方式理由<input v-model="current.verificationReason" /></label><ContractEditor v-model="current.contract" /></fieldset><details><summary>AI 原始用例（只读）</summary><ContractView :contract="original.original.contract" /></details></section><p v-else>请从列表选择需要审核的用例。</p></div>
+      <section v-if="current&&original"><RegressionCaseReuse :key="selected" :regression-id="regressionId" :case-key="selected" :reuse="current.reuse" :source="current.reusePreview" :disabled="busy||!!conflict" @choose="chooseReuse" @clear="clearReuse" /><fieldset :disabled="busy"><legend>完整最终口径</legend><label>用例范围决定<select v-model="current.decision" aria-label="用例范围决定"><option value="pending">尚未决定</option><option value="include">纳入回归</option><option value="exclude">本次排除</option></select></label><label v-if="current.decision==='exclude'">用例排除理由<textarea v-model="current.reason" /></label><p>关联风险：{{ original.riskKeys.map(key=>items.risks.find(item=>item.key===key)?.original.title??key).join('、') }}</p><label>回归用例标题<input v-model="current.title" /></label><label>验证方式<select v-model="current.verification" aria-label="回归验证方式"><option value="browser">浏览器</option><option value="api">接口</option><option value="manual">人工</option></select></label><label>验证方式理由<input v-model="current.verificationReason" /></label><ContractEditor v-model="current.contract" /></fieldset><details><summary>AI 原始用例（只读）</summary><ContractView :contract="original.original.contract" /></details></section><p v-else>请从列表选择需要审核的用例。</p></div>
       <label>人工回归范围及已知限制<textarea v-model="draft.scopeNote" :disabled="busy" rows="3" placeholder="说明本次覆盖什么，哪些未解析、未处理或未验证内容需要后续补充" /></label>
       <div class="review-actions"><button :disabled="busy||!!conflict" @click="save('draft')">保存审核草稿</button><button :disabled="busy||!!conflict||pending>0||!draft.scopeNote.trim()" @click="save('confirmed')">确认回归范围与用例</button></div><p v-if="pending||!draft.scopeNote.trim()">确认前请决定所有风险和用例，并填写范围限制。接口或人工用例不会自动变成浏览器用例。</p>
       <details><summary>人工审核历史（{{ history.length }}）</summary><article v-for="entry in history" :key="entry.revision"><h3>v{{ entry.revision }} · {{ entry.content.status==='confirmed'?'已确认':'草稿' }} · {{ entry.createdAt }}</h3><p>{{ entry.content.scopeNote }}</p><ul><li v-for="risk in entry.content.risks" :key="risk.key">{{ items.risks.find(item=>item.key===risk.key)?.original.title??risk.key }} · {{ risk.decision==='include'?'纳入':'排除' }} · {{ risk.reason||'未附理由' }}</li></ul><details v-for="item in entry.content.cases" :key="item.key"><summary>{{ item.decision==='include'?item.title:items.cases.find(candidate=>candidate.key===item.key)?.original.title??item.key }} · {{ item.decision==='include'?'纳入':'排除' }}</summary><ContractView v-if="item.decision==='include'" :contract="item.finalContract" /><p v-else>{{ item.reason }}</p></details></article></details>
+      <details v-if="history.some(entry=>entry.reusedSources?.length)"><summary>复用来源历史（只读快照）</summary><template v-for="entry in history" :key="entry.revision"><article v-for="source in entry.reusedSources??[]" :key="source.key"><h4>审核 v{{ entry.revision }} · {{ source.provenance.title }}</h4><p>对应建议 {{ source.key }} · 来源资产 {{ source.provenance.caseId }} / v{{ source.provenance.revision }} · {{ source.provenance.reason }}</p><ContractView :contract="source.contract" /></article></template></details>
       <RegressionExecution :regression-id="regressionId" :project-id="projectId" :target-sha="targetSha" :reviews="history" :disabled="dirty||busy||!!conflict" />
     </template>
   </section>

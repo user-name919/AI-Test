@@ -17,6 +17,8 @@ function assets(review: RegressionReview, deploymentVerified = false): CaseAsset
     if (!original) throw new Error('回归审核缺少对应原始用例')
     const id = `regression:${review.regressionId}:${review.revision}:${index}`
     const contract = structuredClone(item.finalContract)
+    const reuse=review.reusedSources?.find(source=>source.key===item.key)
+    if(item.reuse&&!reuse)throw new Error('回归复用来源快照缺失，不能读取当前资产代替')
     const reason = item.verification !== 'browser' ? `该用例要求${item.verification === 'api' ? '接口' : '人工'}验证，不能由当前浏览器执行器替代`
       : contract.uncertainties.length ? '最终口径仍有未确定事项'
         : containsUnprovenDataLiteral(contract) ? '测试数据来源尚待确认'
@@ -25,10 +27,10 @@ function assets(review: RegressionReview, deploymentVerified = false): CaseAsset
     const plan = agent
     const readiness = { agent, plan }
     const resolved = { caseKey: id, requirementIndex: -1, caseIndex: index, title: item.title, contract,
-      questionAssociation: { mode: 'explicit' as const, questionKeys: [] }, resolvedQuestions: [], readiness,
-      contractFingerprint: createHash('sha256').update(JSON.stringify({ regressionId: review.regressionId, revision: review.revision, analysisHash: review.analysisHash, key: item.key, contract, verification: item.verification })).digest('hex') }
-    return [{ id, title: item.title, source: { type: 'change_regression' as const, regressionId: review.regressionId, suggestionId: item.key, reviewRevision: review.revision, changeSetId: analysis.changeSetId },
-      revision: review.revision, reviewStatus: 'confirmed' as const, originalSuggestion: structuredClone(original.original.contract), finalContract: contract,
+      questionAssociation: reuse?.questionAssociation??{ mode: 'explicit' as const, questionKeys: [] }, resolvedQuestions: reuse?.resolvedQuestions??[], readiness,
+      contractFingerprint: createHash('sha256').update(JSON.stringify({ regressionId: review.regressionId, revision: review.revision, analysisHash: review.analysisHash, key: item.key, contract, verification: item.verification, ...(reuse?{reuse}:{}) })).digest('hex') }
+    return [{ id, title: item.title, source: { type: 'change_regression' as const, regressionId: review.regressionId, suggestionId: item.key, reviewRevision: review.revision, changeSetId: analysis.changeSetId, ...(reuse?{reusedFrom:reuse.provenance}:{}) },
+      revision: review.revision, reviewStatus: 'confirmed' as const, verification:item.verification, originalSuggestion: structuredClone(original.original.contract), finalContract: contract,
       resolved, createdAt: review.createdAt, updatedAt: review.createdAt }]
   })
 }

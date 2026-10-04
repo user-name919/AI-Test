@@ -48,6 +48,11 @@ export function executionMarkdown(execution:ExecutionRecord,artifacts:ExecutionA
       if(snapshot.source?.type==='case_design')lines.push(`设计来源：${text(snapshot.source.designId)}；发布 v${snapshot.source.publicationVersion} / ${text(snapshot.source.publicationId)}`)
       if(snapshot.source?.type==='requirement')lines.push(`需求来源：${text(snapshot.source.analysisId)} / ${text(snapshot.source.caseKey)}`)
       if(snapshot.source?.type==='change_regression')lines.push(`变更回归来源：${text(snapshot.source.regressionId)} / ${text(snapshot.source.suggestionId)}`)
+      if(snapshot.source?.type==='change_regression'&&snapshot.source.reusedFrom){
+        const source=snapshot.source.reusedFrom
+        lines.push(`复用来源：${text(source.title)} / ${text(source.caseId)} / v${source.revision}；${text(source.sourceType)} / ${text(source.sourceId)}；来源指纹 ${text(source.contractFingerprint)}`,
+          `人工适用理由：${text(source.reason)}；来源版本已冻结，本次使用人工最终口径，不追读来源最新内容。`)
+      }
       lines.push('','### 当时确认的测试口径','',`目标：${text(snapshot.resolved.contract.objective)}`)
       for(const [key,label] of [['preconditions','前置条件'],['steps','计划操作'],['expectedAssertions','预期断言'],['forbiddenBehaviors','禁止行为'],['uncertainties','未确定事项']] as const){
         lines.push(`- ${label}：`)

@@ -17,7 +17,7 @@ function assets(publication:DesignPublication):CaseAsset[]{
     const agent=reason||missingDecision?{executable:false,reason:reason??'关联问题未决定'}:{executable:true}
     const plan=agent
     const resolved={caseKey:id,requirementIndex:-1,caseIndex:index,title:item.title,contract,questionAssociation,resolvedQuestions,readiness:{agent,plan},contractFingerprint:createHash('sha256').update(JSON.stringify({publicationHash:publication.contentHash,caseId:item.id,contract,questionAssociation,resolvedQuestions})).digest('hex')}
-    return {id,title:item.title,source:{type:'case_design',designId:publication.designId,draftId:item.id,publicationId:publication.id,publicationVersion:publication.version},revision:publication.version,reviewStatus:'confirmed',originalSuggestion:structuredClone(original.contract),finalContract:contract,resolved,createdAt:publication.createdAt,updatedAt:publication.createdAt}
+    return {id,title:item.title,source:{type:'case_design',designId:publication.designId,draftId:item.id,publicationId:publication.id,publicationVersion:publication.version},revision:publication.version,reviewStatus:'confirmed',verification:item.verification,originalSuggestion:structuredClone(original.contract),finalContract:contract,resolved,createdAt:publication.createdAt,updatedAt:publication.createdAt}
   })
 }
 
