@@ -25,9 +25,9 @@
 | 点击导出，等待下载并验证文件 | 部分支持 | 部分支持 | 两模式 download 点击前监听，15秒接收期限、10MB证据保存上限，expectDownload 验证名称/大小/UTF-8文本包含；逐用例隔离文件和指纹关联报告，动态异常不自动重复导出。PDF/Excel解析、多文件未接入；页面“下载成功”不能代替文件证据 |
 | iframe 内控件操作 | 部分支持 | 部分支持 | 动态观察列出最多50个真实可见框架，switchFrame后重新观察并失效旧引用；元素、文本、数量及滚动限定所选框架。固定framePath为每步1至4级明确iframe定位链，运行时数据解析、来源保留及文本断言使用对应框架。固定跨源两层嵌套正反例已验证；动态跨源/嵌套独立操作仍待验收，截图仍为顶层页面 |
 | 新标签页打开、切回原页面 | 缺失 | 缺失 | 没有 page ID/切换动作、弹出页面生命周期或跨页引用失效规则 |
-| Shadow DOM 内控件 | 缺失（观察链） | 部分支持（定位层） | observer 的 document.querySelectorAll 不穿透 shadow root；Playwright 定位器自身能力不能补齐 Agent 观察。固定未作本地场景验收 |
+| Shadow DOM 内控件 | 部分支持 | 部分支持（定位层） | 观察器递归遍历开放shadow root，覆盖嵌套控件、根内标签、跨宿主/slot容器、表格及消息；快照属性与预算规则不变。本地观察→填值/点击/断言→重新观察已验证，隐藏祖先排除；封闭root不可读取，未承诺任意组件内部结构，固定未作本地场景验收 |
 
-协议依据：`packages/contracts/src/contracts.ts` 中的 `agentActionSchema` 与 `automationStepSchema`。页面摘要依据：`api/src/page-observer.ts`、`api/src/page-observer-browser.js`。引用依据：`api/src/element-registry.ts`。
+协议依据：`packages/contracts/src/contracts.ts` 中的 `agentActionSchema` 与 `automationStepSchema`。页面摘要依据：`api/src/automation/page-observer.ts`、`api/src/automation/page-observer-browser.js`。引用依据：`api/src/automation/element-registry.ts`。上表历史实现文件已迁至automation目录，测试仍在api/src根目录。
 
 ## 执行边界与证据
 
@@ -50,6 +50,7 @@ node --import tsx --test api/src/fixed-scope.test.ts
 node --import tsx --test api/src/modules/test-fixtures/store.test.ts
 node --import tsx --test api/src/agent-upload.test.ts
 node --import tsx --test api/src/download-capture.test.ts
+node --import tsx --test api/src/shadow-observer.test.ts api/src/page-observer.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。

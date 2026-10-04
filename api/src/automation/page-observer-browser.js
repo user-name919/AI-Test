@@ -3,10 +3,28 @@
 export function observePageInBrowser({ selector, snapshotId, refAttribute, maxElements, maxTextLength, maxTableRows }) {
   const normalize = value => (value ?? '').replace(/\s+/g, ' ').trim()
   const compact = value => normalize(value).slice(0, maxTextLength)
+  // Match Playwright's open-shadow CSS traversal; closed roots remain inaccessible.
+  const query = (root, selector) => {
+    const result = [...root.querySelectorAll(selector)]
+    const pending = [...root.querySelectorAll('*')].filter(element => element.shadowRoot)
+    if (root instanceof Element && root.shadowRoot) pending.unshift(root)
+    for (const host of pending) result.push(...query(host.shadowRoot, selector))
+    return result
+  }
+  const parent = element => element.assignedSlot || element.parentElement || element.getRootNode().host
+  const closest = (element, selector) => {
+    for (let current = element; current; current = parent(current)) if (current.matches(selector)) return current
+    return undefined
+  }
   const isVisible = element => {
     const style = window.getComputedStyle(element)
     const rect = element.getBoundingClientRect()
-    return style.display !== 'none'
+    let hiddenAncestor = false
+    for (let ancestor = parent(element); ancestor; ancestor = parent(ancestor)) {
+      const ancestorStyle = window.getComputedStyle(ancestor)
+      if (ancestor.getAttribute('aria-hidden') === 'true' || ancestorStyle.display === 'none' || ancestorStyle.opacity === '0') { hiddenAncestor = true; break }
+    }
+    return !hiddenAncestor && style.display !== 'none'
       && style.visibility !== 'hidden'
       && style.opacity !== '0'
       && element.getAttribute('aria-hidden') !== 'true'
@@ -15,7 +33,7 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
   }
   const labelledBy = element => normalize(element.getAttribute('aria-labelledby')
     ?.split(/\s+/)
-    .map(id => document.getElementById(id)?.textContent ?? '')
+    .map(id => element.getRootNode().getElementById(id)?.textContent ?? '')
     .join(' '))
   const explicitLabel = element => {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
@@ -43,15 +61,15 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
     return element.getAttribute('contenteditable') === 'true' ? 'textbox' : tag
   }
   const containerName = element => {
-    const container = element.closest('[role="dialog"],.el-dialog,.el-drawer,form,table,[role="table"]')
+    const container = closest(element, '[role="dialog"],.el-dialog,.el-drawer,form,table,[role="table"]')
     if (!container) return undefined
-    const heading = container.querySelector('[role="heading"],h1,h2,h3,.el-dialog__title,.el-drawer__title,legend,caption')
+    const heading = query(container, '[role="heading"],h1,h2,h3,.el-dialog__title,.el-drawer__title,legend,caption')[0]
     return compact(heading?.textContent) || compact(container.getAttribute('aria-label')) || container.tagName.toLowerCase()
   }
-  document.querySelectorAll(`[${refAttribute}]`).forEach(element => element.removeAttribute(refAttribute))
+  query(document, `[${refAttribute}]`).forEach(element => element.removeAttribute(refAttribute))
   const containerSelector = 'dialog,[role="dialog"],.el-dialog,.el-drawer,form,table,[role="table"],tr,[role="row"]'
   // 原交互元素优先保留预算；容器也注册为 e 引用，而不是不可操作的 d/t 摘要编号。
-  const candidates = [...new Set([...document.querySelectorAll(selector), ...document.querySelectorAll(containerSelector)])]
+  const candidates = [...new Set([...query(document, selector), ...query(document, containerSelector)])]
   const visibleCandidates = candidates.filter(isVisible)
   const selectedElements = visibleCandidates.slice(0, maxElements)
   const references = new Map(selectedElements.map((element, index) => [element, `e${index + 1}`]))
@@ -102,41 +120,41 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
       expanded,
       required,
       container: containerName(element),
-      containerRef: references.get(element.parentElement?.closest(containerSelector)),
+      containerRef: references.get(closest(parent(element), containerSelector)),
     }
   })
-  const dialogs = [...document.querySelectorAll('dialog,[role="dialog"],.el-dialog,.el-drawer')]
+  const dialogs = query(document, 'dialog,[role="dialog"],.el-dialog,.el-drawer')
     .filter(isVisible)
     .slice(0, 10)
     .map((dialog, index) => ({
       ref: `d${index + 1}`,
       elementRef: references.get(dialog),
-      title: compact(dialog.querySelector('[role="heading"],h1,h2,h3,.el-dialog__title,.el-drawer__title')?.textContent)
+      title: compact(query(dialog, '[role="heading"],h1,h2,h3,.el-dialog__title,.el-drawer__title')[0]?.textContent)
         || compact(dialog.getAttribute('aria-label')),
       modal: dialog.getAttribute('aria-modal') === 'true' || dialog.classList.contains('el-dialog'),
     }))
-  const tableCandidates = [...document.querySelectorAll('table,[role="table"],.el-table')]
+  const tableCandidates = query(document, 'table,[role="table"],.el-table')
     .filter(isVisible)
-    .filter(table => !table.parentElement?.closest('table,[role="table"],.el-table'))
+    .filter(table => !closest(parent(table), 'table,[role="table"],.el-table'))
   const tables = tableCandidates.slice(0, 10).map((table, index) => {
-    const columns = [...table.querySelectorAll('thead th,[role="columnheader"]')]
+    const columns = query(table, 'thead th,[role="columnheader"]')
       .map(column => compact(column.textContent))
       .filter(Boolean)
-    const rows = [...table.querySelectorAll('tbody tr,[role="row"]')]
-      .filter(row => !row.closest('thead'))
-    const sampleRows = rows.slice(0, maxTableRows).map(row => [...row.querySelectorAll('td,[role="cell"],[role="gridcell"]')]
+    const rows = query(table, 'tbody tr,[role="row"]')
+      .filter(row => !closest(row, 'thead'))
+    const sampleRows = rows.slice(0, maxTableRows).map(row => query(row, 'td,[role="cell"],[role="gridcell"]')
       .map(cell => compact(cell.textContent)))
       .filter(row => row.length > 0)
     return {
       ref: `t${index + 1}`,
       elementRef: references.get(table),
-      name: compact(table.getAttribute('aria-label')) || compact(table.querySelector('caption')?.textContent),
+      name: compact(table.getAttribute('aria-label')) || compact(query(table, 'caption')[0]?.textContent),
       columns,
       rowCount: rows.length,
       sampleRows,
     }
   })
-  const messages = [...document.querySelectorAll('[role="alert"],[role="status"],.el-message,.el-notification,.el-form-item__error')]
+  const messages = query(document, '[role="alert"],[role="status"],.el-message,.el-notification,.el-form-item__error')
     .filter(isVisible)
     .map(element => {
       const classes = element.className.toString()
@@ -151,6 +169,6 @@ export function observePageInBrowser({ selector, snapshotId, refAttribute, maxEl
     })
     .filter(message => message.text)
     .slice(0, 20)
-  const loading = [...document.querySelectorAll('[aria-busy="true"],.el-loading-mask')].some(isVisible)
+  const loading = query(document, '[aria-busy="true"],.el-loading-mask').some(isVisible)
   return { loading, discoveredElements: visibleCandidates.length, elements, dialogs, tables, messages }
 }
