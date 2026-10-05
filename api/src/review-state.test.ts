@@ -151,7 +151,7 @@ test('requires manual values and rationale for confirmed contracts', () => {
   assert.equal(isCaseReviewExecutable(review, '0-TC-0', 'plan').executable, false)
 })
 
-test('allows unresolved runtime DOM bindings only for dynamic agent execution', () => {
+test('allows declared runtime DOM strategies for both modes, with values resolved during execution', () => {
   const review = normalizeReviewState({
     confirmedQuestions: [], selectedCases: [], updatedAt: null,
     caseReviews: {
@@ -164,7 +164,13 @@ test('allows unresolved runtime DOM bindings only for dynamic agent execution', 
   })
 
   assert.deepEqual(isCaseReviewExecutable(review, '0-TC-0', 'agent'), { executable: true })
-  assert.equal(isCaseReviewExecutable(review, '0-TC-0', 'plan').executable, false)
+  assert.deepEqual(isCaseReviewExecutable(review, '0-TC-0', 'plan'), { executable: true })
+  const incomplete = structuredClone(review)
+  delete incomplete.caseReviews!['0-TC-0']!.finalContract.dataBindings[0]!.strategy
+  for (const mode of ['agent', 'plan'] as const) {
+    assert.equal(isCaseReviewExecutable(incomplete, '0-TC-0', mode).executable, false)
+    assert.match(isCaseReviewExecutable(incomplete, '0-TC-0', mode).reason!, /缺少数据策略/)
+  }
 })
 
 test('rejects data bindings that use the wrong payload for their mode', () => {
