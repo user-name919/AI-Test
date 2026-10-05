@@ -4,6 +4,48 @@ import { computed, ref } from 'vue'
 import type { SavedAnalysis } from '@quality-ai/contracts'
 import { useRequirementReview } from './useRequirementReview'
 
+function deferredResponse() {
+  let resolve!: (response: Response) => void
+  const promise = new Promise<Response>(done => { resolve = done })
+  return { promise, resolve }
+}
+
+test('修改口径后迟到的AI草案不能复活，新请求状态不被旧请求清除', async () => {
+  const first = deferredResponse(), second = deferredResponse()
+  let count = 0
+  const { review } = fixture(() => ++count === 1 ? first.promise : second.promise)
+  const oldRequest = review.generateQuestionContract(0)
+  review.updateQuestionDraft(0, { target: { value: '新的人工口径' } } as unknown as Event)
+  const newRequest = review.generateQuestionContract(0)
+  first.resolve(Response.json({ contract: { objective: '旧规则' } }))
+  await oldRequest
+  assert.equal(review.contractDrafts.value['0-Q-0'], undefined)
+  assert.equal(review.reviewContractBusy.value['0-Q-0'], true)
+  second.resolve(Response.json({ contract: { objective: '新规则' } }))
+  await newRequest
+  assert.deepEqual(review.contractDrafts.value['0-Q-0'], { objective: '新规则' })
+  assert.equal(review.reviewContractBusy.value['0-Q-0'], false)
+})
+
+test('切换需求版本后旧保存失败不能回滚新版本或清除其保存状态', async () => {
+  const first = deferredResponse(), second = deferredResponse()
+  let count = 0
+  const { review, savedAnalysis, messages } = fixture(() => ++count === 1 ? first.promise : second.promise)
+  const oldSave = review.saveQuestionReview(0, 'accepted')
+  savedAnalysis.value = { ...savedAnalysis.value!, id: 'next-version' }
+  review.applyReview(savedAnalysis.value)
+  const newSave = review.saveQuestionReview(0, 'accepted')
+  first.resolve(Response.json({ error: '旧版本失败' }, { status: 500 }))
+  await oldSave
+  assert.equal(review.confirmed.value['0-Q-0'], true)
+  assert.equal(review.reviewSaving.value, true)
+  assert.deepEqual(messages, [])
+  second.resolve(Response.json({ review: { confirmedQuestions: ['0-Q-0'], selectedCases: [], updatedAt: null } }))
+  await newSave
+  assert.equal(review.reviewSaving.value, false)
+  assert.deepEqual(savedAnalysis.value.review.confirmedQuestions, ['0-Q-0'])
+})
+
 function fixture(request: typeof fetch) {
   const savedAnalysis = ref<SavedAnalysis | null>({
     id: 'review-fixture', fileName: '合成.md', fileNames: ['合成.md'], provider: 'fixture', model: 'fixture', createdAt: '2026-10-05T00:00:00Z',

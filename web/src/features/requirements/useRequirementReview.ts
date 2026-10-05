@@ -21,6 +21,8 @@ export function useRequirementReview(
   const contractDrafts = ref<Record<string, ReviewExecutionContract>>({})
   const reviewContractBusy = ref<Record<string, boolean>>({})
   const reviewSaving = ref(false)
+  let versionEpoch = 0
+  const contractRequests = new Map<string, symbol>()
 
   function questionKey(index: number) { return `${activeRequirement.value}-Q-${index}` }
 
@@ -38,6 +40,8 @@ export function useRequirementReview(
     const key = questionKey(index)
     questionDrafts.value[key] = (event.target as HTMLTextAreaElement).value
     delete contractDrafts.value[key]
+    contractRequests.delete(key)
+    reviewContractBusy.value[key] = false
   }
   function questionReviewLabel(key: string) {
     const review = questionReviews.value[key]
@@ -49,6 +53,10 @@ export function useRequirementReview(
   }
 
   function applyReview(analysisValue: SavedAnalysis) {
+    versionEpoch++
+    contractRequests.clear()
+    reviewContractBusy.value = {}
+    reviewSaving.value = false
     confirmed.value = Object.fromEntries((analysisValue.review?.confirmedQuestions ?? []).map(key => [key, true]))
     selectedCases.value = Object.fromEntries((analysisValue.review?.selectedCases ?? []).map(key => [key, true]))
     questionReviews.value = { ...(analysisValue.review?.questionReviews ?? {}) }
@@ -63,6 +71,7 @@ export function useRequirementReview(
   async function saveCurrentReview() {
     if (!savedAnalysis.value || reviewSaving.value) return false
     const sourceAnalysis = savedAnalysis.value
+    const epoch = versionEpoch
     reviewSaving.value = true
     try {
       const response = await request(`/api/analyses/${encodeURIComponent(savedAnalysis.value.id)}/review`, {
@@ -76,20 +85,22 @@ export function useRequirementReview(
       })
       const payload = await response.json() as { review?: SavedAnalysis['review']; error?: string }
       if (!response.ok || !payload.review) throw new Error(payload.error ?? '保存失败')
-      if (savedAnalysis.value === sourceAnalysis) {
+      if (epoch === versionEpoch && savedAnalysis.value === sourceAnalysis) {
         savedAnalysis.value.review = payload.review
         questionReviews.value = { ...(payload.review.questionReviews ?? {}) }
       }
       return true
     } catch (error) {
-      notify(`评审状态保存失败：${error instanceof Error ? error.message : '未知错误'}`)
+      if (epoch === versionEpoch) notify(`评审状态保存失败：${error instanceof Error ? error.message : '未知错误'}`)
       return false
     } finally {
-      reviewSaving.value = false
+      if (epoch === versionEpoch) reviewSaving.value = false
     }
   }
 
   async function saveQuestionReview(index: number, status: 'accepted' | 'edited' | 'deferred') {
+    if (reviewSaving.value) return
+    const epoch = versionEpoch
     const key = questionKey(index)
     const statement = questionDraft(index).trim()
     if (!statement) return notify('请先填写人工最终口径')
@@ -109,7 +120,9 @@ export function useRequirementReview(
     questionReviews.value = nextReviews
     if (status === 'deferred') delete confirmed.value[key]
     else confirmed.value[key] = true
-    if (!await saveCurrentReview()) {
+    const saved = await saveCurrentReview()
+    if (epoch !== versionEpoch) return
+    if (!saved) {
       questionReviews.value = previousReviews
       confirmed.value = previousConfirmed
       return
@@ -117,26 +130,36 @@ export function useRequirementReview(
     notify(status === 'deferred' ? '已暂不确认，相关用例仍保持阻塞' : '人工最终口径已保存，相关用例可进入执行准备')
   }
   async function generateQuestionContract(index: number) {
+    const sourceAnalysis = savedAnalysis.value
+    if (!sourceAnalysis) return notify('请先保存需求分析')
     const key = questionKey(index)
     const finalStatement = questionDraft(index).trim()
     if (!finalStatement) return notify('请先填写人工最终口径')
+    const epoch = versionEpoch
+    const token = Symbol(key)
+    contractRequests.set(key, token)
+    const isCurrent = () => epoch === versionEpoch && savedAnalysis.value === sourceAnalysis && contractRequests.get(key) === token
     reviewContractBusy.value[key] = true
     try {
       const sourceContext = getSourceContext()
-      const response = await request(`/api/analyses/${encodeURIComponent(savedAnalysis.value?.id ?? '')}/review/contract`, {
+      const response = await request(`/api/analyses/${encodeURIComponent(sourceAnalysis.id)}/review/contract`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ questionKey: key, finalStatement, ...sourceContext }),
       })
       const payload = await response.json() as { contract?: ReviewExecutionContract; sourceContext?: { warnings?: string[] }; error?: string }
+      if (!isCurrent()) return
       if (!response.ok || !payload.contract) throw new Error(payload.error ?? '执行规则生成失败')
       contractDrafts.value[key] = payload.contract
       const warnings = payload.sourceContext?.warnings ?? []
       notify(warnings.length ? `执行规则已生成，但源码辅助有提示：${warnings[0]}` : 'AI 已生成执行规则，请检查后保存人工口径')
     } catch (error) {
-      notify(`执行规则生成失败：${error instanceof Error ? error.message : '未知错误'}`)
+      if (isCurrent()) notify(`执行规则生成失败：${error instanceof Error ? error.message : '未知错误'}`)
     } finally {
-      reviewContractBusy.value[key] = false
+      if (isCurrent()) {
+        reviewContractBusy.value[key] = false
+        contractRequests.delete(key)
+      }
     }
   }
   function toggleQuestion(index: number) {
