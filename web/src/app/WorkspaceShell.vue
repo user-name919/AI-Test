@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, QuestionReview, ReviewExecutionContract, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '@quality-ai/contracts'
+import type { AnalysisSummary, ExecutionRecord, LiveExecutionEvent, PrdAnalysis, SavedAnalysis, SavedAutomationPlan, TestEnvironment } from '@quality-ai/contracts'
 import { consumeNdjsonChunk, createLiveExecutionState, reduceLiveExecutionState } from '@quality-ai/contracts/live-execution'
 import { useCaseContracts } from '../composables/useCaseContracts'
 import CaseContractDetails from '../components/CaseContractDetails.vue'
 import CaseAssetWorkbench from '../components/CaseAssetWorkbench.vue'
 import RequirementsPage from '../features/requirements/RequirementsPage.vue'
+import { useRequirementReview } from '../features/requirements/useRequirementReview'
 import { startRequirementExecution } from '../features/executions/startRequirementExecution'
 import WriteAuthorization from '../components/WriteAuthorization.vue'
 import FixedPlanPreview from '../features/executions/FixedPlanPreview.vue'
@@ -91,17 +92,10 @@ const savedAnalysis = ref<SavedAnalysis | null>(null)
 const { contracts: caseContracts, loading: caseContractsLoading, error: caseContractsError, reload: reloadCaseContracts } = useCaseContracts(savedAnalysis)
 const contractUnavailableReason = computed(() => !savedAnalysis.value ? '示例用例不可执行，请先导入并保存需求分析' : caseContractsLoading.value ? '正在读取服务端执行口径' : caseContractsError.value || '服务端未返回此用例，请刷新执行口径')
 const apiConfigured = ref(false)
-const confirmed = ref<Record<string, boolean>>({})
-const selectedCases = ref<Record<string, boolean>>({})
-const questionDrafts = ref<Record<string, string>>({})
-const questionReviews = ref<Record<string, QuestionReview>>({})
-const contractDrafts = ref<Record<string, ReviewExecutionContract>>({})
-const reviewContractBusy = ref<Record<string, boolean>>({})
 const notice = ref('')
 const noticeKind = ref<NoticeKind>('info')
 const helpOpen = ref(false)
 const analyzing = ref(false)
-const reviewSaving = ref(false)
 const executionRunning = ref(false)
 const latestExecution = ref<ExecutionRecord | null>(null)
 const latestAutomationPlan = ref<SavedAutomationPlan | null>(null)
@@ -164,6 +158,18 @@ const invalidRequirement = computed(() => {
 })
 const states = computed(() => requirement.value?.pageStates ?? [])
 const questions = computed(() => requirement.value?.questions ?? [])
+const {
+  confirmed, selectedCases, contractDrafts, reviewContractBusy, reviewSaving,
+  questionKey, questionResolved, questionDraft, updateQuestionDraft, questionReviewLabel,
+  applyReview, saveCurrentReview, saveQuestionReview, generateQuestionContract, toggleQuestion,
+} = useRequirementReview({
+  savedAnalysis, activeRequirement, questions, notify: toast,
+  getSourceContext: () => ({
+    caseKey: caseAssets.value.find(item => item.requirementIndex === activeRequirement.value && item.item.blockedByQuestion)?.key,
+    projectId: projectId.value || undefined,
+    targetUrl: targetUrl.value || undefined,
+  }),
+})
 const cases = computed(() => requirement.value?.testCases ?? [])
 const totalQuestions = computed(() => requirements.value.reduce((sum, item) => sum + item.questions.length, 0))
 const totalCases = computed(() => requirements.value.reduce((sum, item) => sum + item.testCases.length, 0))
@@ -223,14 +229,8 @@ const planDisabledReason = computed(() => {
 })
 
 function requirementCode(index: number) { return `REQ-${String(index + 1).padStart(3, '0')}` }
-function questionKey(index: number) { return `${activeRequirement.value}-Q-${index}` }
 function caseKey(index: number) { return `${activeRequirement.value}-TC-${index}` }
 function caseCode(index: number) { return `TC-${String(index + 1).padStart(3, '0')}` }
-function questionResolved(key: string) {
-  const review = questionReviews.value[key]
-  if (review) return review.status === 'accepted' || review.status === 'edited'
-  return Boolean(confirmed.value[key])
-}
 function caseIsBlocked(requirementIndex: number, testCase: PrdAnalysis['requirements'][number]['testCases'][number]) {
   const caseIndex = requirements.value[requirementIndex]?.testCases.indexOf(testCase)
   return !caseContracts.value[`${requirementIndex}-TC-${caseIndex}`]?.readiness.agent.executable
@@ -241,23 +241,6 @@ function openRequirement(index: number) {
   void router.push({ name: 'requirement-detail', params: { id: savedAnalysis.value.id }, query: { sourceId: savedAnalysis.value.id, requirement: String(index) } })
 }
 function openCaseAsset(requirementIndex: number) { activeRequirement.value = requirementIndex; activeTab.value = 'cases'; workspaceView.value = 'version' }
-function questionDraft(index: number) {
-  const key = questionKey(index)
-  return questionDrafts.value[key] ?? questions.value[index]?.suggestion ?? ''
-}
-function updateQuestionDraft(index: number, event: Event) {
-  const key = questionKey(index)
-  questionDrafts.value[key] = (event.target as HTMLTextAreaElement).value
-  delete contractDrafts.value[key]
-}
-function questionReviewLabel(key: string) {
-  const review = questionReviews.value[key]
-  if (review?.status === 'accepted') return '已采纳 AI 建议'
-  if (review?.status === 'edited') return '已保存人工口径'
-  if (review?.status === 'deferred') return '暂不确认'
-  if (contractDrafts.value[key]) return '执行规则待人工确认'
-  return '尚未形成最终口径'
-}
 function closeLiveExecution() { liveExecution.value = { ...liveExecution.value, visible: false } }
 async function openLiveReport() {
   const execution = liveExecution.value.execution
@@ -366,109 +349,6 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768))
   }
   return window.btoa(binary)
-}
-
-function applyReview(analysisValue: SavedAnalysis) {
-  confirmed.value = Object.fromEntries((analysisValue.review?.confirmedQuestions ?? []).map(key => [key, true]))
-  selectedCases.value = Object.fromEntries((analysisValue.review?.selectedCases ?? []).map(key => [key, true]))
-  questionReviews.value = { ...(analysisValue.review?.questionReviews ?? {}) }
-  const drafts: Record<string, string> = {}
-  analysisValue.result.requirements.forEach((item, requirementIndex) => item.questions.forEach((question, questionIndex) => {
-    drafts[`${requirementIndex}-Q-${questionIndex}`] = questionReviews.value[`${requirementIndex}-Q-${questionIndex}`]?.finalStatement ?? question.suggestion
-  }))
-  questionDrafts.value = drafts
-  contractDrafts.value = {}
-}
-
-async function saveCurrentReview() {
-  if (!savedAnalysis.value || reviewSaving.value) return false
-  const sourceAnalysis = savedAnalysis.value
-  reviewSaving.value = true
-  try {
-    const response = await fetch(`/api/analyses/${encodeURIComponent(savedAnalysis.value.id)}/review`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        confirmedQuestions: Object.keys(confirmed.value).filter(key => confirmed.value[key]),
-        selectedCases: Object.keys(selectedCases.value).filter(key => selectedCases.value[key]),
-        questionReviews: questionReviews.value,
-      }),
-    })
-    const payload = await response.json() as { review?: SavedAnalysis['review']; error?: string }
-    if (!response.ok || !payload.review) throw new Error(payload.error ?? '保存失败')
-    if (savedAnalysis.value === sourceAnalysis) {
-      savedAnalysis.value.review = payload.review
-      questionReviews.value = { ...(payload.review.questionReviews ?? {}) }
-    }
-    return true
-  } catch (error) {
-    toast(`评审状态保存失败：${error instanceof Error ? error.message : '未知错误'}`)
-    return false
-  } finally {
-    reviewSaving.value = false
-  }
-}
-
-async function saveQuestionReview(index: number, status: 'accepted' | 'edited' | 'deferred') {
-  const key = questionKey(index)
-  const statement = questionDraft(index).trim()
-  if (!statement) return toast('请先填写人工最终口径')
-  const previousReviews = questionReviews.value
-  const previousConfirmed = { ...confirmed.value }
-  const nextReviews = { ...questionReviews.value }
-  const existing = nextReviews[key]
-  const statementChanged = existing?.finalStatement.trim() !== statement
-  const contract = contractDrafts.value[key] ?? (statementChanged ? undefined : existing?.executionContract)
-  if (status !== 'deferred' && contract?.uncertainties.length) return toast('执行规则仍有不确定项，请补充人工口径后再确认')
-  nextReviews[key] = {
-    status,
-    finalStatement: statement,
-    executionContract: contract,
-    updatedAt: existing?.updatedAt ?? null,
-  }
-  questionReviews.value = nextReviews
-  if (status === 'deferred') delete confirmed.value[key]
-  else confirmed.value[key] = true
-  if (!await saveCurrentReview()) {
-    questionReviews.value = previousReviews
-    confirmed.value = previousConfirmed
-    return
-  }
-  toast(status === 'deferred' ? '已暂不确认，相关用例仍保持阻塞' : '人工最终口径已保存，相关用例可进入执行准备')
-}
-async function generateQuestionContract(index: number) {
-  const key = questionKey(index)
-  const finalStatement = questionDraft(index).trim()
-  if (!finalStatement) return toast('请先填写人工最终口径')
-  reviewContractBusy.value[key] = true
-  try {
-    const caseKey = caseAssets.value.find(item => item.requirementIndex === activeRequirement.value && item.item.blockedByQuestion)?.key
-    const response = await fetch(`/api/analyses/${encodeURIComponent(savedAnalysis.value?.id ?? '')}/review/contract`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ questionKey: key, finalStatement, caseKey, projectId: projectId.value || undefined, targetUrl: targetUrl.value || undefined }),
-    })
-    const payload = await response.json() as { contract?: ReviewExecutionContract; sourceContext?: { warnings?: string[] }; error?: string }
-    if (!response.ok || !payload.contract) throw new Error(payload.error ?? '执行规则生成失败')
-    contractDrafts.value[key] = payload.contract
-    const warnings = payload.sourceContext?.warnings ?? []
-    toast(warnings.length ? `执行规则已生成，但源码辅助有提示：${warnings[0]}` : 'AI 已生成执行规则，请检查后保存人工口径')
-  } catch (error) {
-    toast(`执行规则生成失败：${error instanceof Error ? error.message : '未知错误'}`)
-  } finally {
-    reviewContractBusy.value[key] = false
-  }
-}
-function toggleQuestion(index: number) {
-  const key = questionKey(index)
-  const review = questionReviews.value[key]
-  if (confirmed.value[key] || review?.status === 'accepted' || review?.status === 'edited') {
-    void saveQuestionReview(index, 'deferred')
-    return
-  }
-  const suggestion = questions.value[index]?.suggestion ?? ''
-  const statement = questionDraft(index).trim()
-  void saveQuestionReview(index, statement === suggestion.trim() ? 'accepted' : 'edited')
 }
 
 async function loadSavedAnalysis() {
