@@ -20,6 +20,7 @@ import { validateFixedAssertionCoverage } from './fixed-assertion-coverage'
 import { BrowserPageSession } from './browser-page-session'
 import { capturePopup } from './capture-popup'
 import { ActionOutcomeUnknownError, attemptInputAction } from './action-outcome'
+import { waitForInputReady } from './input-readiness'
 import { guardWriteAction, WriteActionBlockedError } from './write-action-guard'
 import type { WriteGuardEvidence } from '@quality-ai/contracts'
 import { requireWriteAuthorization } from './write-authorization'
@@ -228,10 +229,12 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               await attemptInputAction('press',()=>locator.press(step.key,{timeout:10000}))
             } else if (step.action === 'selectOption') {
               validateFixedSelectData(step.value, casePlan.contract)
-              await locatorFor(page, step.locator).selectOption(
+              const locator = locatorFor(page, step.locator)
+              await waitForInputReady(locator, { action: 'selectOption', value: step.value, optionBy: step.optionBy ?? 'value' }, options.signal)
+              await attemptInputAction('selectOption', () => locator.selectOption(
                 step.optionBy === 'label' ? { label: step.value } : { value: step.value },
                 { timeout: 10_000 },
-              )
+              ))
             } else if (step.action === 'uploadFile') {
               validateFixtureReference(step.fixtureId, casePlan.contract)
               let fixture
@@ -240,12 +243,16 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
               options.signal?.throwIfAborted()
               checkpoint.usedFixtures ??= []
               checkpoint.usedFixtures.push(fixture.metadata)
-              await locatorFor(page, step.locator).setInputFiles({ name: fixture.metadata.name, mimeType: fixture.metadata.mimeType, buffer: fixture.buffer }, { timeout: 10_000 })
+              const locator = locatorFor(page, step.locator)
+              await waitForInputReady(locator, step, options.signal)
+              await attemptInputAction('uploadFile', () => locator.setInputFiles({ name: fixture.metadata.name, mimeType: fixture.metadata.mimeType, buffer: fixture.buffer }, { timeout: 10_000 }))
             } else if (step.action === 'fill') {
               const value=step.valueRef?checkpoint.resolvedDataBindings.find(binding=>binding.bindingId===step.valueRef)?.value:step.value
               if(value===undefined)throw new RuntimeDataBindingBlockedError(`输入引用尚未解析：${step.valueRef}`)
               if(!step.valueRef&&casePlan.contract?.dataBindings.some(binding=>binding.mode==='runtime_dom')&&!casePlan.contract.dataBindings.some(binding=>binding.mode==='fixture'?binding.fixture?.value===value:binding.mode==='manual'&&binding.manual?.value===value))throw new RuntimeDataBindingBlockedError('运行时数据不能使用未确认的固定输入')
-              await locatorFor(page, step.locator).fill(value, { timeout: 10_000 })
+              const locator = locatorFor(page, step.locator)
+              await waitForInputReady(locator, step, options.signal)
+              await attemptInputAction('fill', () => locator.fill(value, { timeout: 10_000 }))
               if(step.valueRef){
                 const binding=casePlan.contract?.dataBindings.find(item=>item.id===step.valueRef)
                 const resolved=checkpoint.resolvedDataBindings.find(item=>item.bindingId===step.valueRef)

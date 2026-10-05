@@ -57,6 +57,7 @@ node --import tsx --test api/src/agent-pages.test.ts api/src/agent-frame.test.ts
 node --import tsx --test api/src/fixed-pages.test.ts
 node --import tsx --test api/src/action-outcome.test.ts
 node --import tsx --test api/src/checkbox-outcome.test.ts
+node --import tsx --test api/src/value-input-outcome.test.ts
 ```
 
 这些测试使用真实本地 Chromium 和合成页面，覆盖观察截断、引用稳定性、键盘/悬停/滚动/局部断言、未解析数据引用与不安全键名拒绝。不调用公司模型，不证明模型在真实企业页面上的动作选择正确。具体运行结果记在《执行进度》。其他已有故事的历史证据与局限也保留在进度中，本次不把未重跑项写为刚验收通过。
@@ -67,6 +68,6 @@ node --import tsx --test api/src/checkbox-outcome.test.ts
 2. 表格/弹窗作用域：固定scope与局部文本、动态容器引用/父链及一次局部重采集已接入并验证背景反例；仍需复杂虚拟列表验证，不宣称所有表格场景完成。
 3. 受控上传下载：附件登记API/UI及两模式单文件上传已接入，继续下载产物与上传控件覆盖；模型只选择获准附件 ID，不接受任意本机路径。下载完成与内容验证分开，失败保留证据。
 4. 页面/框架上下文：先完善引用身份和生命周期，再支持 iframe/新页；切换后旧引用拒绝，不静默操作原页面。
-5. 有副作用动作：声明范围/当次授权/风险DOM动作引用已接通；继续其他输入与专用动作的结果不明处理，技术超时后核对实际状态，不盲目重复提交。
+5. 有副作用动作：声明范围/当次授权/风险DOM动作引用已接通；fill/selectOption/uploadFile同样区分只读准备失败和实际调用结果不明，后者停止批次。专用下载/开页触发仍需补齐；技术超时后核对实际状态，不盲目重复提交。输入后的业务断言仍是独立失败，不因此停止整批。
 
 每项以实际生产链路和本地正反例验收，不把新增 schema、提示词或按钮单独视为交付。尚未接入的必需能力应明确受阻/人工验证，不能删除该场景或替换为更容易通过的断言。G7 未完成；本矩阵是后续实现依据，不是缩减目标后的交付结论。

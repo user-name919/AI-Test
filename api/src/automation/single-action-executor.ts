@@ -13,6 +13,7 @@ import type { BrowserPageSession } from './browser-page-session'
 import { guardWriteAction, WriteActionBlockedError } from './write-action-guard'
 import type { ExecutionWriteAuthorization, WriteGuardEvidence } from '@quality-ai/contracts'
 import { ActionOutcomeUnknownError, attemptInputAction } from './action-outcome'
+import { waitForInputReady } from './input-readiness'
 
 function safeArtifactName(value: string) {
   return value.replace(/[^\w\u4e00-\u9fa5-]/g, '_').slice(0, 80) || 'screenshot'
@@ -102,7 +103,8 @@ export class SingleActionExecutor {
         try { fixture = await loadTestFixture(action.fixtureId) }
         catch { throw new RuntimeDataBindingBlockedError('已登记附件缺失、已改变或不可读取，请回到测试附件检查') }
         usedFixture = fixture.metadata
-        await locator.setInputFiles({ name: fixture.metadata.name, mimeType: fixture.metadata.mimeType, buffer: fixture.buffer }, { timeout: 10000 })
+        await waitForInputReady(locator, action, this.signal)
+        await attemptInputAction('uploadFile', () => locator.setInputFiles({ name: fixture.metadata.name, mimeType: fixture.metadata.mimeType, buffer: fixture.buffer }, { timeout: 10000 }))
       } else if (action.action === 'goto') {
         const destination = new URL(action.path, this.baseUrl)
         const initialTarget = new URL(this.baseUrl)
@@ -118,9 +120,15 @@ export class SingleActionExecutor {
         this.signal?.throwIfAborted()
         await attemptInputAction('click',()=>locator.click({timeout:10000}))
       } else if (action.action === 'fill') {
-        await this.registry.resolve(snapshotId, action.elementRef).fill(actionValue(action, bindings), { timeout: 10_000 })
+        const value = actionValue(action, bindings)
+        const locator = this.registry.resolve(snapshotId, action.elementRef)
+        await waitForInputReady(locator, action, this.signal)
+        await attemptInputAction('fill', () => locator.fill(value, { timeout: 10_000 }))
       } else if (action.action === 'selectOption') {
-        await this.registry.resolve(snapshotId, action.elementRef).selectOption(actionValue(action, bindings), { timeout: 10_000 })
+        const value = actionValue(action, bindings)
+        const locator = this.registry.resolve(snapshotId, action.elementRef)
+        await waitForInputReady(locator, { action: 'selectOption', value, optionBy: 'valueOrLabel' }, this.signal)
+        await attemptInputAction('selectOption', () => locator.selectOption(value, { timeout: 10_000 }))
       } else if (action.action === 'check' || action.action === 'uncheck') {
         const locator = this.registry.resolve(snapshotId, action.elementRef)
         await locator[action.action]({ trial: true, timeout: 10_000 })
@@ -216,9 +224,9 @@ export class SingleActionExecutor {
       return toolResultSchema.parse({
         ok: false,
         ...classified,
-        ...(error instanceof ActionOutcomeUnknownError ? {retryable:false,code:'action_outcome_unknown'} : {}),
         ...(action.action === 'uploadFile' ? { retryable: false, code: error instanceof RuntimeDataBindingBlockedError ? 'fixture_unavailable' : 'upload_failed', usedFixture } : {}),
         ...(action.action === 'download' ? { retryable: false, code: 'download_failed' } : {}),
+        ...(error instanceof ActionOutcomeUnknownError ? {retryable:false,code:'action_outcome_unknown'} : {}),
         ...(error instanceof WriteActionBlockedError ? {retryable:false,code:'write_authorization_required',writeGuard:error.evidence} : {writeGuard}),
         durationMs: Date.now() - startedAt,
         pageChanged: previousUrl !== this.page.url(),
