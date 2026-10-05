@@ -191,7 +191,10 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             } else if(step.action==='openPage') {
               if(aliases.has(step.pageAlias))throw new RuntimeDataBindingBlockedError('页面别名已使用，禁止重新绑定或重复点击')
               aliases.set(step.pageAlias, undefined)
-              const opened = await capturePopup(page, ()=>locatorFor(page,step.locator).click({timeout:10000}), options.signal)
+              const locator = locatorFor(page, step.locator)
+              await locator.click({ trial: true, timeout: 10000 })
+              options.signal?.throwIfAborted()
+              const opened = await capturePopup(page, () => attemptInputAction('openPage 点击', () => locator.click({ timeout: 10000 })), options.signal)
               openedPage = {...pages.identity(opened),alias:step.pageAlias}
               try { pages.assertAllowed(opened) }
               catch(error) { throw new RuntimeDataBindingBlockedError(error instanceof Error?error.message:String(error)) }
@@ -210,7 +213,10 @@ export async function runAutomationPlan(input: unknown, storageStatePath?: strin
             } else if (step.action === 'download') {
               checkpoint.downloads ??= []
               if (checkpoint.downloads.some(item => item.downloadId === step.downloadId)) throw new Error('同一用例下载 ID 不得重复使用，请为新下载明确不同 ID')
-              checkpoint.downloads.push(await captureDownload(page, () => locatorFor(page, step.locator).click({ timeout: 10000 }), caseDirectory, step.downloadId, options.signal))
+              const locator = locatorFor(page, step.locator)
+              await locator.click({ trial: true, timeout: 10000 })
+              options.signal?.throwIfAborted()
+              checkpoint.downloads.push(await captureDownload(page, () => attemptInputAction('download 点击', () => locator.click({ timeout: 10000 })), caseDirectory, step.downloadId, options.signal))
             } else if (step.action === 'expectDownload') {
               await assertDownload(checkpoint.downloads?.find(item => item.downloadId === step.downloadId), step)
               checkpoint.passedAssertions.push(step.assertionIndex===undefined?`step-${index+1}`:`assertion-${step.assertionIndex}`)

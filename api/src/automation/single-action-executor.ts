@@ -92,7 +92,9 @@ export class SingleActionExecutor {
       } else if (action.action === 'download') {
         if (this.downloads.has(action.downloadId)) throw new Error('同一用例下载 ID 不得重复使用')
         const locator = this.registry.resolve(snapshotId, action.elementRef)
-        download = await captureDownload(this.page, () => locator.click({ timeout: 10000 }), this.artifactDirectory, action.downloadId, this.signal)
+        await locator.click({ trial: true, timeout: 10000 })
+        this.signal?.throwIfAborted()
+        download = await captureDownload(this.page, () => attemptInputAction('download 点击', () => locator.click({ timeout: 10000 })), this.artifactDirectory, action.downloadId, this.signal)
         this.downloads.set(action.downloadId, download)
       } else if (action.action === 'expectDownload') {
         await assertDownload(this.downloads.get(action.downloadId), action)
