@@ -3,7 +3,7 @@ import type { CaseReview, ExecutionCaseSnapshot, ReviewState, SavedAnalysis } fr
 import type { CaseAsset, CaseAssetRevision } from '@quality-ai/contracts/cases'
 import { database } from '../../storage/database'
 import { getAnalysisById, saveReview } from '../requirements/repository'
-import { resolveCaseExecutionContract } from '../../review-execution-context'
+import { resolveCaseExecutionContract } from './contract-resolver'
 
 interface AssetRow {
   id: string

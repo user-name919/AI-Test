@@ -4,7 +4,7 @@ import type { RegressionReview } from '@quality-ai/contracts/regressions'
 import { database } from '../../storage/database'
 import { getRegression } from '../regressions/jobs'
 import { getRegressionReviews, regressionReviewItems } from '../regressions/review'
-import { containsUnprovenDataLiteral } from '../../review-execution-context'
+import { containsUnprovenDataLiteral } from './contract-resolver'
 
 function assets(review: RegressionReview, deploymentVerified = false): CaseAsset[] {
   if (review.content.status !== 'confirmed') return []

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { CaseAsset } from '@quality-ai/contracts/cases'
 import type { DesignPublication } from '@quality-ai/contracts/case-design'
 import { database } from '../../storage/database'
-import { containsUnprovenDataLiteral } from '../../review-execution-context'
+import { containsUnprovenDataLiteral } from './contract-resolver'
 
 function assets(publication:DesignPublication):CaseAsset[]{
   return publication.snapshot.cases.map((item,index)=>{

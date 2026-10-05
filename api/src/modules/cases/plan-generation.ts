@@ -1,5 +1,5 @@
 import { automationPlanSchema, type AutomationPlan, type SavedAnalysis } from '@quality-ai/contracts'
-import { resolveCaseExecutionContract } from '../../review-execution-context'
+import { resolveCaseExecutionContract } from './contract-resolver'
 import { generateFixedPlan } from './fixed-plan-model'
 
 export async function generateCasePlans(analysis: SavedAnalysis, caseKeys: string[], targetUrl: string): Promise<AutomationPlan> {

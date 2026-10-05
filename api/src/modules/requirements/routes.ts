@@ -6,7 +6,7 @@ import { getAnalysisById, getLatestAnalysis, listAnalyses, saveAnalysis } from '
 import { saveAnalysisReviewWithHistory } from '../cases/repository'
 import { analyzePrd } from '../../model'
 import { parseSourceDocuments } from '../../source-documents'
-import { collectReviewSourceContext, generateReviewExecutionContract } from '../../review-contract'
+import { collectReviewSourceContext, generateReviewExecutionContract } from './review-contract'
 import { getProjectProvider } from '../../integrations/project-knowledge/registry'
 
 
