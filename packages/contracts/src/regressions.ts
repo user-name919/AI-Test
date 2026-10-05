@@ -177,3 +177,8 @@ export interface ManagedWorktreeStatus {
   canRecover?:boolean
   reason:string
 }
+
+export interface DeploymentBaseline {
+  environmentName: string
+  confirmation: DeploymentConfirmation
+}

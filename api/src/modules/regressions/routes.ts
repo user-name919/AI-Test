@@ -4,12 +4,17 @@ import { json, readJson } from '../../http/response'
 import { freezeChangeSet, getChangeSet, listChangeSets, previewChangeSet } from './change-sets'
 import { createRegression, getRegression, listRegressions, cancelRegression } from './jobs'
 import { getRegressionReviews, regressionReviewItems, saveRegressionReview } from './review'
-import { listDeploymentConfirmations, saveDeploymentConfirmation } from './deployments'
+import { listDeploymentConfirmations, saveDeploymentConfirmation, listDeploymentBaselines } from './deployments'
 import { recommendRegressionCases } from './case-reuse'
 import { getManagedWorktreeStatus, removeUnusedChangeSetWorktree, recoverChangeSetWorktree } from '../../integrations/git/worktree-manager'
 
 export async function handleRegressionRoutes(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+  if (pathname === '/api/regression-baselines' && request.method === 'GET') {
+    const projectId = new URL(request.url!, 'http://localhost').searchParams.get('projectId')
+    if (!projectId || projectId.length > 200) return json(response, 400, { error: '请选择源码项目' })
+    return json(response, 200, { baselines: listDeploymentBaselines(projectId) })
+  }
   const reuseMatch=pathname.match(/^\/api\/regressions\/([a-f0-9-]{36})\/reuse-candidates$/i)
   if(reuseMatch&&request.method==='GET'){
     const analysis=getRegression(reuseMatch[1]!)

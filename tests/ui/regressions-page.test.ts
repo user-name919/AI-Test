@@ -23,6 +23,7 @@ test('回归页面显式范围预览、刷新冻结、启动取消和源码证�
       const path=new URL(route.request().url()).pathname
       let payload:unknown={}
       if(path==='/api/projects')payload={projects:[{id:'fixture',name:'示例项目',connected:true}]}
+      else if(path==='/api/regression-baselines')payload={baselines:[{environmentName:'合成环境',confirmation:{id:'baseline',deployedSha:base,targetUrl:'http://fixture.test',createdAt:'2026-10-05',confirmedBy:'合成确认人',note:'发布登记'}}]}
       else if(path.endsWith('/worktree/remove')){
         removals++;assert.deepEqual(route.request().postDataJSON(),{confirmed:true,expectedSha:sha})
         if(removals===1){await route.fulfill({status:409,json:{error:'仍有任务引用源码快照，不能清理'}});return}
@@ -57,6 +58,13 @@ test('回归页面显式范围预览、刷新冻结、启动取消和源码证�
     assert.equal(await previewButton.isDisabled(),true)
     await page.getByLabel('源码项目',{exact:true}).selectOption('fixture')
     await page.getByLabel('目标本地分支或 SHA',{exact:true}).fill('feature')
+    await page.getByRole('button',{name:'采用此部署 SHA 为基线',exact:true}).click()
+    assert.equal(await page.getByLabel('基线本地分支或 SHA',{exact:true}).inputValue(),base)
+    assert.match(await page.getByRole('region',{name:'推荐部署基线'}).innerText(),/合成确认人/)
+    await page.setViewportSize({width:390,height:844})
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1))
+    await page.screenshot({path:'/private/tmp/quality-ai-deployment-baseline.png',fullPage:true})
+    await page.setViewportSize({width:1440,height:1000})
     await page.getByLabel('基线本地分支或 SHA',{exact:true}).fill('main')
     page.once('dialog',dialog=>dialog.dismiss())
     await page.getByRole('link',{name:'返回回归任务列表'}).click()

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { deploymentConfirmationSchema, type DeploymentConfirmation } from '@quality-ai/contracts/regressions'
+import { deploymentConfirmationSchema, type DeploymentConfirmation, type DeploymentBaseline } from '@quality-ai/contracts/regressions'
 import { database } from '../../storage/database'
 import { getRegression } from './jobs'
 import { getRegressionReviews } from './review'
@@ -14,6 +14,20 @@ export function getDeploymentConfirmation(id: string): DeploymentConfirmation | 
 }
 export function listDeploymentConfirmations(regressionId: string): DeploymentConfirmation[] {
   return (database.prepare('SELECT record_json FROM regression_deployments WHERE regression_id=? ORDER BY rowid DESC').all(regressionId) as Array<{ record_json: string }>).map(row => JSON.parse(row.record_json))
+}
+
+/** Only the latest registration per environment can recommend a baseline; never fall back past an unverified update. */
+export function listDeploymentBaselines(projectId: string): DeploymentBaseline[] {
+  const rows = database.prepare(`SELECT record_json FROM regression_deployments
+    WHERE rowid IN (SELECT MAX(rowid) FROM regression_deployments GROUP BY environment_id)
+    ORDER BY rowid DESC`).all() as Array<{ record_json: string }>
+  return rows.flatMap(row => {
+    const confirmation: DeploymentConfirmation = JSON.parse(row.record_json)
+    if (confirmation.projectId !== projectId || confirmation.status !== 'matched' || !confirmation.deployedSha) return []
+    const environment = getEnvironmentById(confirmation.environmentId)
+    if (!environment || environment.baseUrl !== confirmation.environmentBaseUrl || environment.targetUrl !== confirmation.environmentTargetUrl) return []
+    return [{ environmentName: environment.name, confirmation }]
+  })
 }
 export function saveDeploymentConfirmation(regressionId: string, input: unknown): DeploymentConfirmation {
   const request = deploymentConfirmationSchema.parse(input)

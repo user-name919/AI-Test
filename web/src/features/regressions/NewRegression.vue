@@ -4,6 +4,7 @@ import { useRouter, useRoute, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vu
 import type { ChangeComparison, ChangeSet, LocalGitRefs, RegressionAnalysis } from '@quality-ai/contracts/regressions'
 import { regressionRequest } from './api'
 import ChangeSetView from './ChangeSetView.vue'
+import DeploymentBaselinePicker from './DeploymentBaselinePicker.vue'
 
 const router=useRouter();const route=useRoute()
 const projects=ref<Array<{id:string;name:string;connected:boolean;error?:string}>>([])
@@ -73,6 +74,7 @@ onMounted(async()=>{
       <label>目标本地分支或 SHA<input v-model="targetRef" list="regression-local-branches" required placeholder="例如 feature/refactor 或完整 SHA" @input="invalidate" /></label>
       <label v-if="mode!=='selected_commits'">基线本地分支或 SHA<input v-model="baseRef" list="regression-local-branches" required placeholder="例如上次部署 SHA" @input="invalidate" /></label>
       <label v-else>指定提交 SHA<textarea v-model="commits" required rows="4" @input="invalidate" /></label>
+      <DeploymentBaselinePicker v-if="mode==='endpoints'" :project-id="projectId" @adopt="sha=>{baseRef=sha;invalidate()}" />
       <p v-if="branches.truncated" class="reg-warning">仅展示前 500 个本地分支；可以手动填写其他本地分支或 SHA。</p>
       <button :disabled="busy||!ready">{{ busy?'处理中…':'预览变更范围' }}</button><span v-if="!ready"> 请先选择项目、目标和明确的比较范围。</span>
     </fieldset></form>
