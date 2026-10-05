@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createRegressionSchema, type RegressionAnalysis } from '@quality-ai/contracts/regressions'
 import { database } from '../../storage/database'
-import { getModelConfig } from '../../model-config'
+import { getModelConfig } from '../../integrations/model/config'
 import { getChangeSet } from './change-sets'
 import { analyzeChangeSetSource } from './source-impact'
 import { generateRegressionSuggestions, regressionPromptVersion } from './suggestions'

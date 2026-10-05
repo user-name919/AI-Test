@@ -1,8 +1,8 @@
 import { jsonrepair } from 'jsonrepair'
 import { agentDecisionSchema, type AgentDecision } from '@quality-ai/contracts'
 import type { AgentDecisionInput, AgentDecisionProvider } from './test-agent'
-import { getModelConfig, type ModelConfig } from '../model-config'
-import { ResponsesModelClient, type ModelMessage } from '../model-client'
+import { getModelConfig, type ModelConfig } from '../integrations/model/config'
+import { ResponsesModelClient, type ModelMessage } from '../integrations/model/responses-client'
 import { RuntimeDataBindingBlockedError } from './test-data-binding'
 
 interface ResponsesDecisionProviderOptions extends Partial<ModelConfig> {

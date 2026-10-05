@@ -1,7 +1,7 @@
 import { jsonrepair } from 'jsonrepair'
 import { reviewExecutionContractSchema, type RequirementAnalysis, type ReviewExecutionContract } from '@quality-ai/contracts'
-import { getModelConfig } from './model-config'
-import { ResponsesModelClient, type ModelMessage } from './model-client'
+import { getModelConfig } from './integrations/model/config'
+import { ResponsesModelClient, type ModelMessage } from './integrations/model/responses-client'
 import type { ProjectKnowledgeProvider, RouteKnowledge, SourceContextFile } from './integrations/project-knowledge/types'
 
 export interface ReviewContractInput {

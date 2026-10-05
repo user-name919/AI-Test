@@ -1,7 +1,7 @@
 import { jsonrepair } from 'jsonrepair'
 import { factExtractionSchema, type CaseDesign, type DesignRun, type DocumentBlock } from '@quality-ai/contracts/case-design'
-import { ResponsesModelClient } from '../../model-client'
-import type { ModelConfig } from '../../model-config'
+import { ResponsesModelClient } from '../../integrations/model/responses-client'
+import type { ModelConfig } from '../../integrations/model/config'
 import { validateEvidence, validateFactEvidence } from './evidence-validator'
 import type { LoadedDesignSkill } from './skill-loader'
 

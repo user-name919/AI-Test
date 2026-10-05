@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ResponsesModelClient } from './model-client'
+import { ResponsesModelClient as IntegratedResponsesClient } from './integrations/model/responses-client'
+import { getModelConfig } from './model-config'
+import { getModelConfig as integratedModelConfig } from './integrations/model/config'
+
+test('旧模型入口与集成模块导出同一实现，冻结生成器无需改写', () => {
+  assert.equal(ResponsesModelClient, IntegratedResponsesClient)
+  assert.equal(getModelConfig, integratedModelConfig)
+})
 
 const config = {
   apiKey: 'test-key', baseUrl: 'http://gateway.test/v1', model: 'test-model', protocol: 'openai-responses' as const,

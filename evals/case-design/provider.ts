@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { analyzePrd, type SourceDocument } from '../../api/src/model'
-import { getModelConfig } from '../../api/src/model-config'
+import { getModelConfig } from '../../api/src/integrations/model/config'
 import { createEvidenceDocuments } from '../../api/src/modules/case-design/documents'
 import { extractFacts, factsPromptVersion } from '../../api/src/modules/case-design/fact-extractor'
 import { planFromFacts, modelingPromptVersion, planningPromptVersion } from '../../api/src/modules/case-design/scenario-planner'

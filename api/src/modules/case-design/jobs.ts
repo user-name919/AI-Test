@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { DesignRun } from '@quality-ai/contracts/case-design'
-import { getModelConfig, type ModelConfig } from '../../model-config'
+import { getModelConfig, type ModelConfig } from '../../integrations/model/config'
 import { extractFacts, factsPromptVersion } from './fact-extractor'
 import { getCaseDesign, listDesignRuns, recoverInterruptedDesignRuns, saveDesignRun } from './repository'
 import { loadStageSkills, type LoadedDesignSkill } from './skill-loader'
