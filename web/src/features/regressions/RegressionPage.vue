@@ -73,6 +73,16 @@ onUnmounted(()=>{epoch++;clearTimeout(timer)})
       <ChangeSetView v-if="changeSet" :change-set="changeSet" />
       <WorktreeStatus v-if="changeSet" :key="changeSet.id" :change-set-id="changeSet.id" />
       <RegressionReview v-if="analysis.generation&&!['queued','running'].includes(analysis.status)" :key="analysis.id" :regression-id="analysis.id" :project-id="analysis.projectId" :target-sha="analysis.targetSha" />
+      <section v-if="analysis.generation?.memoryReferences?.length" class="reg-card">
+        <h2>本次分析参考的历史经验</h2>
+        <p>仅选取同项目、差异两端固定版本中人工已采纳的经验，最多5条。来源页面不一定是本次目标页面；这些是风险线索，不是业务规则、源码证据或通过结论。以下保留分析时的内容和审核版本。</p>
+        <details v-for="memory in analysis.generation.memoryReferences" :key="memory.id">
+          <summary>经验 {{ memory.id }} · 审核版本 {{ memory.revision }}</summary>
+          <p>{{ memory.lesson }}</p>
+          <p>来源 SHA：{{ memory.sourceCommit }}<br />来源页面：{{ memory.targetUrl }}</p>
+          <RouterLink :to="`/executions/${encodeURIComponent(memory.executionId)}`">查看来源执行报告</RouterLink>
+        </details>
+      </section>
       <section v-if="analysis.sourceImpact" class="reg-card"><h2>源码影响候选</h2><p>基于静态 import 等词法线索，可能误匹配；不是完整调用图，也不是已验证页面行为。</p><ul class="reg-warning"><li v-for="warning in analysis.sourceImpact.warnings" :key="warning">{{ warning }}</li></ul>
         <p v-if="analysis.sourceImpact.skippedShas.length" class="reg-warning">未分析版本：{{ analysis.sourceImpact.skippedShas.join('、') }}</p>
         <details v-for="tree in analysis.sourceImpact.trees" :key="tree.sha"><summary>{{ tree.sha.slice(0,12) }} · 影响候选 {{ tree.affectedFiles.length }} 个 · 未解析 {{ tree.unresolved.length }} 项 · 跳过 {{ tree.skippedFiles.length }} 个文件</summary><h3>候选影响文件</h3><ul><li v-for="path in tree.affectedFiles" :key="path">{{ path }}</li></ul><h3>引用线索</h3><ul><li v-for="(edge,index) in tree.edges" :key="index">{{ edge.from }}:{{ edge.line }} → {{ edge.to }}（{{ edge.specifier }}）</li></ul><h3>未解析依赖</h3><ul><li v-for="(item,index) in tree.unresolved" :key="index">{{ item.path }}:{{ item.line }} · {{ item.expression }} · {{ item.reason }}</li></ul><details><summary>跳过文件及原因</summary><ul><li v-for="item in tree.skippedFiles" :key="item.path">{{ item.path }} · {{ item.reason }}</li></ul></details></details>

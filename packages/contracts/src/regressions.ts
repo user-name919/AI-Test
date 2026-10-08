@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { caseExecutionContractSchema, type CaseExecutionContract, type ResolvedCaseExecutionContract } from './contracts'
 import type { CaseAsset, CaseReuseProvenance } from './case-assets'
+import type { MemoryReference } from './memories'
 
 const localRef = z.string().min(1).max(300).refine(value => !value.startsWith('-') && !/[\s\0]/.test(value), '请输入本地分支或提交 SHA')
 export const changeComparisonSchema = z.discriminatedUnion('mode', [
@@ -88,6 +89,7 @@ export interface RegressionSuggestionBatch {
   suggestions: RegressionSuggestions
 }
 export interface RegressionGeneration {
+  memoryReferences?: MemoryReference[]
   promptVersion: string
   model: string
   reviewStatus: 'pending'

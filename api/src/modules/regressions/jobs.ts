@@ -5,6 +5,7 @@ import { getModelConfig } from '../../integrations/model/config'
 import { getChangeSet } from './change-sets'
 import { analyzeChangeSetSource } from './source-impact'
 import { generateRegressionSuggestions, regressionPromptVersion } from './suggestions'
+import { selectRegressionMemoryHints } from '../memories/repository'
 
 let initialized = false
 let working = false
@@ -86,7 +87,7 @@ async function drain() {
         } else {
           record.generation = await generateRegressionSuggestions(changeSet.facts, record.sourceImpact, getModelConfig(), signal, progress => {
             signal.throwIfAborted(); record.generation = progress; save(record)
-          })
+          }, selectRegressionMemoryHints(record.projectId, changeSet.facts))
         }
         signal.throwIfAborted()
         record.status = 'completed'; record.stage = 'finished'; save(record)

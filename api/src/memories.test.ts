@@ -10,7 +10,7 @@ test('记忆保留执行来源与项目范围，审核需要显式理由且不�
   process.env.QUALITY_AI_DATABASE_PATH=join(directory,'db.sqlite')
   const {database}=await import('./storage/database')
   const {saveExecution,getExecutionById}=await import('./modules/executions/repository')
-  const {initializeMemories,selectMemoryHints}=await import('./modules/memories/repository')
+  const {initializeMemories,selectMemoryHints,selectRegressionMemoryHints}=await import('./modules/memories/repository')
   const {handleMemoryRoutes}=await import('./modules/memories/routes')
   initializeMemories()
   const server=createServer(async(req,res)=>{if(!await handleMemoryRoutes(req,res)){res.writeHead(404);res.end()}})
@@ -45,6 +45,16 @@ test('记忆保留执行来源与项目范围，审核需要显式理由且不�
     const hints=selectMemoryHints(project,'https://example.test/search')
     assert.equal(hints.length,1)
     assert.equal(hints[0].revision,2)
+    const facts: import('@quality-ai/contracts/regressions').LocalChangeFacts = {
+      comparison: { mode: 'endpoints', baseRef: 'main', targetRef: 'feature' }, targetSha: 'b'.repeat(40),
+      commits: [], omittedCommitShas: [], omittedRangeBases: [], dirty: false, capturedAt: 'now', warnings: [],
+      diffs: [{ baseSha: 'a'.repeat(40), targetSha: 'b'.repeat(40), files: [], patch: '' }],
+    }
+    const regressionHints = selectRegressionMemoryHints('project-a', facts)
+    assert.deepEqual(regressionHints, hints, '基线版本经验作为带来源的历史线索')
+    assert.deepEqual(selectRegressionMemoryHints('project-b', facts), [])
+    assert.deepEqual(selectRegressionMemoryHints('project-a', { ...facts, diffs: [] }), [])
+    assert.deepEqual(selectRegressionMemoryHints('project-a', { ...facts, diffs: [{ ...facts.diffs[0]!, baseSha: 'c'.repeat(40) }] }), [])
     assert.deepEqual(selectMemoryHints({...project,id:'project-b'},'https://example.test/search'),[])
     assert.deepEqual(selectMemoryHints({...project,commit:'b'.repeat(40)},'https://example.test/search'),[])
     assert.deepEqual(selectMemoryHints({...project,worktree:{status:'dirty',observedAt:'now'}},'https://example.test/search'),[])
@@ -55,6 +65,8 @@ test('记忆保留执行来源与项目范围，审核需要显式理由且不�
     assert.equal(invalid.status,'invalid')
     assert.deepEqual(selectMemoryHints(project,'https://example.test/search'),[])
     assert.equal(hints[0].revision,2,'历史引用不随后续审核改变')
+    assert.deepEqual(selectRegressionMemoryHints('project-a', facts), [])
+    assert.equal(regressionHints[0].revision, 2)
     assert.deepEqual(invalid.source,memory.source)
     assert.deepEqual(getExecutionById('source'),original)
     initializeMemories()

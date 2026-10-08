@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createMemorySchema, reviewMemorySchema, type QualityMemory, type MemoryReference } from '@quality-ai/contracts/memories'
 import type { SourceProjectSnapshot } from '@quality-ai/contracts'
+import type { LocalChangeFacts } from '@quality-ai/contracts/regressions'
 import { database } from '../../storage/database'
 import { getExecutionById } from '../executions/repository'
 
@@ -23,6 +24,20 @@ export function selectMemoryHints(project:SourceProjectSnapshot|undefined,target
     id:item.id,revision:item.revision,lesson:item.lesson,executionId:item.source.executionId,caseKey:item.source.caseKey,
     projectId:project.id,targetUrl,sourceCommit:project.commit!,
   }))
+}
+
+/** 回归设计尚未选择部署页面：保留来源URL，只作固定差异版本的历史线索，不声明适用于目标页面。 */
+export function selectRegressionMemoryHints(projectId: string, facts: LocalChangeFacts): MemoryReference[] {
+  initializeMemories()
+  const versions = new Set(facts.diffs.flatMap(diff => [diff.baseSha, diff.targetSha]))
+  return listMemories(projectId).filter(item => item.status === 'adopted'
+    && item.scope.sourceProject?.id === projectId
+    && item.scope.sourceProject.worktree?.status === 'clean'
+    && versions.has(item.scope.sourceProject.commit ?? '')).slice(0, 5).map(item => ({
+      id: item.id, revision: item.revision, lesson: item.lesson, executionId: item.source.executionId,
+      caseKey: item.source.caseKey, projectId, targetUrl: item.scope.targetUrl,
+      sourceCommit: item.scope.sourceProject!.commit!,
+    }))
 }
 
 export function createMemory(input:unknown):QualityMemory{

@@ -35,6 +35,9 @@ test('故事 C：三个重构提交经实际界面审核部署执行，失败报
   const deployedFiles=new Map(['index.html','shared.js','page-a.js'].map(path=>[path,git('show',`${targetSha}:${path}`)]))
   const {createApiServer}=await import('./app');const {database}=await import('./storage/database')
   const {saveEnvironment}=await import('./modules/projects/environment-repository')
+  const {saveExecution}=await import('./modules/executions/repository')
+  const {createMemory,reviewMemory}=await import('./modules/memories/repository')
+  let memoryId=''
   let generated=0;let planned=0;let decisions=0
   const site=createServer(async(request,response)=>{
     try{
@@ -51,6 +54,9 @@ test('故事 C：三个重构提交经实际界面审核部署执行，失败报
         generated++
         const input=JSON.parse(content.split('\n\nReturn only')[0]!)
         assert.equal(input.targetSha,targetSha)
+        assert.equal(input.memoryReferences[0].id,memoryId)
+        assert.equal(input.memoryReferences[0].sourceCommit,base)
+        assert.equal(input.memoryReferences[0].revision,2)
         assert.ok(input.evidence.some((item:{paths:string[]})=>item.paths.includes('shared.js')))
         const contract={objective:'按钮交互回归',preconditions:[],steps:['点击继续按钮'],expectedAssertions:['显示已继续'],dataBindings:[],forbiddenBehaviors:['不得改写已确认预期'],uncertainties:[]}
         output={risks:[{id:'r1',title:'共享按钮交互',reason:'共享函数影响页面 A 与页面 B',severity:'high',confidence:'medium',evidenceIds:[input.evidence[0].id]},{id:'r2',title:'页面 B 动态模块',reason:'别名依赖无法静态解析',severity:'medium',confidence:'low',evidenceIds:[input.evidence[0].id]}],cases:[{title:'页面 A 按钮回归',riskIds:['r1'],verification:'browser',verificationReason:'按钮文字可观察',contract}],limitations:['仅验证页面 A，动态模块需人工判断']}
@@ -76,6 +82,10 @@ test('故事 C：三个重构提交经实际界面审核部署执行，失败报
   const api=createApiServer();let web:Awaited<ReturnType<typeof createViteServer>>|undefined;let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined
   try{
     await new Promise<void>(resolve=>site.listen(0,'127.0.0.1',resolve));targetUrl=`http://127.0.0.1:${(site.address() as AddressInfo).port}/`
+    saveExecution({id:'historical-memory-source',name:'合成历史按钮回归',mode:'plan',status:'failed',targetUrl,startedAt:'2026-10-08T00:00:00Z',finishedAt:'2026-10-08T00:00:00Z',durationMs:1,steps:[],screenshots:[],sourceProject:{id:'fixture',commit:base,worktree:{status:'clean',observedAt:'2026-10-08T00:00:00Z'}}},{projectId:'fixture'})
+    const memory=createMemory({executionId:'historical-memory-source',lesson:'共享按钮变更时需要复核两个调用页面，不据历史结果判断本次通过'})
+    memoryId=memory.id
+    reviewMemory(memory.id,{expectedRevision:1,status:'adopted',reason:'合成审核，作为风险线索'})
     process.env.MODEL_API_KEY='synthetic-local-only';process.env.MODEL_BASE_URL=targetUrl.replace(/\/$/,'')
     const environment=saveEnvironment({name:'固定目标合成部署',baseUrl:new URL(targetUrl).origin,targetUrl})
     await new Promise<void>(resolve=>api.listen(0,'127.0.0.1',resolve));const apiOrigin=`http://127.0.0.1:${(api.address() as AddressInfo).port}`
@@ -97,6 +107,13 @@ test('故事 C：三个重构提交经实际界面审核部署执行，失败报
     const regressionId=page.url().split('/regressions/')[1]!.split('?')[0]!
     const analysis:RegressionAnalysis=(await get(`/api/regressions/${regressionId}`)).regression
     assert.equal(analysis.status,'completed');assert.equal(generated,1)
+    assert.equal(analysis.generation!.memoryReferences![0]!.id,memoryId)
+    await page.getByText(`经验 ${memoryId} · 审核版本 2`,{exact:true}).click()
+    await page.getByText(memory.lesson,{exact:true}).waitFor()
+    assert.equal(await page.getByRole('link',{name:'查看来源执行报告',exact:true}).getAttribute('href'),'#/executions/historical-memory-source')
+    if(process.env.MEMORY_SCREENSHOT_PATH)await page.screenshot({path:process.env.MEMORY_SCREENSHOT_PATH,fullPage:true})
+    reviewMemory(memoryId,{expectedRevision:2,status:'invalid',reason:'后续审核失效，不改历史分析快照'})
+    assert.deepEqual((await get(`/api/regressions/${regressionId}`)).regression.generation.memoryReferences,analysis.generation!.memoryReferences)
     assert.ok(analysis.sourceImpact!.trees.some(tree=>tree.affectedFiles.includes('page-a.js')&&tree.affectedFiles.includes('page-b.js')))
     assert.ok(analysis.sourceImpact!.trees.some(tree=>tree.unresolved.some(item=>item.expression.includes('@/unresolved'))))
     const range:ChangeSet=(await get(`/api/change-sets/${analysis.changeSetId}`)).changeSet
