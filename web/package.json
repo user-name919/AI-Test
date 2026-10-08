@@ -1,0 +1,25 @@
+{
+  "name": "@quality-ai/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4173",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src vite.config.ts"
+  },
+  "dependencies": {
+    "@quality-ai/contracts": "workspace:*",
+    "vue": "3.5.22",
+    "vue-router": "4.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "@vitejs/plugin-vue": "6.0.8",
+    "vite": "8.0.13",
+    "vue-tsc": "3.3.9",
+    "yaml": "2.9.1"
+  }
+}

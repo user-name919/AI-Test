@@ -1,0 +1,22 @@
+{
+  "name": "@quality-ai/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/contracts.ts",
+    "./cases": "./src/case-assets.ts",
+    "./memories": "./src/memories.ts",
+    "./regressions": "./src/regressions.ts",
+    "./test-fixtures": "./src/test-fixtures.ts",
+    "./case-design": "./src/case-design.ts",
+    "./live-execution": "./src/live-execution.ts",
+    "./review-state": "./src/review-state.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src"
+  },
+  "dependencies": { "zod": "4.1.12" }
+}

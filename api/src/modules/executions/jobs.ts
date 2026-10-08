@@ -1,0 +1,241 @@
+import { randomUUID } from 'node:crypto'
+import { executionJobRequestSchema, type ExecutionJob } from '@quality-ai/contracts/cases'
+import { automationPlanSchema, type AutomationPlan, type ExecutionRecord, type LiveExecutionEvent } from '@quality-ai/contracts'
+import { database } from '../../storage/database'
+import { prepareAssetExecution } from '../cases/execution-preparation'
+import { getEnvironmentById } from '../projects/environment-repository'
+import { getProjectProviderRegistry } from '../../integrations/project-knowledge/registry'
+import { runAgentTest } from '../../automation/agent-test-runner'
+import { runAutomationPlan } from '../../automation/playwright-runner'
+import { generateFixedPlan, proposeFixedPlanData } from '../cases/fixed-plan-model'
+import { getExecutionById, saveExecution } from './repository'
+import { validateDeploymentForExecution } from '../regressions/deployments'
+import { acquireChangeSetWorktree, releaseChangeSetWorktree } from '../../integrations/git/worktree-manager'
+import { loadProjectConfigs } from '../../integrations/project-knowledge/config'
+import { LocalProjectKnowledgeProvider } from '../../integrations/project-knowledge/local-project-provider'
+import { getAutomationPlanById } from '../cases/plan-repository'
+import { interruptedExecution } from './interruption'
+import { selectMemoryHints } from '../memories/repository'
+import { captureWriteAuthorizations } from '../../automation/write-authorization'
+
+let initialized = false
+let working = false
+const queue: Array<() => Promise<void>> = []
+const active = new Map<string,{job:ExecutionJob;controller:AbortController}>()
+
+export function initializeExecutionJobs() {
+  if (initialized) return
+  database.exec(`CREATE TABLE IF NOT EXISTS execution_jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL, job_json TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS execution_job_events (job_id TEXT NOT NULL, sequence INTEGER NOT NULL, event_json TEXT NOT NULL, PRIMARY KEY(job_id,sequence));
+    CREATE TABLE IF NOT EXISTS execution_job_frames (job_id TEXT PRIMARY KEY, event_json TEXT NOT NULL);`)
+  const stale = database.prepare("SELECT job_json FROM execution_jobs WHERE status IN ('queued','running','cancelling')").all() as Array<{job_json:string}>
+  for (const row of stale) {
+    const job = JSON.parse(row.job_json) as ExecutionJob
+    const existing = getExecutionById(job.id)
+    if(existing){
+      job.executionId=existing.id
+      job.status=existing.status==='cancelled'?'cancelled':'completed'
+      writeJob(job)
+      continue
+    }
+    const recovered=interruptedExecution(job)
+    saveExecution(recovered,{environmentId:job.environmentId,projectId:job.projectId,automationPlanId:job.automationPlanId,rerunOf:job.rerunOf,caseKeys:job.snapshots.map(item=>item.resolved.caseKey),plan:job.executionPlan})
+    job.executionId=recovered.id
+    job.status = 'interrupted'
+    job.error = '服务已重启，原浏览器上下文丢失；未自动重放可能有副作用的操作'
+    writeJob(job)
+  }
+  initialized = true
+}
+
+function writeJob(job: ExecutionJob) {
+  job.updatedAt = new Date().toISOString()
+  database.prepare('INSERT OR REPLACE INTO execution_jobs (id,status,job_json) VALUES (?,?,?)').run(job.id,job.status,JSON.stringify(job))
+}
+
+export function getExecutionJob(id: string): ExecutionJob | null {
+  const row = database.prepare('SELECT job_json FROM execution_jobs WHERE id=?').get(id) as {job_json:string}|undefined
+  return row ? JSON.parse(row.job_json) : null
+}
+
+export function listExecutionJobs(): ExecutionJob[] {
+  return (database.prepare('SELECT job_json FROM execution_jobs ORDER BY rowid DESC LIMIT 100').all() as Array<{job_json:string}>).map(row=>JSON.parse(row.job_json))
+}
+
+export function executionJobEvents(id: string, after: number) {
+  const events = (database.prepare('SELECT sequence,event_json FROM execution_job_events WHERE job_id=? AND sequence>? ORDER BY sequence LIMIT 200').all(id,after) as Array<{sequence:number;event_json:string}>).map(row=>({sequence:row.sequence,event:JSON.parse(row.event_json) as LiveExecutionEvent}))
+  const frame = database.prepare('SELECT event_json FROM execution_job_frames WHERE job_id=?').get(id) as {event_json:string}|undefined
+  return { events, nextCursor: events.at(-1)?.sequence ?? after, frame: frame ? JSON.parse(frame.event_json) : null }
+}
+
+export function cancelExecutionJob(id: string) {
+  const job = getExecutionJob(id)
+  if (!job) throw new Error('执行任务不存在')
+  if (job.status === 'cancelled' || job.status === 'cancelling') return job
+  const running = active.get(id)
+  if (running) {
+    running.job.status = 'cancelling'
+    running.job.error = '已请求取消，正在停止浏览器并等待当前请求收尾；已提交的业务操作不会回滚'
+    writeJob(running.job)
+    running.controller.abort(new Error('用户取消执行'))
+    return structuredClone(running.job)
+  }
+  if (job.status !== 'queued') throw new Error('任务已经结束，不能取消')
+  job.status = 'cancelled'
+  writeJob(job)
+  return job
+}
+
+async function drainQueue() {
+  if (working) return
+  working = true
+  try { while (queue.length) await queue.shift()!() } finally { working = false }
+}
+
+export async function createExecutionRerunJob(id:string):Promise<ExecutionJob>{
+  const original=getExecutionById(id)
+  if(!original)throw new Error('原执行记录不存在')
+  if(original.deploymentConfirmation||original.caseSnapshots?.some(item=>item.source?.type==='change_regression')||original.caseKeys.some(key=>key.startsWith('regression:')))throw new Error('回归重跑须返回回归任务重新确认部署版本')
+  if(!original.caseSnapshots?.length)throw new Error('历史报告缺少用例版本快照，请返回用例重新确认执行')
+  if(original.caseSnapshots.some(item=>item.resolved.contract.writeOperations?.length))throw new Error('含业务写操作的用例须返回执行配置重新逐条授权，历史授权不能复用')
+  if(original.mode==='plan'&&!original.plan)throw new Error('历史报告未保存固定计划，请重新生成并确认')
+  return createExecutionJob({mode:original.mode,targetUrl:original.targetUrl,environmentId:original.environmentId,projectId:original.projectId,
+    cases:original.caseSnapshots.map(item=>({caseId:item.caseId,revision:item.revision,contractFingerprint:item.resolved.contractFingerprint}))},original)
+}
+
+export async function createExecutionJob(input: unknown, replay?:ExecutionRecord): Promise<ExecutionJob> {
+  const request = executionJobRequestSchema.parse(input)
+  if (queue.length >= 20) throw new Error('执行队列已满，请等待当前任务完成')
+  const environment = request.environmentId ? getEnvironmentById(request.environmentId) : null
+  if (request.environmentId && !environment) throw new Error('测试环境不存在')
+  const target = new URL(request.targetUrl)
+  if (environment && new URL(environment.baseUrl).origin !== target.origin) throw new Error('测试地址与环境 Origin 不一致')
+  const provider = request.projectId ? (await getProjectProviderRegistry()).get(request.projectId) : undefined
+  if (request.projectId && !provider) throw new Error('源码项目不存在')
+  if (request.mode === 'agent' && !provider) throw new Error('动态执行需要选择源码项目')
+  const project = await provider?.getProjectInfo()
+  if (project && (!project.connected || (project.targetOrigins.length && !project.targetOrigins.includes(target.origin)))) throw new Error('源码未连接或测试地址不属于该项目')
+  // 所有异步配置查询之后重新固定资产，不接受客户端准备接口返回的快照。
+  const preparation = prepareAssetExecution({ mode:request.mode,targetUrl:request.targetUrl,cases:request.cases,environmentId:request.environmentId,deploymentConfirmationId:request.deploymentConfirmationId })
+  const deployment = preparation.deploymentConfirmation
+  const writeAuthorizations = captureWriteAuthorizations(preparation.snapshots, request.authorizedWriteCaseIds ?? [], request.targetUrl)
+  const savedPlan = request.automationPlanId ? getAutomationPlanById(request.automationPlanId) : null
+  if(request.automationPlanId&&!savedPlan)throw new Error('已确认计划不存在，请重新生成并查看计划')
+  let confirmedPlan:AutomationPlan|undefined
+  if(replay?.mode==='plan'){
+    confirmedPlan=automationPlanSchema.parse(replay.plan)
+    if(confirmedPlan.targetUrl!==request.targetUrl||confirmedPlan.casePlans?.length!==preparation.snapshots.length)throw new Error('历史计划与执行快照不完整，请重新确认')
+    for(const [index,snapshot] of preparation.snapshots.entries()){
+      const item=confirmedPlan.casePlans![index]!
+      if(item.caseKey!==snapshot.resolved.caseKey||item.contractFingerprint!==snapshot.resolved.contractFingerprint||!item.contract)throw new Error('历史计划的契约或顺序不匹配，请重新确认')
+    }
+  }
+  if(savedPlan){
+    if(request.mode!=='plan')throw new Error('已确认固定计划不能用于动态执行')
+    confirmedPlan=automationPlanSchema.parse(savedPlan.plan)
+    if(confirmedPlan.targetUrl!==request.targetUrl)throw new Error('执行地址与已确认计划不一致，请重新生成计划')
+    if(!confirmedPlan.casePlans||confirmedPlan.casePlans.length!==preparation.snapshots.length||savedPlan.caseKeys.length!==preparation.snapshots.length)throw new Error('计划缺少完整逐用例依据，请重新生成计划')
+    for(const [index,snapshot] of preparation.snapshots.entries()){
+      const item=confirmedPlan.casePlans[index]!
+      if(snapshot.source?.type!=='requirement'||snapshot.source.analysisId!==savedPlan.analysisId||item.caseKey!==snapshot.resolved.caseKey||savedPlan.caseKeys[index]!==item.caseKey||item.contractFingerprint!==snapshot.resolved.contractFingerprint||!item.contract)throw new Error('已确认计划与所选用例、顺序或口径不一致，请重新生成计划')
+    }
+  }
+  if (deployment && request.projectId !== deployment.projectId) throw new Error('回归执行必须选择变更范围对应的源码项目')
+  const regressionProjectConfig = deployment ? (await loadProjectConfigs()).find(config => config.id === deployment.projectId) : undefined
+  if (deployment && !regressionProjectConfig) throw new Error('回归源码项目配置不存在')
+  if (queue.length >= 20) throw new Error('执行队列已满，请等待当前任务完成')
+  const now = new Date().toISOString()
+  const job: ExecutionJob = {id:randomUUID(),status:'queued',mode:request.mode,targetUrl:request.targetUrl,snapshots:preparation.snapshots,createdAt:now,updatedAt:now,
+    completedCases:[],
+    writeAuthorizations,
+    environmentId:request.environmentId,projectId:request.projectId,deploymentConfirmation:deployment,automationPlanId:savedPlan?.id??replay?.automationPlanId,rerunOf:replay?.id,
+    sourceProject:deployment ? {id:deployment.projectId,commit:deployment.targetSha} : project ? {id:project.id,branch:project.branch,commit:project.commit,worktree:project.worktree} : undefined}
+  writeJob(job)
+  queue.push(async () => {
+    if (getExecutionJob(job.id)?.status !== 'queued') return
+    job.status = 'running'
+    const controller = new AbortController()
+    active.set(job.id,{job,controller})
+    writeJob(job)
+    let sequence = 0
+    let sourceLease: Awaited<ReturnType<typeof acquireChangeSetWorktree>> | undefined
+    let executionProvider = provider
+    const checkDeployment = () => {
+      if (deployment) validateDeploymentForExecution(deployment.id, { regressionId:deployment.regressionId,reviewRevision:deployment.reviewRevision,environmentId:deployment.environmentId,targetUrl:job.targetUrl })
+    }
+    const onEvent = (event: LiveExecutionEvent) => {
+      if (event.type === 'browser_frame') database.prepare('INSERT OR REPLACE INTO execution_job_frames (job_id,event_json) VALUES (?,?)').run(job.id,JSON.stringify(event))
+      else database.prepare('INSERT INTO execution_job_events (job_id,sequence,event_json) VALUES (?,?,?)').run(job.id,++sequence,JSON.stringify(event))
+      writeJob(job)
+    }
+    try {
+      checkDeployment()
+      if (deployment && regressionProjectConfig) {
+        sourceLease = await acquireChangeSetWorktree(deployment.changeSetId, job.id)
+        executionProvider = new LocalProjectKnowledgeProvider({ ...regressionProjectConfig, root: sourceLease.projectPath })
+        const snapshotInfo = await executionProvider.getProjectInfo()
+        if (!snapshotInfo.connected || snapshotInfo.commit !== deployment.targetSha) throw new Error('回归源码快照与固定目标 SHA 不一致')
+        job.sourceProject = {id:snapshotInfo.id,branch:snapshotInfo.branch,commit:snapshotInfo.commit,worktree:snapshotInfo.worktree}
+      } else if (provider && project) {
+        const current = await provider.getProjectInfo()
+        if (!current.connected || current.commit !== project.commit || current.branch !== project.branch) throw new Error('排队期间源码版本已变化，请重新确认项目版本再执行')
+        job.sourceProject = {id:current.id,branch:current.branch,commit:current.commit,worktree:current.worktree}
+      }
+      job.memoryHints=request.mode==='agent'||!confirmedPlan?selectMemoryHints(job.sourceProject,job.targetUrl):[]
+      writeJob(job)
+      let plan=confirmedPlan
+      if (request.mode === 'plan'&&!plan) {
+        const casePlans = []
+        for (const snapshot of job.snapshots) {
+          controller.signal.throwIfAborted()
+          const identity = {caseKey:snapshot.resolved.caseKey,title:snapshot.resolved.title,contractFingerprint:snapshot.resolved.contractFingerprint,contract:snapshot.resolved.contract}
+          try {
+            const generated = await generateFixedPlan(job.targetUrl,snapshot.resolved,controller.signal,undefined,job.memoryHints)
+            controller.signal.throwIfAborted()
+            casePlans.push({...identity,steps:generated.steps})
+          } catch (error) {
+            controller.signal.throwIfAborted()
+            const preparationError = `固定计划生成受阻：${error instanceof Error ? error.message : String(error)}`
+            casePlans.push({...identity,steps:[],preparationError})
+            onEvent({type:'activity',executionId:job.id,caseKey:identity.caseKey,caseTitle:identity.title,
+              activity:{id:`${identity.caseKey}:plan-blocked`,phase:'observing',title:'该用例计划生成受阻',purpose:'保留原因，继续其余用例；未执行该用例的业务操作',status:'info',message:preparationError}})
+          }
+        }
+        plan = automationPlanSchema.parse({name:`${job.snapshots[0]!.resolved.title} · ${casePlans.length} 条用例`,targetUrl:job.targetUrl,steps:casePlans[0]!.steps,casePlans})
+      }
+      controller.signal.throwIfAborted()
+      checkDeployment()
+      job.executionPlan=plan
+      writeJob(job)
+      const checkpoints = {
+        writeAuthorizations:job.writeAuthorizations,
+        onCaseStarted(value:NonNullable<ExecutionJob['activeCase']>){job.activeCase=value;writeJob(job)},
+        onCaseCompleted(value:NonNullable<ExecutionJob['completedCases']>[number]){
+          job.completedCases=[...(job.completedCases??[]).filter(item=>item.caseKey!==value.caseKey),value]
+          job.activeCase=undefined
+          writeJob(job)
+        },
+      }
+      const result = request.mode === 'agent'
+        ? await runAgentTest(preparation.goals.map(goal=>({...goal,memoryHints:job.memoryHints})),environment?.storageStatePath,{...checkpoints,projectProvider:executionProvider!,executionId:job.id,onEvent,signal:controller.signal})
+        : await runAutomationPlan(plan,environment?.storageStatePath,{...checkpoints,executionId:job.id,onEvent,signal:controller.signal,resolveTestData:(binding,snapshot)=>proposeFixedPlanData(binding,snapshot,controller.signal)})
+      result.caseSnapshots = job.snapshots
+      result.sourceProject = job.sourceProject
+      result.memoryHints = job.memoryHints
+      result.deploymentConfirmation = deployment
+      saveExecution(result,{analysisId:savedPlan?.analysisId??replay?.analysisId,automationPlanId:job.automationPlanId,rerunOf:replay?.id,environmentId:request.environmentId,projectId:request.projectId,caseKeys:job.snapshots.map(snapshot=>snapshot.resolved.caseKey),plan})
+      job.executionId = result.id
+      job.status = controller.signal.aborted ? 'cancelled' : 'completed' // 完成任务不等于用例通过。
+      writeJob(job)
+    } catch (error) {
+      job.status = controller.signal.aborted ? 'cancelled' : 'failed'
+      job.error = error instanceof Error ? error.message : String(error)
+      writeJob(job)
+    } finally {
+      if (sourceLease) releaseChangeSetWorktree(sourceLease.token)
+      active.delete(job.id)
+    }
+  })
+  setImmediate(() => { void drainQueue() })
+  return structuredClone(job)
+}
